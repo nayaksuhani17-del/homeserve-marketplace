@@ -1,11 +1,12 @@
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { demoId } from "./ids";
+import { DEMO_CATALOG_SIZE, DEMO_MODE } from "./mode";
 import { getComparablePrice, pricingTypeForService } from "@/lib/pricing";
 import { enrichProviderQuoteFields } from "@/lib/quotes";
 import type { PricingType } from "@/lib/pricing";
 import type { ProviderWithUser } from "../types";
 
-export const CATALOG_SIZE = 350;
+export const CATALOG_SIZE = DEMO_MODE ? DEMO_CATALOG_SIZE : 350;
 export const DEMO_PAGE_SIZE = 24;
 
 const FIRST_NAMES = [

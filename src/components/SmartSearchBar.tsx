@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChatProviderCard } from "./ChatProviderCard";
 import { useMockApp } from "@/context/MockAppContext";
-import { simulateDelay } from "@/lib/mock/operations";
 import { toProviderCardData } from "@/lib/providers";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { matchSearchSuggestions } from "@/lib/services";
@@ -35,7 +34,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
   }, []);
 
   useEffect(() => {
-    if (!query.trim() || !ready) return;
+    if (!query.trim() || query.trim().length < 2 || !ready) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -59,7 +58,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
         )
       );
       setShowDropdown(true);
-    }, 250);
+    }, 400);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -73,8 +72,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
     setHint(null);
     setShowDropdown(false);
 
-    startTransition(async () => {
-      await simulateDelay(280);
+    startTransition(() => {
       const parsed = parseSearch(q);
       const applied: string[] = [];
       if (parsed.service) applied.push(`Service: ${parsed.service}`);

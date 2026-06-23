@@ -36,13 +36,18 @@ export function CustomerDashboardClient() {
 
   const stats = getStats();
   const bookings = user?.role === "customer" ? getBookingsForCustomer(user.id) : [];
-  const recommended = filterProviders({ status: "verified" }).topRanked;
-  const popular = useMemo(() => {
-    const { list } = filterProviders({ status: "verified", sort: "rating" });
-    return [...list]
-      .sort((a, b) => b.jobsCompleted - a.jobsCompleted)
-      .slice(0, 3);
-  }, [filterProviders]);
+  const verifiedFeed = useMemo(
+    () => filterProviders({ status: "verified", sort: "rating" }),
+    [filterProviders]
+  );
+  const recommended = verifiedFeed.topRanked;
+  const popular = useMemo(
+    () =>
+      [...verifiedFeed.list]
+        .sort((a, b) => b.jobsCompleted - a.jobsCompleted)
+        .slice(0, 3),
+    [verifiedFeed.list]
+  );
   const recent = user ? getRecentlyViewedProviders() : [];
   const savedCount = user ? getSavedProviders().length : 0;
   const greeting = user

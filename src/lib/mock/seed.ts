@@ -96,7 +96,11 @@ function mapDemoBookingStatus(
   return "confirmed";
 }
 
+let initialDbCache: MockDatabase | null = null;
+
 export function buildInitialDatabase(): MockDatabase {
+  if (initialDbCache) return initialDbCache;
+
   const users = DEMO_USERS.map(toMockUser);
   const providers = buildDemoProviders().map(toMockProvider);
 
@@ -200,7 +204,7 @@ export function buildInitialDatabase(): MockDatabase {
       : p
   );
 
-  return {
+  initialDbCache = {
     version: MOCK_DB_VERSION,
     users,
     providers: providersWithSchedule,
@@ -210,6 +214,7 @@ export function buildInitialDatabase(): MockDatabase {
     notifications: seedNotifications,
     reports: buildAdminDemoReports(),
   };
+  return initialDbCache;
 }
 
 export function newGuestUser(input: {

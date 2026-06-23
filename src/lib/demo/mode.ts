@@ -1,6 +1,9 @@
 /** Executive demo optimizations — tuned for live presentations. */
 export const DEMO_MODE = true;
 
+/** Generated catalog size in demo (full prod-style build uses 350). */
+export const DEMO_CATALOG_SIZE = 60;
+
 /** Max providers shown per marketplace page during demo. */
 export const DEMO_PROVIDER_PAGE_SIZE = 10;
 

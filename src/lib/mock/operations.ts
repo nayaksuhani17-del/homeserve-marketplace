@@ -14,6 +14,7 @@ import type {
 } from "./types";
 
 export function simulateDelay(ms = 600): Promise<void> {
+  if (DEMO_MODE) return Promise.resolve();
   const jitter = Math.floor(Math.random() * 400);
   return new Promise((resolve) => setTimeout(resolve, ms + jitter));
 }

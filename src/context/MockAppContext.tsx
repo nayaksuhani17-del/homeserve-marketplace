@@ -211,6 +211,14 @@ function saveDb(db: MockDatabase) {
   localStorage.setItem(MOCK_DB_KEY, JSON.stringify(normalizeMockDatabase(db)));
 }
 
+function deferHeavyWork(work: () => void) {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(work, { timeout: 120 });
+    return;
+  }
+  setTimeout(work, 0);
+}
+
 function loadSession(): MockSession | null {
   if (typeof window === "undefined") return null;
   try {
@@ -244,6 +252,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const [systemEvents, setSystemEvents] = useState<SystemEvent[]>([]);
   const responseTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const resumedPending = useRef(new Set<string>());
+  const saveDbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filterCacheRef = useRef<{
+    db: MockDatabase;
+    key: string;
+    result: ReturnType<MockAppContextValue["filterProviders"]>;
+  } | null>(null);
 
   const clearScheduledResponse = useCallback((bookingId: string) => {
     const existing = responseTimeouts.current.get(bookingId);
@@ -399,26 +413,38 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    const hadStoredDb =
-      typeof window !== "undefined" && Boolean(localStorage.getItem(MOCK_DB_KEY));
-    let stored = loadDb();
-    let nextSession: MockSession | null = null;
-    if (!stored) {
-      stored = buildInitialDatabase();
-      if (hadStoredDb) {
-        saveSession(null);
-      } else {
-        nextSession = loadSession();
-      }
-    } else {
-      nextSession = loadSession();
+    let cancelled = false;
+
+    function finishBootstrap(stored: MockDatabase, nextSession: MockSession | null) {
+      if (cancelled) return;
+      setDb(stored);
+      setSession(nextSession);
+      setFavoriteIds(loadFavoriteIds());
+      setReady(true);
     }
-    saveDb(stored);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap mock DB on mount
-    setDb(stored);
-    setSession(nextSession);
-    setFavoriteIds(loadFavoriteIds());
-    setReady(true);
+
+    const stored = loadDb();
+    if (stored) {
+      finishBootstrap(stored, loadSession());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const hadStaleDb =
+      typeof window !== "undefined" && Boolean(localStorage.getItem(MOCK_DB_KEY));
+
+    deferHeavyWork(() => {
+      if (cancelled) return;
+      const fresh = buildInitialDatabase();
+      saveDb(fresh);
+      if (hadStaleDb) saveSession(null);
+      finishBootstrap(fresh, hadStaleDb ? null : loadSession());
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -438,13 +464,19 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     return () => {
       timeouts.forEach((t) => clearTimeout(t));
       timeouts.clear();
+      if (saveDbTimerRef.current) clearTimeout(saveDbTimerRef.current);
     };
   }, []);
 
   const persist = useCallback((next: MockDatabase) => {
     const normalized = normalizeMockDatabase(next);
+    filterCacheRef.current = null;
     setDb(normalized);
-    saveDb(normalized);
+    if (saveDbTimerRef.current) clearTimeout(saveDbTimerRef.current);
+    saveDbTimerRef.current = setTimeout(() => {
+      localStorage.setItem(MOCK_DB_KEY, JSON.stringify(normalized));
+      saveDbTimerRef.current = null;
+    }, 400);
   }, []);
 
   const user = useMemo(() => {
@@ -1167,6 +1199,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           urgent: false,
         };
       }
+      const cacheKey = JSON.stringify(filters);
+      const cached = filterCacheRef.current;
+      if (cached?.db === db && cached.key === cacheKey) {
+        return cached.result;
+      }
+
       const effectiveStatus =
         filters.status === "all" ? "all" : filters.status ?? "verified";
       const result = filterMockProviders(db, {
@@ -1188,7 +1226,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       >;
       const bestMatchId = topRanked[0]?.id;
 
-      return {
+      const value = {
         ...result,
         topRanked,
         topRankMap: Object.fromEntries(topRanked.map((p, i) => [p.id, i + 1])),
@@ -1196,6 +1234,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         bestMatchId,
         urgent,
       };
+      filterCacheRef.current = { db, key: cacheKey, result: value };
+      return value;
     },
     [db]
   );
