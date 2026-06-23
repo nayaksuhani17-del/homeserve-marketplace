@@ -53,6 +53,21 @@ function normalizeProvider(provider: MockProvider): MockProvider {
   };
 }
 
+/** Skip full re-normalize on refresh when localStorage already matches schema. */
+export function needsNormalization(raw: MockDatabase): boolean {
+  if (raw.version !== MOCK_DB_VERSION) return true;
+  const providers = raw.providers ?? [];
+  if (providers.length === 0) return false;
+  return providers.some(
+    (p) =>
+      !p.responseSpeed ||
+      !Array.isArray(p.weekAvailability) ||
+      p.weekAvailability.length !== 7 ||
+      !Array.isArray(p.blockedSlots) ||
+      typeof p.rejected !== "boolean"
+  );
+}
+
 /** Patch localStorage DBs to the current schema. */
 export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
   return {

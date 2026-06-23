@@ -5,13 +5,15 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { normalizeMockDatabase } from "@/lib/mock/normalize";
-import { buildInitialDatabase, newGuestProvider, newGuestUser, newId } from "@/lib/mock/seed";
+import { newGuestProvider, newGuestUser, newId } from "@/lib/mock/guest";
+import { loadDb, saveDb } from "@/lib/mock/load-db";
 import {
   addReviewRecord,
   addNotificationRecord,
@@ -53,7 +55,6 @@ import type {
 } from "@/lib/mock/types";
 import {
   MOCK_DB_KEY,
-  MOCK_DB_VERSION,
   MOCK_SESSION_KEY,
 } from "@/lib/mock/types";
 import { DEMO_PASSWORD } from "@/lib/demo/constants";
@@ -193,31 +194,6 @@ type MockAppContextValue = {
 };
 
 const MockAppContext = createContext<MockAppContextValue | null>(null);
-
-function loadDb(): MockDatabase | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(MOCK_DB_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as MockDatabase;
-    if (parsed.version !== MOCK_DB_VERSION) return null;
-    return normalizeMockDatabase(parsed);
-  } catch {
-    return null;
-  }
-}
-
-function saveDb(db: MockDatabase) {
-  localStorage.setItem(MOCK_DB_KEY, JSON.stringify(normalizeMockDatabase(db)));
-}
-
-function deferHeavyWork(work: () => void) {
-  if (typeof requestIdleCallback === "function") {
-    requestIdleCallback(work, { timeout: 120 });
-    return;
-  }
-  setTimeout(work, 0);
-}
 
 function loadSession(): MockSession | null {
   if (typeof window === "undefined") return null;
@@ -412,7 +388,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     [emitSystemEvent, appendNotification, notifyBookingParties]
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     let cancelled = false;
 
     function finishBootstrap(stored: MockDatabase, nextSession: MockSession | null) {
@@ -434,7 +410,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     const hadStaleDb =
       typeof window !== "undefined" && Boolean(localStorage.getItem(MOCK_DB_KEY));
 
-    deferHeavyWork(() => {
+    void import("@/lib/mock/seed").then(({ buildInitialDatabase }) => {
       if (cancelled) return;
       const fresh = buildInitialDatabase();
       saveDb(fresh);
