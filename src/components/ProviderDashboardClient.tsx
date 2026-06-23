@@ -1,31 +1,190 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ProviderProfileForm } from "@/components/ProviderProfileForm";
-import { StatCard } from "@/components/StatCard";
-import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
+import { ProviderWeekAvailability } from "@/components/provider/ProviderWeekAvailability";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { BookingChat } from "@/components/BookingChat";
 import { ProviderScheduleManager } from "@/components/ProviderScheduleManager";
+import { StarRating } from "@/components/StarRating";
+import { ReviewInsightsPanel } from "@/components/ProviderAIInsights";
+import { ProviderSummaryCard } from "@/components/provider/ProviderSummaryCard";
+import { ProviderEarningsChart } from "@/components/provider/ProviderEarningsChart";
 import { useMockApp } from "@/context/MockAppContext";
 import { useToast } from "@/components/Toast";
-import { getComparablePrice } from "@/lib/pricing";
+import {
+  getBookingAddress,
+  getProviderDisplayEarnings,
+  getProviderEarnings,
+  getProviderInsights,
+  getResponseSpeedLabel,
+  getReviewForBooking,
+  getSmartAlerts,
+  sortBookingsBySchedule,
+} from "@/lib/provider/dashboard-stats";
+import type { MockBooking, MockReview } from "@/lib/mock/types";
+
+type BookingTab = "requests" | "upcoming" | "completed";
+
+const TABS: { id: BookingTab; label: string; icon: string }[] = [
+  { id: "requests", label: "New Requests", icon: "📥" },
+  { id: "upcoming", label: "Upcoming Jobs", icon: "📅" },
+  { id: "completed", label: "Completed Jobs", icon: "✅" },
+];
+
+function whenLabel(booking: MockBooking) {
+  return `${booking.date}${booking.time ? ` · ${booking.time}` : ""}`;
+}
+
+function BookingCard({
+  booking,
+  variant,
+  address,
+  actionId,
+  flashId,
+  reviewRating,
+  chatOpen,
+  onToggleChat,
+  onAccept,
+  onReject,
+  onComplete,
+}: {
+  booking: MockBooking;
+  variant: BookingTab;
+  address?: string;
+  actionId: string | null;
+  flashId: string | null;
+  reviewRating?: number | null;
+  chatOpen?: boolean;
+  onToggleChat?: () => void;
+  onAccept?: () => void;
+  onReject?: () => void;
+  onComplete?: () => void;
+}) {
+  const busy = actionId === booking.id;
+  const flash = flashId === booking.id;
+
+  return (
+    <article
+      className={`rounded-xl border bg-white p-5 transition-all duration-300 hover:shadow-md ${
+        flash
+          ? "border-green-400 bg-green-50/50 shadow-green-100"
+          : "border-gray-100 hover:border-green-200"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold text-gray-900">{booking.service}</h3>
+            <BookingStatusBadge status={booking.status} />
+          </div>
+          <p className="mt-2 text-sm text-gray-700">
+            <span className="text-gray-500">Customer:</span>{" "}
+            <span className="font-medium">{booking.customerName}</span>
+          </p>
+          <p className="mt-1 text-sm text-gray-500">{whenLabel(booking)}</p>
+          {address && variant === "upcoming" && (
+            <p className="mt-1 text-sm text-gray-600">📍 {address}</p>
+          )}
+          <p className="mt-2 text-sm font-semibold text-green-700">
+            Est. earnings: ${booking.estimatedCost.toFixed(0)}
+          </p>
+          {variant === "completed" && (
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+              <span className="font-medium text-green-700">
+                +${booking.estimatedCost.toFixed(0)} earned
+              </span>
+              {reviewRating != null ? (
+                <StarRating rating={reviewRating} size="sm" />
+              ) : (
+                <span className="text-gray-400">No review yet</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {variant === "requests" && onAccept && onReject && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onAccept}
+                className="btn-primary px-4 py-2 text-sm active:scale-95 disabled:opacity-60"
+              >
+                {busy ? "…" : "✅ Accept"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onReject}
+                className="btn-secondary px-4 py-2 text-sm active:scale-95 disabled:opacity-60"
+              >
+                ❌ Reject
+              </button>
+            </>
+          )}
+          {variant === "upcoming" && (
+            <>
+              {onToggleChat && (
+                <button
+                  type="button"
+                  onClick={onToggleChat}
+                  className="btn-secondary px-4 py-2 text-sm active:scale-95"
+                >
+                  💬 {chatOpen ? "Hide chat" : "Message customer"}
+                </button>
+              )}
+              {onComplete && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onComplete}
+                  className="btn-primary px-4 py-2 text-sm active:scale-95 disabled:opacity-60"
+                >
+                  {busy ? "…" : "Mark completed"}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {variant === "upcoming" && chatOpen && (
+        <div className="mt-4 animate-fade-in border-t border-gray-100 pt-4">
+          <BookingChat booking={booking} />
+        </div>
+      )}
+    </article>
+  );
+}
 
 export function ProviderDashboardClient() {
   const router = useRouter();
   const {
     user,
     ready,
-    loading,
+    db,
     getProviderForUser,
     getBookingsForProvider,
+    getProviderReviews,
+    getNotifications,
+    markNotificationsRead,
     completeBooking,
     respondToBooking,
-    cancelBooking,
   } = useMockApp();
   const { toast } = useToast();
   const [, startTransition] = useTransition();
+
+  const [bookingTab, setBookingTab] = useState<BookingTab>("requests");
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const [earningsPulse, setEarningsPulse] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [openChatId, setOpenChatId] = useState<string | null>(null);
+  const prevPending = useRef(0);
 
   useEffect(() => {
     if (!ready) return;
@@ -34,228 +193,524 @@ export function ProviderDashboardClient() {
     else if (user.role === "admin") router.replace("/admin");
   }, [ready, user, router]);
 
+  const provider = user ? getProviderForUser(user.id) : undefined;
+  const bookings = useMemo(
+    () => (provider ? getBookingsForProvider(provider.id) : []),
+    [provider, getBookingsForProvider]
+  );
+  const displayReviews = provider ? getProviderReviews(provider.id) : [];
+  const rawReviews: MockReview[] = useMemo(
+    () => (db && provider ? db.reviews.filter((r) => r.providerId === provider.id) : []),
+    [db, provider]
+  );
+  const notifications = getNotifications();
+
+  const grouped = useMemo(() => {
+    const pending = bookings.filter((b) => b.status === "pending");
+    const upcoming = sortBookingsBySchedule(
+      bookings.filter((b) => b.status === "confirmed")
+    );
+    const completed = bookings
+      .filter((b) => b.status === "completed")
+      .sort((a, b) => {
+        const ta = new Date(a.completedAt ?? a.date).getTime();
+        const tb = new Date(b.completedAt ?? b.date).getTime();
+        return tb - ta;
+      });
+    return { pending, upcoming, completed };
+  }, [bookings]);
+
+  const earnings = useMemo(
+    () => (provider ? getProviderDisplayEarnings(bookings, provider) : getProviderEarnings(bookings)),
+    [bookings, provider]
+  );
+  const insights = provider ? getProviderInsights(provider, bookings, earnings) : [];
+  const alerts = useMemo(
+    () => getSmartAlerts(bookings, rawReviews, notifications),
+    [bookings, rawReviews, notifications]
+  );
+
+  useEffect(() => {
+    if (grouped.pending.length > prevPending.current) setBookingTab("requests");
+    prevPending.current = grouped.pending.length;
+  }, [grouped.pending.length]);
+
   if (!ready) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-10">
-        <div className="h-8 w-48 animate-pulse rounded bg-gray-200" />
+      <div className="mx-auto max-w-7xl px-4 py-10">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="card h-28 animate-pulse bg-gray-100" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (!user || user.role !== "provider") {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-20 text-center text-gray-500">
-        Loading…
-      </div>
+      <div className="mx-auto max-w-7xl px-4 py-20 text-center text-gray-500">Loading…</div>
     );
   }
 
-  const provider = getProviderForUser(user.id);
-  const bookings = provider ? getBookingsForProvider(provider.id) : [];
-  const confirmedCount = bookings.filter((b) => b.status === "confirmed").length;
-  const pendingCount = bookings.filter((b) => b.status === "pending").length;
-  const totalJobs = provider?.jobsCompleted ?? 0;
-  const price = provider?.price ?? 0;
-  const avgRating = provider?.ratingAvg ?? 0;
-  const fakeEarnings = Math.round(
-    totalJobs * getComparablePrice(provider?.pricingType ?? "hourly", price) * 2.5
-  );
+  function pulseEarnings() {
+    setEarningsPulse(true);
+    window.setTimeout(() => setEarningsPulse(false), 1200);
+  }
 
-  function handleComplete(bookingId: string) {
+  function flashBooking(id: string) {
+    setFlashId(id);
+    window.setTimeout(() => setFlashId(null), 900);
+  }
+
+  function runAction(
+    bookingId: string,
+    action: () => Promise<{ error?: string }>,
+    success: string,
+    opts?: { pulse?: boolean; nextTab?: BookingTab }
+  ) {
+    setActionId(bookingId);
     startTransition(async () => {
-      const result = await completeBooking(bookingId);
+      const result = await action();
       if (result.error) {
         toast(result.error, "error");
-        return;
+      } else {
+        toast(success, "success");
+        flashBooking(bookingId);
+        if (opts?.pulse) pulseEarnings();
+        if (opts?.nextTab) setBookingTab(opts.nextTab);
       }
-      toast("Job marked complete — payment released", "success");
+      setActionId(null);
     });
   }
 
-  function handleRespond(bookingId: string, accepted: boolean) {
-    startTransition(async () => {
-      const result = await respondToBooking(bookingId, accepted);
-      if (result.error) {
-        toast(result.error, "error");
-        return;
-      }
-      toast(accepted ? "Booking accepted" : "Booking declined", accepted ? "success" : "info");
-    });
-  }
+  const tabBookings =
+    bookingTab === "requests"
+      ? grouped.pending
+      : bookingTab === "upcoming"
+        ? grouped.upcoming
+        : grouped.completed;
 
-  function handleCancel(bookingId: string) {
-    startTransition(async () => {
-      const result = await cancelBooking(bookingId);
-      if (result.error) toast(result.error, "error");
-      else toast("Booking cancelled for customer", "success");
-    });
-  }
+  const tabCounts = {
+    requests: grouped.pending.length,
+    upcoming: grouped.upcoming.length,
+    completed: grouped.completed.length,
+  };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="text-3xl font-bold tracking-tight text-gray-900">Provider Dashboard</h1>
-      <p className="mt-1 text-gray-600">
-        Welcome back, {user.name}. Manage your profile and track your business.
-      </p>
-
-      {provider ? (
-        <>
-          <div
-            className={`mt-6 rounded-2xl border p-4 text-sm ${
-              provider.approved
-                ? "border-green-200 bg-green-50 text-green-800"
-                : "border-amber-200 bg-amber-50 text-amber-800"
-            }`}
-          >
-            {provider.approved
-              ? "✓ Your profile is verified and visible to customers."
-              : "⏳ Your profile is pending admin approval — you won't appear in search until approved."}
-          </div>
-
-          {pendingCount > 0 && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              {pendingCount} booking request{pendingCount === 1 ? "" : "s"} awaiting your response
-              (simulated auto-accept/reject).
-            </div>
+    <div className="mx-auto max-w-7xl px-4 py-8 animate-page-enter">
+      {/* Header */}
+      <header className="flex flex-col gap-4 border-b border-gray-100 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-green-700">
+            Provider workspace
+          </p>
+          <h1 className="mt-1 text-3xl font-bold text-gray-900">
+            Good {new Date().getHours() < 12 ? "morning" : "afternoon"},{" "}
+            {user.name.split(" ")[0]}
+          </h1>
+          <p className="mt-1 text-gray-600">
+            Your business command center — jobs, earnings, and reputation at a glance.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {provider && (
+            <Link href={`/provider/${provider.id}`} className="btn-secondary text-sm">
+              View public profile
+            </Link>
           )}
+          <button
+            type="button"
+            onClick={() => setProfileOpen((v) => !v)}
+            className="btn-primary text-sm"
+          >
+            ✏️ {profileOpen ? "Close editor" : "Edit profile"}
+          </button>
+        </div>
+      </header>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <StatCard label="Jobs completed" value={totalJobs} sub="All time" accent="primary" />
-            <StatCard
-              label="Average rating"
-              value={avgRating.toFixed(1)}
-              sub={`${provider.reviewCount} reviews`}
-              accent="medium"
-            />
-            <StatCard
-              label="Est. earnings"
-              value={`$${fakeEarnings.toLocaleString()}`}
-              sub="Based on completed jobs"
-              accent="dark"
-            />
-          </div>
-
-          <div className="mt-8">
-            <AvailabilityCalendar
-              availability={provider.availability}
-              availableToday={provider.availableToday}
-              availableTomorrow={provider.availableTomorrow}
-            />
-          </div>
-
-          <ProviderScheduleManager />
-        </>
-      ) : (
-        <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Complete your profile below to start receiving bookings.
-        </p>
+      {provider && (
+        <div
+          className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
+            provider.approved
+              ? "border-green-200 bg-green-50 text-green-800"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {provider.approved
+            ? "✓ Verified provider — you&apos;re live and accepting bookings."
+            : "⏳ Profile pending approval — keep your listing up to date."}
+        </div>
       )}
 
-      <div className="mt-8">
-        <h2 className="mb-4 text-xl font-bold text-gray-900">Edit profile</h2>
-        <ProviderProfileForm
-          defaultValues={
-            provider
-              ? {
-                  services: provider.services,
-                  pricing_type: provider.pricingType,
-                  price: provider.price,
-                  base_price: provider.basePrice,
-                  hourly_rate: provider.hourlyRate,
-                  location: provider.location,
-                  description: provider.description,
-                  availability: provider.availability,
-                  availableToday: provider.availableToday,
-                  availableTomorrow: provider.availableTomorrow,
-                }
-              : undefined
-          }
-        />
-      </div>
-
-      {bookings.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-xl font-bold text-gray-900">Bookings</h2>
-          <p className="text-sm text-gray-500">
-            {confirmedCount} active · responses simulated automatically
-          </p>
-          <div className="mt-4 space-y-4">
-            {bookings.map((booking) => (
-              <div key={booking.id} className="card p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {booking.customerName} — {booking.service}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-500">
-                      {booking.date}
-                      {booking.time ? ` at ${booking.time}` : ""} · ${booking.estimatedCost} est.
-                    </p>
-                    <div className="mt-2">
-                      <BookingStatusBadge
-                        status={booking.status}
-                        paymentStatus={booking.paymentStatus}
-                        showPayment={
-                          booking.status === "confirmed" ||
-                          booking.status === "completed"
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {booking.status === "pending" && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => handleRespond(booking.id, true)}
-                          className="btn-primary px-3 py-1.5 text-sm disabled:opacity-60"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => handleRespond(booking.id, false)}
-                          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-60"
-                        >
-                          Decline
-                        </button>
-                      </>
-                    )}
-                    {booking.status === "confirmed" && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => handleComplete(booking.id)}
-                          className="btn-primary shrink-0 px-4 py-2 text-sm disabled:opacity-60"
-                        >
-                          Mark job complete
-                        </button>
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => handleCancel(booking.id)}
-                          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-60"
-                        >
-                          Cancel job
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {(booking.status === "confirmed" || booking.status === "completed") && (
-                  <div className="mt-4">
-                    <BookingChat booking={booking} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+      {/* 1. Summary cards */}
+      {provider && (
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <ProviderSummaryCard
+            icon="💰"
+            label="Total earnings"
+            value={`$${earnings.total.toLocaleString()}`}
+            sub="All time"
+            pulse={earningsPulse}
+          />
+          <ProviderSummaryCard
+            icon="✅"
+            label="Jobs completed"
+            value={`${provider.jobsCompleted} jobs`}
+            sub="Lifetime"
+          />
+          <ProviderSummaryCard
+            icon="⭐"
+            label="Average rating"
+            value={provider.ratingAvg.toFixed(1)}
+            detail={<StarRating rating={provider.ratingAvg} size="sm" />}
+            sub={`${provider.reviewCount} reviews`}
+          />
+          <ProviderSummaryCard
+            icon="📅"
+            label="Upcoming jobs"
+            value={grouped.upcoming.length}
+            sub={
+              grouped.pending.length
+                ? `${grouped.pending.length} new request${grouped.pending.length === 1 ? "" : "s"}`
+                : "On your schedule"
+            }
+          />
+          <ProviderSummaryCard
+            icon="⚡"
+            label="Response speed"
+            value={getResponseSpeedLabel(provider.responseSpeed, provider.responseTimeMins)}
+            sub={`~${provider.responseTimeMins ?? 30} min avg`}
+          />
         </section>
       )}
+
+      {/* Smart insights */}
+      {insights.length > 0 && (
+        <section className="mt-6 grid gap-3 md:grid-cols-3">
+          {insights.map((item) => (
+            <div
+              key={item.text}
+              className="flex items-start gap-3 rounded-xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-4 text-sm text-gray-700"
+            >
+              <span className="text-xl">{item.icon}</span>
+              <p>{item.text}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <div className="mt-8 grid gap-8 xl:grid-cols-3">
+        {/* Main column */}
+        <div className="space-y-8 xl:col-span-2">
+          {/* 2. Booking management */}
+          <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-100 bg-gray-50/80 px-5 py-4 sm:px-6">
+              <h2 className="text-lg font-bold text-gray-900">Booking management</h2>
+              <p className="text-sm text-gray-500">
+                Accept requests, manage upcoming work, and review completed jobs.
+              </p>
+              <div className="mt-4 flex gap-1 overflow-x-auto">
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setBookingTab(tab.id)}
+                    className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                      bookingTab === tab.id
+                        ? "bg-green-600 text-white shadow-md shadow-green-200"
+                        : "bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-green-50"
+                    }`}
+                  >
+                    {tab.icon} {tab.label}
+                    {tabCounts[tab.id] > 0 && (
+                      <span
+                        className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
+                          bookingTab === tab.id ? "bg-white/25" : "bg-green-100 text-green-800"
+                        }`}
+                      >
+                        {tabCounts[tab.id]}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div key={bookingTab} className="animate-fade-in space-y-4 p-5 sm:p-6">
+              {tabBookings.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-200 py-14 text-center">
+                  <p className="text-4xl">
+                    {bookingTab === "requests" ? "📭" : bookingTab === "upcoming" ? "📅" : "✅"}
+                  </p>
+                  <p className="mt-3 font-medium text-gray-800">
+                    {bookingTab === "requests" && "No new requests right now"}
+                    {bookingTab === "upcoming" && "No upcoming jobs scheduled"}
+                    {bookingTab === "completed" && "No completed jobs yet"}
+                  </p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {bookingTab === "requests" &&
+                      "New customer requests will appear here instantly."}
+                    {bookingTab === "upcoming" &&
+                      "Accepted jobs show here until you mark them complete."}
+                    {bookingTab === "completed" &&
+                      "Finished jobs and payout history appear here."}
+                  </p>
+                </div>
+              ) : (
+                tabBookings.map((booking) => (
+                  <BookingCard
+                    key={booking.id}
+                    booking={booking}
+                    variant={bookingTab}
+                    address={
+                      provider ? getBookingAddress(booking, provider.location) : undefined
+                    }
+                    actionId={actionId}
+                    flashId={flashId}
+                    reviewRating={
+                      bookingTab === "completed"
+                        ? getReviewForBooking(rawReviews, booking.id)?.rating ?? null
+                        : undefined
+                    }
+                    chatOpen={openChatId === booking.id}
+                    onToggleChat={
+                      bookingTab === "upcoming"
+                        ? () =>
+                            setOpenChatId((id) => (id === booking.id ? null : booking.id))
+                        : undefined
+                    }
+                    onAccept={
+                      booking.status === "pending"
+                        ? () =>
+                            runAction(
+                              booking.id,
+                              () => respondToBooking(booking.id, true),
+                              "Job accepted — moved to Upcoming Jobs",
+                              { nextTab: "upcoming" }
+                            )
+                        : undefined
+                    }
+                    onReject={
+                      booking.status === "pending"
+                        ? () =>
+                            runAction(
+                              booking.id,
+                              () => respondToBooking(booking.id, false),
+                              "Request declined"
+                            )
+                        : undefined
+                    }
+                    onComplete={
+                      booking.status === "confirmed"
+                        ? () =>
+                            runAction(
+                              booking.id,
+                              () => completeBooking(booking.id),
+                              "Job completed — payment released",
+                              { pulse: true, nextTab: "completed" }
+                            )
+                        : undefined
+                    }
+                  />
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* 3. Earnings */}
+          {provider && (
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-900">💰 Earnings overview</h2>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div
+                  className={`rounded-xl bg-green-50 p-4 transition-all duration-500 ${
+                    earningsPulse ? "scale-[1.02] ring-2 ring-green-300" : ""
+                  }`}
+                >
+                  <p className="text-sm text-green-800">Total earnings</p>
+                  <p className="mt-1 text-3xl font-bold text-green-900">
+                    ${earnings.total.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <p className="text-sm text-gray-600">This week</p>
+                  <p className="mt-1 text-3xl font-bold text-gray-900">
+                    ${earnings.weekTotal.toLocaleString()}
+                  </p>
+                  {earnings.weekGrowthPercent > 0 && (
+                    <p className="mt-1 text-xs font-medium text-green-600">
+                      ↑ {earnings.weekGrowthPercent}% vs last week
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <ProviderEarningsChart data={earnings.weeklyChart} />
+
+              <div className="mt-6">
+                <p className="text-sm font-semibold text-gray-800">Recent payouts</p>
+                {earnings.perJob.length === 0 ? (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Complete jobs to see payouts here.
+                  </p>
+                ) : (
+                  <ul className="mt-3 divide-y divide-gray-100">
+                    {earnings.perJob.map((job) => (
+                      <li
+                        key={job.id}
+                        className="flex items-center justify-between gap-3 py-3 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {job.service} → ${job.amount.toFixed(0)}
+                          </p>
+                          <p className="text-gray-500">
+                            {job.customerName} · {job.date}
+                          </p>
+                        </div>
+                        <span className="font-bold text-green-700">+${job.amount.toFixed(0)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* 4. Reviews & reputation */}
+          {provider && (
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-bold text-gray-900">⭐ Reviews & reputation</h2>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">{provider.ratingAvg.toFixed(1)}</p>
+                  <p className="text-xs text-gray-500">{provider.reviewCount} total reviews</p>
+                </div>
+              </div>
+
+              {rawReviews.length > 0 ? (
+                <div className="mt-4">
+                  <ReviewInsightsPanel
+                    reviews={rawReviews.map((r) => ({
+                      rating: r.rating,
+                      comment: r.comment,
+                    }))}
+                  />
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+                  Complete jobs and collect reviews to unlock customer insights here.
+                </div>
+              )}
+
+              {displayReviews.length === 0 ? (
+                <p className="mt-4 text-sm text-gray-500">No reviews yet.</p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {displayReviews.slice(0, 5).map((review, i) => (
+                    <li
+                      key={`${review.created_at}-${i}`}
+                      className="rounded-xl border border-gray-100 bg-gray-50 p-4 transition hover:border-green-200"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-gray-900">
+                          {review.users?.name ?? "Customer"}
+                        </p>
+                        <StarRating rating={review.rating} size="sm" />
+                      </div>
+                      {review.comment && (
+                        <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                          &ldquo;{review.comment}&rdquo;
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+
+          {/* 6. Profile management */}
+          {profileOpen && provider && (
+            <section className="animate-slide-up rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-900">Profile management</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Update services, pricing, description, and availability.
+              </p>
+              <div className="mt-6">
+                <ProviderProfileForm
+                  defaultValues={{
+                    services: provider.services,
+                    pricing_type: provider.pricingType,
+                    price: provider.price,
+                    base_price: provider.basePrice,
+                    hourly_rate: provider.hourlyRate,
+                    location: provider.location,
+                    description: provider.description,
+                    availability: provider.availability,
+                    availableToday: provider.availableToday,
+                    availableTomorrow: provider.availableTomorrow,
+                  }}
+                />
+              </div>
+            </section>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <aside className="space-y-6">
+          {/* 9. Notifications */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">🔔 Notifications & activity</h2>
+              {notifications.some((n) => !n.read) && (
+                <button
+                  type="button"
+                  onClick={() => markNotificationsRead()}
+                  className="text-xs font-medium text-green-600 hover:underline"
+                >
+                  Mark read
+                </button>
+              )}
+            </div>
+            {alerts.length === 0 ? (
+              <p className="mt-4 text-sm text-gray-500">All caught up — no new alerts.</p>
+            ) : (
+              <ul className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+                {alerts.map((alert) => (
+                  <li
+                    key={alert.id}
+                    className={`rounded-xl border p-3 text-sm transition hover:shadow-sm ${
+                      alert.urgent
+                        ? "border-amber-200 bg-amber-50"
+                        : "border-gray-100 bg-gray-50"
+                    }`}
+                  >
+                    <p className="font-medium text-gray-900">
+                      {alert.icon} {alert.title}
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
+                      {alert.message}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* 5. Availability / schedule */}
+          {provider && (
+            <>
+              <ProviderWeekAvailability provider={provider} />
+              <ProviderScheduleManager />
+              <p className="text-xs text-gray-500">
+                Accepted bookings automatically block the matching time slot for customers.
+              </p>
+            </>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

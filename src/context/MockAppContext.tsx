@@ -20,6 +20,7 @@ import {
   cancelBookingRecord,
   completeBookingRecord,
   createBookingRecord,
+  dismissReportRecord,
   filterMockProviders,
   getTopRankedProviders,
   getReviewsForProvider,
@@ -27,6 +28,7 @@ import {
   mockProviderToLegacy,
   markNotificationsReadRecord,
   registerUserRecord,
+  rejectProviderRecord,
   resolveBookingRecord,
   resolveReportRecord,
   addChatMessageRecord,
@@ -129,6 +131,8 @@ type MockAppContextValue = {
     details: string;
   }) => Promise<{ error?: string }>;
   resolveReport: (reportId: string) => Promise<void>;
+  dismissReport: (reportId: string) => Promise<void>;
+  banProviderFromReport: (reportId: string) => Promise<void>;
   getNotifications: () => MockNotification[];
   unreadNotificationCount: number;
   markNotificationsRead: (ids?: string[]) => void;
@@ -155,8 +159,10 @@ type MockAppContextValue = {
     availability?: string;
     availableToday?: boolean;
     availableTomorrow?: boolean;
+    weekAvailability?: boolean[];
   }) => Promise<{ error?: string }>;
   approveProvider: (providerId: string, approved: boolean) => Promise<void>;
+  rejectProvider: (providerId: string) => Promise<void>;
   banUser: (userId: string, banned: boolean) => Promise<void>;
   filterProviders: (filters: ProviderFilters) => ReturnType<typeof filterMockProviders> & {
     topRanked: MockProvider[];
@@ -715,9 +721,13 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       await simulateDelay(400);
       persist(removeReviewRecord(db, reviewId));
+      emitSystemEvent({
+        type: "report",
+        message: "Review removed — provider rating updated",
+      });
       setLoading(false);
     },
-    [db, persist]
+    [db, persist, emitSystemEvent]
   );
 
   const cancelBooking = useCallback(
@@ -899,6 +909,38 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     [db, persist]
   );
 
+  const dismissReport = useCallback(
+    async (reportId: string) => {
+      if (!db) return;
+      setLoading(true);
+      await simulateDelay(300);
+      persist(dismissReportRecord(db, reportId));
+      setLoading(false);
+    },
+    [db, persist]
+  );
+
+  const banProviderFromReport = useCallback(
+    async (reportId: string) => {
+      if (!db) return;
+      const report = db.reports.find((r) => r.id === reportId);
+      if (!report) return;
+      const provider = db.providers.find((p) => p.id === report.providerId);
+      if (!provider) return;
+      setLoading(true);
+      await simulateDelay(400);
+      let next = banUserRecord(db, provider.userId, true);
+      next = resolveReportRecord(next, reportId);
+      persist(next);
+      emitSystemEvent({
+        type: "report",
+        message: `${provider.name} banned after report review`,
+      });
+      setLoading(false);
+    },
+    [db, persist, emitSystemEvent]
+  );
+
   const getNotifications = useCallback(() => {
     if (!db || !user) return [];
     return (db.notifications ?? [])
@@ -939,6 +981,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         avgBookingValue: 0,
         openReports: 0,
         bookingsLast7Days: 0,
+        activeJobs: 0,
+        popularServices: [],
+        topProviders: [],
+        bookingsPerDay: [],
       };
     }
     return getMarketplaceAnalytics(db);
@@ -1054,23 +1100,55 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const approveProvider = useCallback(
     async (providerId: string, approved: boolean) => {
       if (!db) return;
+      const provider = db.providers.find((p) => p.id === providerId);
       setLoading(true);
       await simulateDelay(400);
       persist(approveProviderRecord(db, providerId, approved));
+      if (provider && approved) {
+        emitSystemEvent({
+          type: "booking_accepted",
+          message: `Provider approved: ${provider.name} — now visible in search`,
+        });
+      }
       setLoading(false);
     },
-    [db, persist]
+    [db, persist, emitSystemEvent]
+  );
+
+  const rejectProvider = useCallback(
+    async (providerId: string) => {
+      if (!db) return;
+      const provider = db.providers.find((p) => p.id === providerId);
+      setLoading(true);
+      await simulateDelay(400);
+      persist(rejectProviderRecord(db, providerId));
+      if (provider) {
+        emitSystemEvent({
+          type: "booking_declined",
+          message: `Provider rejected: ${provider.name}`,
+        });
+      }
+      setLoading(false);
+    },
+    [db, persist, emitSystemEvent]
   );
 
   const banUser = useCallback(
     async (userId: string, banned: boolean) => {
       if (!db) return;
+      const account = db.users.find((u) => u.id === userId);
       setLoading(true);
       await simulateDelay(400);
       persist(banUserRecord(db, userId, banned));
+      if (account && banned) {
+        emitSystemEvent({
+          type: "report",
+          message: `User banned: ${account.name}`,
+        });
+      }
       setLoading(false);
     },
-    [db, persist]
+    [db, persist, emitSystemEvent]
   );
 
   const filterProviders = useCallback(
@@ -1198,6 +1276,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         verifiedProviders: 0,
         pendingProviders: 0,
         totalBookings: 0,
+        activeJobs: 0,
         jobsCompleted: 0,
         avgRating: 0,
       };
@@ -1291,6 +1370,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     respondToBooking,
     reportProvider,
     resolveReport,
+    dismissReport,
+    banProviderFromReport,
     getNotifications,
     unreadNotificationCount,
     markNotificationsRead,
@@ -1302,6 +1383,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     addReview,
     updateProvider,
     approveProvider,
+    rejectProvider,
     banUser,
     filterProviders,
     getProvider,

@@ -43,6 +43,36 @@ export function getMarketplaceAnalytics(db: MockDatabase): MarketplaceAnalytics 
   ).length;
 
   const openReports = (db.reports ?? []).filter((r) => r.status === "open").length;
+  const activeJobs = pending + confirmed;
+
+  const serviceCounts = new Map<string, number>();
+  for (const b of bookings) {
+    serviceCounts.set(b.service, (serviceCounts.get(b.service) ?? 0) + 1);
+  }
+  const popularServices = [...serviceCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([service, count]) => ({ service, count }));
+
+  const topProviders = [...db.providers]
+    .filter((p) => p.approved)
+    .sort((a, b) => b.jobsCompleted - a.jobsCompleted || b.ratingAvg - a.ratingAvg)
+    .slice(0, 5)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      rating: p.ratingAvg,
+      jobsCompleted: p.jobsCompleted,
+    }));
+
+  const bookingsPerDay = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const key = d.toISOString().split("T")[0]!;
+    const label = d.toLocaleDateString("en-US", { weekday: "short" });
+    const count = bookings.filter((b) => b.createdAt.startsWith(key)).length;
+    return { label, count };
+  });
 
   return {
     totalBookings: bookings.length,
@@ -58,5 +88,9 @@ export function getMarketplaceAnalytics(db: MockDatabase): MarketplaceAnalytics 
     avgBookingValue,
     openReports,
     bookingsLast7Days,
+    activeJobs,
+    popularServices,
+    topProviders,
+    bookingsPerDay,
   };
 }

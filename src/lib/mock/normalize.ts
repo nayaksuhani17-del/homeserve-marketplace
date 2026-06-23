@@ -19,6 +19,23 @@ function normalizeBooking(booking: MockBooking): MockBooking {
   return { ...booking, status, paymentStatus };
 }
 
+export const DEFAULT_WEEK_AVAILABILITY = [true, true, true, true, true, false, false];
+
+function normalizeWeekAvailability(
+  provider: MockProvider,
+  weekAvailability?: boolean[]
+): boolean[] {
+  if (weekAvailability?.length === 7) return weekAvailability;
+  const d = new Date().getDay();
+  const todayIdx = d === 0 ? 6 : d - 1;
+  const tomorrowIdx = (todayIdx + 1) % 7;
+  return DEFAULT_WEEK_AVAILABILITY.map((defaultVal, i) => {
+    if (i === todayIdx) return provider.availableToday;
+    if (i === tomorrowIdx) return provider.availableTomorrow;
+    return defaultVal;
+  });
+}
+
 function normalizeProvider(provider: MockProvider): MockProvider {
   return {
     ...provider,
@@ -27,7 +44,9 @@ function normalizeProvider(provider: MockProvider): MockProvider {
     responseSpeed:
       provider.responseSpeed ??
       deriveResponseSpeed(provider.responseTimeMins ?? 60),
+    weekAvailability: normalizeWeekAvailability(provider, provider.weekAvailability),
     blockedSlots: provider.blockedSlots ?? [],
+    rejected: provider.rejected ?? false,
     ratingAvg: Number.isFinite(provider.ratingAvg) ? provider.ratingAvg : 0,
     reviewCount: provider.reviewCount ?? 0,
     jobsCompleted: provider.jobsCompleted ?? 0,

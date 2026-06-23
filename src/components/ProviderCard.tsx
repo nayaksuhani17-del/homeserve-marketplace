@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { DEMO_MODE } from "@/lib/demo/mode";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
@@ -67,7 +66,7 @@ export function ProviderCard({
   return (
     <>
       <article
-        className={`card card-hover group relative flex flex-col p-5 transition-all duration-300 ${
+        className={`card card-hover group relative flex flex-col overflow-hidden p-0 transition-all duration-300 ${
           isBestMatch
             ? "ring-2 ring-green-500 ring-offset-2 shadow-md shadow-green-100"
             : isTopRated
@@ -75,9 +74,43 @@ export function ProviderCard({
               : ""
         }`}
       >
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
-          <FavoriteButton providerId={provider.id} providerName={user?.name ?? "Provider"} />
+        {/* Cover banner */}
+        <div className="relative h-24 bg-gradient-to-br from-green-600 via-green-500 to-emerald-400">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2),transparent_50%)]" />
+          <span className="absolute bottom-3 left-4 text-4xl opacity-90" aria-hidden>
+            {serviceIcon}
+          </span>
+          <div className="absolute right-3 top-3 z-10">
+            <FavoriteButton providerId={provider.id} providerName={user?.name ?? "Provider"} />
+          </div>
         </div>
+
+        <div className="relative flex flex-1 flex-col p-5 pt-0">
+          <div className="-mt-8 mb-3 flex items-end gap-3">
+            {user?.avatar_url ? (
+              <Image
+                src={user.avatar_url}
+                alt=""
+                width={64}
+                height={64}
+                className="h-16 w-16 shrink-0 rounded-2xl border-4 border-white object-cover shadow-md transition-transform duration-300 group-hover:scale-105"
+              />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-4 border-white bg-green-100 text-xl font-semibold text-green-700 shadow-md">
+                {(user?.name ?? "P").charAt(0)}
+              </div>
+            )}
+            <div className="min-w-0 flex-1 pb-1">
+              <h3 className="truncate text-lg font-semibold text-gray-900 transition-colors group-hover:text-green-700">
+                {user?.name ?? "Provider"}
+              </h3>
+              {provider.distance_miles != null && (
+                <p className="text-xs font-medium text-green-600">
+                  {Number(provider.distance_miles).toFixed(1)} miles away
+                </p>
+              )}
+            </div>
+          </div>
 
         {(recommendationLabel || (isTopRated && rank)) && (
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -95,47 +128,16 @@ export function ProviderCard({
           </div>
         )}
 
-        {!DEMO_MODE && (
-          <div className="mb-2 flex items-center gap-2 text-xs text-amber-700">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-            </span>
-            {viewers} {viewers === 1 ? "person is" : "people are"} viewing this pro
-          </div>
-        )}
-
-        <div className="mb-3 flex items-start gap-3">
-          {user?.avatar_url ? (
-            <Image
-              src={user.avatar_url}
-              alt=""
-              width={56}
-              height={56}
-              className="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-gray-100 transition-transform duration-300 group-hover:scale-105"
-            />
-          ) : (
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-green-100 text-xl font-semibold text-green-700">
-              {(user?.name ?? "P").charAt(0)}
-            </div>
-          )}
-          <div className="min-w-0 flex-1 pr-8">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="truncate text-lg font-semibold text-gray-900 transition-colors group-hover:text-green-700">
-                  {user?.name ?? "Provider"}
-                </h3>
-                <p className="truncate text-sm text-gray-500">{provider.location || "Local area"}</p>
-                {provider.distance_miles != null && (
-                  <p className="text-xs font-medium text-green-600">
-                    {Number(provider.distance_miles).toFixed(1)} miles away
-                  </p>
-                )}
-              </div>
-            </div>
-            <TrustBadges provider={provider} compact />
-          </div>
+        <div className="mb-2 flex items-center gap-2 text-xs text-amber-700">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+          </span>
+          {viewers} {viewers === 1 ? "person is" : "people are"} viewing this pro
         </div>
+
+        <p className="truncate text-sm text-gray-500">{provider.location || "Local area"}</p>
+        <TrustBadges provider={provider} compact />
 
         <StarRating rating={Number(provider.rating_avg)} size="sm" />
         <p className="mt-1 text-xs text-gray-500">
@@ -202,6 +204,7 @@ export function ProviderCard({
               </>
             )}
           </div>
+        </div>
         </div>
       </article>
 

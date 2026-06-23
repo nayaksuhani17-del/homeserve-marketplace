@@ -12,8 +12,16 @@ import {
 import { demoId } from "@/lib/demo/ids";
 import { enrichProviderQuoteFields } from "@/lib/quotes";
 import { estimateBookingCost } from "@/lib/pricing";
+import {
+  buildMarcusWorkspaceBookings,
+  buildMarcusWorkspaceNotifications,
+} from "./provider-demo-bookings";
+import { buildAdminDemoReports } from "./admin-demo-reports";
+import {
+  buildSarahWorkspaceBookings,
+  buildSarahWorkspaceNotifications,
+} from "./customer-demo-bookings";
 import type { MockBooking, MockDatabase, MockProvider, MockReview, MockUser } from "./types";
-import { MOCK_DB_VERSION } from "./types";
 
 function toMockUser(u: (typeof DEMO_USERS)[0]): MockUser {
   return {
@@ -65,14 +73,27 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     responseTimeMins: Number(p.response_time_mins ?? 60),
     responseSpeed: deriveResponseSpeed(Number(p.response_time_mins ?? 60)),
     reviewCount: Number(p.review_count ?? 0),
+    rejected: false,
+    weekAvailability: [...DEFAULT_WEEK_AVAILABILITY],
     blockedSlots: [],
   };
 }
+
+import { MOCK_DB_VERSION } from "./types";
+import { DEFAULT_WEEK_AVAILABILITY } from "./normalize";
 
 function deriveResponseSpeed(mins: number): MockProvider["responseSpeed"] {
   if (mins <= 20) return "fast";
   if (mins <= 60) return "medium";
   return "slow";
+}
+
+function mapDemoBookingStatus(
+  status: (typeof DEMO_BOOKINGS)[0]["status"]
+): MockBooking["status"] {
+  if (status === "confirmed") return "completed";
+  if (status === "pending") return "pending";
+  return "confirmed";
 }
 
 export function buildInitialDatabase(): MockDatabase {
@@ -82,10 +103,13 @@ export function buildInitialDatabase(): MockDatabase {
   const userNameById = new Map(users.map((u) => [u.id, u.name]));
   const providerNameById = new Map(providers.map((p) => [p.id, p.name]));
 
-  const bookings: MockBooking[] = DEMO_BOOKINGS.map((b, i) => {
+  const bookings: MockBooking[] = DEMO_BOOKINGS.filter(
+    (b) => b.providerKey !== "provider-marcus" && b.customerKey !== "customer-sarah"
+  ).map((b, i) => {
     const pid = providerId(b.providerKey);
     const cid = userId(b.customerKey);
     const provider = providers.find((p) => p.id === pid);
+    const mappedStatus = mapDemoBookingStatus(b.status);
     return {
       id: bookingId(i),
       customerId: cid,
@@ -103,22 +127,26 @@ export function buildInitialDatabase(): MockDatabase {
           : (provider?.price ?? 40),
         2
       ),
-      status: b.status === "confirmed" ? "completed" : "confirmed",
-      paymentStatus: b.status === "confirmed" ? "released" : "authorized",
+      status: mappedStatus,
+      paymentStatus: mappedStatus === "completed" ? "released" : mappedStatus === "pending" ? "none" : "authorized",
       respondedAt: new Date(Date.now() - i * 86400000 * 3 - 3600000).toISOString(),
       completedAt:
-        b.status === "confirmed"
+        mappedStatus === "completed"
           ? new Date(Date.now() - i * 86400000 * 2).toISOString()
           : undefined,
       createdAt: new Date(Date.now() - i * 86400000 * 3).toISOString(),
     };
   });
 
+  const marcusWorkspaceBookings = buildMarcusWorkspaceBookings(providers, users);
+  const sarahWorkspaceBookings = buildSarahWorkspaceBookings(providers, users);
+  const allBookings = [...bookings, ...marcusWorkspaceBookings, ...sarahWorkspaceBookings];
+
   const linkedBookingIds = new Set<string>();
   const reviews: MockReview[] = DEMO_REVIEWS.map((r, i) => {
     const cid = userId(r.customerKey);
     const pid = providerId(r.providerKey);
-    const linkedBooking = bookings.find(
+    const linkedBooking = allBookings.find(
       (b) =>
         b.customerId === cid &&
         b.providerId === pid &&
@@ -152,15 +180,35 @@ export function buildInitialDatabase(): MockDatabase {
     };
   });
 
+  const marcusUser = users.find((u) => u.email === "marcus.reed@demo.com");
+  const sarahUser = users.find((u) => u.email === "sarah.mitchell@demo.com");
+  const seedNotifications = [
+    ...(marcusUser ? buildMarcusWorkspaceNotifications(marcusUser.id) : []),
+    ...(sarahUser ? buildSarahWorkspaceNotifications(sarahUser.id) : []),
+  ];
+
+  const marcusBlockedSlots = marcusWorkspaceBookings
+    .filter((b) => b.status === "confirmed" && b.date && b.time)
+    .map((b) => `${b.date}:${b.time}`);
+
+  const providersWithSchedule = syncedProviders.map((p) =>
+    p.email === "marcus.reed@demo.com"
+      ? {
+          ...p,
+          blockedSlots: [...new Set([...(p.blockedSlots ?? []), ...marcusBlockedSlots])],
+        }
+      : p
+  );
+
   return {
     version: MOCK_DB_VERSION,
     users,
-    providers: syncedProviders,
-    bookings,
+    providers: providersWithSchedule,
+    bookings: allBookings,
     reviews,
     chatMessages: [],
-    notifications: [],
-    reports: [],
+    notifications: seedNotifications,
+    reports: buildAdminDemoReports(),
   };
 }
 
@@ -209,6 +257,7 @@ export function newGuestProvider(user: MockUser): MockProvider {
     tags: [],
     availableToday: true,
     availableTomorrow: true,
+    weekAvailability: [...DEFAULT_WEEK_AVAILABILITY],
     responseTimeMins: 30,
     responseSpeed: "fast",
     reviewCount: 0,

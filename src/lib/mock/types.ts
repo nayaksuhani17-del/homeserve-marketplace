@@ -12,7 +12,7 @@ export type BookingStatus =
 
 export type PaymentStatus = "none" | "authorized" | "released" | "refunded";
 export type ResponseSpeed = "fast" | "medium" | "slow";
-export type ReportStatus = "open" | "resolved";
+export type ReportStatus = "open" | "resolved" | "dismissed";
 
 export type MockUser = {
   id: string;
@@ -42,6 +42,8 @@ export type MockProvider = {
   availability: string;
   ratingAvg: number;
   approved: boolean;
+  /** Admin rejected application — distinct from pending (never reviewed). */
+  rejected?: boolean;
   distanceMiles: number;
   jobsCompleted: number;
   yearsExperience: number;
@@ -51,6 +53,8 @@ export type MockProvider = {
   responseTimeMins: number;
   responseSpeed: ResponseSpeed;
   reviewCount: number;
+  /** Mon–Sun availability flags (index 0 = Monday). */
+  weekAvailability?: boolean[];
   /** `${date}:${time}` slots the provider has blocked */
   blockedSlots: string[];
 };
@@ -149,7 +153,7 @@ export type ProviderFilters = {
 
 export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
-export const MOCK_DB_VERSION = 6;
+export const MOCK_DB_VERSION = 10;
 
 export type SystemEvent = {
   id: string;
@@ -179,4 +183,8 @@ export type MarketplaceAnalytics = {
   avgBookingValue: number;
   openReports: number;
   bookingsLast7Days: number;
+  activeJobs: number;
+  popularServices: { service: string; count: number }[];
+  topProviders: { id: string; name: string; rating: number; jobsCompleted: number }[];
+  bookingsPerDay: { label: string; count: number }[];
 };

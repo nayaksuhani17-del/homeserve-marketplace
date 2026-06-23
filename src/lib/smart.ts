@@ -31,8 +31,11 @@ export function getPriceBreakdown(
   if (pricingType === "hourly") {
     const labor = Math.round(hourlyRate * hours);
     return [
-      { label: "Service call fee", amount: Math.round(basePrice) },
-      { label: `Labor (${hours}h × $${Math.round(hourlyRate)})`, amount: labor },
+      { label: `Base: $${Math.round(basePrice)}`, amount: Math.round(basePrice) },
+      {
+        label: `Work: $${Math.round(hourlyRate)} × ${hours}h`,
+        amount: labor,
+      },
     ];
   }
   const est = estimateBookingCost("estimate", price, hours);

@@ -7,21 +7,21 @@ import { DEMO_ROLE_REDIRECT } from "@/lib/demo/mode";
 
 const DEMO_ACCOUNTS = [
   {
-    label: "Enter as Customer",
+    label: "Enter Demo as Customer",
     shortLabel: "Customer",
     role: "customer" as const,
     icon: "🏠",
     description: "Search, book, and review pros",
   },
   {
-    label: "Enter as Provider",
+    label: "Enter Demo as Provider",
     shortLabel: "Provider",
     role: "provider" as const,
     icon: "🔧",
     description: "Manage jobs and schedule",
   },
   {
-    label: "Enter as Admin",
+    label: "Enter Demo as Admin",
     shortLabel: "Admin",
     role: "admin" as const,
     icon: "🛡️",
@@ -83,34 +83,28 @@ export function HomeDemoButtons() {
     setActive(null);
   }
 
-  if (user) {
-    return (
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        <p className="text-sm text-gray-600">
-          Signed in as <span className="font-semibold text-gray-900">{user.name}</span>
-        </p>
-        <button
-          type="button"
-          onClick={() => enterAs("customer")}
-          className="btn-secondary text-sm"
-        >
-          Continue as customer →
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="mt-8">
-      <p className="text-sm font-medium text-gray-700">Try the live demo — no signup required</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      {user && (
+        <p className="mb-3 text-sm text-gray-600">
+          Signed in as <span className="font-semibold text-gray-900">{user.name}</span>
+          {" — "}
+          switch role to continue the demo:
+        </p>
+      )}
+      {!user && (
+        <p className="text-sm font-medium text-gray-700">Try the live demo — no signup required</p>
+      )}
+      <div className={`grid gap-3 sm:grid-cols-3 ${user ? "mt-2" : "mt-3"}`}>
         {DEMO_ACCOUNTS.map((account) => (
           <button
             key={account.role}
             type="button"
             disabled={loading || active !== null}
             onClick={() => enterAs(account.role)}
-            className="card card-hover group flex flex-col items-start bg-white p-4 text-left transition-all disabled:opacity-60"
+            className={`card card-hover group flex flex-col items-start bg-white p-4 text-left transition-all disabled:opacity-60 ${
+              user?.role === account.role ? "ring-2 ring-green-500" : ""
+            }`}
           >
             <span className="text-2xl" aria-hidden>
               {account.icon}

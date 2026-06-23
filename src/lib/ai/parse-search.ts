@@ -14,7 +14,7 @@ export type SearchFilters = {
 const KEYWORDS: Record<string, string[]> = {
   Plumber: ["leak", "pipe", "sink", "toilet", "plumb", "drain", "faucet", "water"],
   Electrician: ["electric", "wire", "outlet", "light", "power", "circuit", "breaker"],
-  "House Cleaning": ["clean", "maid", "dust", "sanitize", "housekeeping"],
+  "House Cleaning": ["clean", "cleaner", "cleaning", "maid", "dust", "sanitize", "housekeeping"],
   "Carpet Cleaning": ["carpet", "rug", "stain", "upholstery"],
   Painting: ["paint", "wall", "color", "brush"],
   Cooking: ["cook", "chef", "meal", "kitchen", "dinner", "catering"],
@@ -62,6 +62,10 @@ export function parseSearchFallback(query: string): SearchFilters {
   const priceMatch = lower.match(/under \$(\d+)|below \$(\d+)|less than \$(\d+)/);
   if (priceMatch) {
     filters.maxPrice = Number(priceMatch[1] || priceMatch[2] || priceMatch[3]);
+  }
+
+  if (/handyman|fix|repair/.test(lower) && !filters.service) {
+    filters.service = "Plumber";
   }
 
   return filters;

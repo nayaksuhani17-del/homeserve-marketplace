@@ -46,8 +46,8 @@ export function ProviderScheduleManager() {
   }
 
   return (
-    <section className="mt-8">
-      <h2 className="text-xl font-bold text-gray-900">Schedule management</h2>
+    <section className="card bg-white p-5">
+      <h2 className="text-lg font-bold text-gray-900">Schedule & availability</h2>
       <p className="mt-1 text-sm text-gray-500">
         Block time slots you&apos;re unavailable — customers won&apos;t be able to book them.
       </p>

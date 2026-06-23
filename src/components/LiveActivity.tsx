@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getServiceMeta } from "@/lib/services";
-import { DEMO_MODE } from "@/lib/demo/mode";
 import { SYSTEM_EVENT } from "@/context/MockAppContext";
 import type { SystemEvent } from "@/lib/mock/types";
 
@@ -74,7 +73,6 @@ export function LiveActivity() {
   }, []);
 
   useEffect(() => {
-    if (DEMO_MODE) return;
     const interval = setInterval(() => {
       if (liveItem) return;
       setVisible(false);
@@ -88,10 +86,8 @@ export function LiveActivity() {
 
   const activity = liveItem ?? activities[index]!;
 
-  if (DEMO_MODE && !liveItem) return null;
-
   return (
-    <div className="fixed bottom-4 left-4 z-40 hidden sm:block">
+    <div className="fixed bottom-4 left-4 right-4 z-40 sm:right-auto sm:max-w-xs">
       <div
         className={`flex max-w-xs items-center gap-3 rounded-2xl border border-green-200 bg-white/95 px-4 py-3 text-sm shadow-lg backdrop-blur transition-all duration-300 ${
           visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"

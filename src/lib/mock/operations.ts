@@ -1,8 +1,8 @@
-import { DEMO_PROVIDER_PAGE_SIZE } from "@/lib/demo/mode";
+import { DEMO_MODE, DEMO_PROVIDER_PAGE_SIZE } from "@/lib/demo/mode";
 import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
 import { rankProviders } from "@/lib/providers";
 import { detectUrgency } from "@/lib/smart";
-import { isSlotBlocked, isSlotTaken } from "./simulation";
+import { isSlotBlocked, isSlotTaken, slotKey } from "./simulation";
 import type { ProviderWithUser } from "@/lib/types";
 import type {
   MockBooking,
@@ -151,7 +151,24 @@ export function filterMockProviders(
   filters: ProviderFilters
 ): { list: MockProvider[]; total: number; page: number; pageSize: number; totalPages: number } {
   const pageSize = DEMO_PROVIDER_PAGE_SIZE;
-  const list = applyProviderFilters(db, filters);
+  let list = applyProviderFilters(db, filters);
+
+  if (list.length === 0 && DEMO_MODE) {
+    const relaxed = applyProviderFilters(db, {
+      ...filters,
+      minPrice: undefined,
+      maxPrice: undefined,
+      minRating: undefined,
+      maxDistance: undefined,
+      availability: undefined,
+      q: undefined,
+      status: "verified",
+    });
+    list =
+      relaxed.length > 0
+        ? relaxed
+        : applyProviderFilters(db, { status: "verified" });
+  }
 
   const total = list.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -259,6 +276,9 @@ export function resolveBookingRecord(
     };
   }
 
+  const slot =
+    booking.date && booking.time ? slotKey(booking.date, booking.time) : null;
+
   return {
     ...db,
     bookings: db.bookings.map((b) =>
@@ -271,6 +291,14 @@ export function resolveBookingRecord(
           }
         : b
     ),
+    providers: slot
+      ? db.providers.map((p) => {
+          if (p.id !== booking.providerId) return p;
+          const blocked = p.blockedSlots ?? [];
+          if (blocked.includes(slot)) return p;
+          return { ...p, blockedSlots: [...blocked, slot] };
+        })
+      : db.providers,
   };
 }
 
@@ -410,6 +438,7 @@ export function updateProviderRecord(
       | "availability"
       | "availableToday"
       | "availableTomorrow"
+      | "weekAvailability"
       | "blockedSlots"
     >
   >
@@ -430,7 +459,21 @@ export function approveProviderRecord(
   return {
     ...db,
     providers: db.providers.map((p) =>
-      p.id === providerId ? { ...p, approved } : p
+      p.id === providerId
+        ? { ...p, approved, rejected: approved ? false : p.rejected }
+        : p
+    ),
+  };
+}
+
+export function rejectProviderRecord(
+  db: MockDatabase,
+  providerId: string
+): MockDatabase {
+  return {
+    ...db,
+    providers: db.providers.map((p) =>
+      p.id === providerId ? { ...p, approved: false, rejected: true } : p
     ),
   };
 }
@@ -471,8 +514,11 @@ export function getStats(db: MockDatabase) {
     totalUsers: db.users.length,
     totalProviders: db.providers.length,
     verifiedProviders: verified.length,
-    pendingProviders: db.providers.filter((p) => !p.approved).length,
+    pendingProviders: db.providers.filter((p) => !p.approved && !p.rejected).length,
     totalBookings: db.bookings.length,
+    activeJobs: db.bookings.filter((b) =>
+      b.status === "pending" || b.status === "confirmed"
+    ).length,
     jobsCompleted,
     avgRating: Math.round(avgRating * 10) / 10,
   };
@@ -566,6 +612,18 @@ export function resolveReportRecord(
     ...db,
     reports: (db.reports ?? []).map((r) =>
       r.id === reportId ? { ...r, status: "resolved" as const } : r
+    ),
+  };
+}
+
+export function dismissReportRecord(
+  db: MockDatabase,
+  reportId: string
+): MockDatabase {
+  return {
+    ...db,
+    reports: (db.reports ?? []).map((r) =>
+      r.id === reportId ? { ...r, status: "dismissed" as const } : r
     ),
   };
 }

@@ -1,12 +1,41 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { StatCard } from "@/components/StatCard";
-import { AdminAnalytics } from "@/components/AdminAnalytics";
+import { AdminSummaryCard } from "@/components/admin/AdminSummaryCard";
+import { AdminBookingsChart } from "@/components/admin/AdminBookingsChart";
+import { AdminActivityFeed } from "@/components/admin/AdminActivityFeed";
+import { BookingStatusBadge } from "@/components/BookingStatusBadge";
+import { StarRating } from "@/components/StarRating";
 import { useMockApp } from "@/context/MockAppContext";
 import { useToast } from "@/components/Toast";
-import { formatProviderPrice } from "@/lib/pricing";
+import {
+  getAdminActivitySeed,
+  getProviderAdminStatus,
+  PROVIDER_STATUS_STYLES,
+} from "@/lib/admin/dashboard";
+
+type AdminTab = "overview" | "providers" | "users" | "bookings" | "reports" | "reviews";
+type BookingFilter = "active" | "completed";
+
+const TABS: { id: AdminTab; label: string; icon: string }[] = [
+  { id: "overview", label: "Overview", icon: "📊" },
+  { id: "providers", label: "Providers", icon: "🔧" },
+  { id: "users", label: "Users", icon: "👥" },
+  { id: "bookings", label: "Bookings", icon: "📅" },
+  { id: "reports", label: "Reports", icon: "🛡️" },
+  { id: "reviews", label: "Reviews", icon: "⭐" },
+];
+
+function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-4 py-10 text-center text-sm text-gray-500">
+        {message}
+      </td>
+    </tr>
+  );
+}
 
 export function AdminPanelClient() {
   const router = useRouter();
@@ -15,14 +44,20 @@ export function AdminPanelClient() {
     ready,
     db,
     approveProvider,
+    rejectProvider,
     banUser,
     removeReview,
-    resolveReport,
+    dismissReport,
+    banProviderFromReport,
     getStats,
+    getAnalytics,
+    systemEvents,
     loading,
   } = useMockApp();
   const { toast } = useToast();
   const [, startTransition] = useTransition();
+  const [tab, setTab] = useState<AdminTab>("overview");
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>("active");
 
   useEffect(() => {
     if (!ready) return;
@@ -30,329 +65,576 @@ export function AdminPanelClient() {
     else if (user.role !== "admin") router.replace("/customer/dashboard");
   }, [ready, user, router]);
 
+  const stats = getStats();
+  const analytics = getAnalytics();
+  const activitySeed = useMemo(
+    () => (db ? getAdminActivitySeed(db) : []),
+    [db]
+  );
+
+  const providers = db?.providers ?? [];
+  const users = db?.users.filter((u) => u.role !== "admin") ?? [];
+  const bookings = db?.bookings ?? [];
+  const reviews = db?.reviews ?? [];
+  const reports = db?.reports ?? [];
+
+  const activeBookings = useMemo(
+    () =>
+      bookings.filter((b) => b.status === "pending" || b.status === "confirmed"),
+    [bookings]
+  );
+  const completedBookings = useMemo(
+    () => bookings.filter((b) => b.status === "completed"),
+    [bookings]
+  );
+  const visibleBookings =
+    bookingFilter === "active" ? activeBookings : completedBookings;
+
   if (!ready || !db) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <div className="h-8 w-48 animate-pulse rounded bg-gray-200" />
+      <div className="mx-auto max-w-7xl px-4 py-10">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="card h-28 animate-pulse bg-gray-100" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (!user || user.role !== "admin") {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-20 text-center text-gray-500">
-        Loading…
-      </div>
+      <div className="mx-auto max-w-7xl px-4 py-20 text-center text-gray-500">Loading…</div>
     );
   }
 
-  const stats = getStats();
-  const providers = db.providers.slice(0, 80);
-  const customers = db.users.filter((u) => u.role === "customer");
-  const providerUsers = db.users.filter((u) => u.role === "provider");
-  const reviews = db.reviews.slice(0, 50);
-  const reports = (db.reports ?? []).slice(0, 50);
-
-  function handleApprove(providerId: string, approved: boolean) {
+  function run(action: () => Promise<void>, success: string) {
     startTransition(async () => {
-      await approveProvider(providerId, approved);
-      toast(
-        approved ? "Provider approved — now visible in search" : "Provider unlisted",
-        "success"
-      );
-    });
-  }
-
-  function handleBan(userId: string, banned: boolean, label: string) {
-    startTransition(async () => {
-      await banUser(userId, banned);
-      toast(
-        banned ? `${label} banned — removed from platform` : `${label} unbanned`,
-        "success"
-      );
-    });
-  }
-
-  function handleRemoveReview(reviewId: string) {
-    startTransition(async () => {
-      await removeReview(reviewId);
-      toast("Review removed — provider rating recalculated", "success");
-    });
-  }
-
-  function handleResolveReport(reportId: string) {
-    startTransition(async () => {
-      await resolveReport(reportId);
-      toast("Report resolved", "success");
+      await action();
+      toast(success, "success");
     });
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="text-3xl font-bold tracking-tight text-gray-900">Admin Panel</h1>
-      <p className="mt-1 text-gray-600">
-        Platform overview and moderation — changes persist in localStorage.
-      </p>
+    <div className="mx-auto max-w-7xl px-4 py-10 animate-page-enter">
+      <header className="border-b border-gray-100 pb-6">
+        <p className="text-sm font-semibold uppercase tracking-wide text-green-700">
+          Platform control center
+        </p>
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">Admin Panel</h1>
+        <p className="mt-1 text-gray-600">
+          Full visibility and moderation — changes apply instantly across the marketplace.
+        </p>
+      </header>
 
-      {stats.pendingProviders > 0 && (
-        <div className="mt-6 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-lg">
-            ⚠
-          </span>
-          <div>
-            <p className="font-semibold text-amber-900">
-              {stats.pendingProviders} provider{stats.pendingProviders === 1 ? "" : "s"}{" "}
-              pending approval
-            </p>
-            <p className="text-sm text-amber-700">Review and verify new providers below.</p>
-          </div>
+      {/* Alerts */}
+      {(stats.pendingProviders > 0 || analytics.openReports > 0) && (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {stats.pendingProviders > 0 && (
+            <button
+              type="button"
+              onClick={() => setTab("providers")}
+              className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-left transition hover:border-amber-300"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-lg">
+                ⚠
+              </span>
+              <div>
+                <p className="font-semibold text-amber-900">
+                  {stats.pendingProviders} provider
+                  {stats.pendingProviders === 1 ? "" : "s"} pending approval
+                </p>
+                <p className="text-sm text-amber-700">Review new applications →</p>
+              </div>
+            </button>
+          )}
+          {analytics.openReports > 0 && (
+            <button
+              type="button"
+              onClick={() => setTab("reports")}
+              className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-left transition hover:border-red-300"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-lg">
+                🛡
+              </span>
+              <div>
+                <p className="font-semibold text-red-900">
+                  {analytics.openReports} report
+                  {analytics.openReports === 1 ? "" : "s"} require review
+                </p>
+                <p className="text-sm text-red-700">Open safety queue →</p>
+              </div>
+            </button>
+          )}
         </div>
       )}
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total users" value={stats.totalUsers} accent="primary" />
-        <StatCard
+      {/* Summary stats */}
+      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <AdminSummaryCard icon="👥" label="Total users" value={stats.totalUsers} sub="All accounts" />
+        <AdminSummaryCard
+          icon="🔧"
           label="Total providers"
           value={stats.totalProviders}
-          sub={`${stats.verifiedProviders} verified`}
-          accent="medium"
+          sub={`${stats.verifiedProviders} approved`}
         />
-        <StatCard label="Pending approvals" value={stats.pendingProviders} accent="dark" />
-        <StatCard label="Total bookings" value={stats.totalBookings} accent="light" />
+        <AdminSummaryCard icon="📅" label="Total bookings" value={stats.totalBookings} />
+        <AdminSummaryCard
+          icon="⏳"
+          label="Pending approvals"
+          value={stats.pendingProviders}
+          sub="Awaiting review"
+        />
+        <AdminSummaryCard
+          icon="⚡"
+          label="Active jobs"
+          value={stats.activeJobs}
+          sub="Pending + confirmed"
+        />
+      </section>
+
+      {/* Tabs */}
+      <div className="mt-8 flex gap-1 overflow-x-auto border-b border-gray-200 pb-px">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`shrink-0 rounded-t-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+              tab === t.id
+                ? "bg-green-600 text-white shadow-md"
+                : "text-gray-600 hover:bg-green-50"
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
       </div>
 
-      <AdminAnalytics />
-
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-gray-900">Providers</h2>
-        <div className="card mt-4 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Services</th>
-                <th className="px-4 py-3 font-medium">Rate</th>
-                <th className="px-4 py-3 font-medium">Rating</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {providers.map((p) => {
-                const providerUser = providerUsers.find((u) => u.id === p.userId);
-                const isBanned = providerUser?.banned ?? false;
-                return (
-                  <tr
-                    key={p.id}
-                    className="border-b border-gray-100 transition hover:bg-gray-50"
-                  >
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{p.name}</p>
-                      <p className="text-xs text-gray-500">{p.location}</p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {p.services.slice(0, 2).join(", ")}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatProviderPrice(p.pricingType, p.price)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {p.ratingAvg.toFixed(1)} ⭐ ({p.reviewCount})
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        <span
-                          className={`tag-pill ${p.approved ? "badge-verified" : "badge-pending"}`}
+      <div key={tab} className="animate-fade-in mt-6">
+        {tab === "overview" && (
+          <div className="grid gap-6 lg:grid-cols-3">
+            <section className="card p-6 lg:col-span-2">
+              <h2 className="text-lg font-bold text-gray-900">Analytics</h2>
+              <AdminBookingsChart data={analytics.bookingsPerDay} />
+              <div className="mt-8 grid gap-6 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">Most popular services</h3>
+                  {analytics.popularServices.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-500">No data available</p>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {analytics.popularServices.map((s) => (
+                        <li
+                          key={s.service}
+                          className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm"
                         >
-                          {p.approved ? "Verified" : "Pending"}
-                        </span>
-                        {isBanned && (
-                          <span className="tag-pill bg-red-100 text-red-500">Banned</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => handleApprove(p.id, !p.approved)}
-                          className={`rounded-lg px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
-                            p.approved
-                              ? "bg-red-100 text-red-500 hover:bg-red-200"
-                              : "bg-green-600 text-white hover:bg-green-800"
+                          <span className="font-medium text-gray-800">{s.service}</span>
+                          <span className="text-green-700">{s.count} bookings</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">Top providers</h3>
+                  {analytics.topProviders.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-500">No data available</p>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {analytics.topProviders.map((p) => (
+                        <li
+                          key={p.id}
+                          className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm"
+                        >
+                          <span className="font-medium text-gray-800">{p.name}</span>
+                          <span className="text-gray-500">
+                            {p.rating.toFixed(1)} ⭐ · {p.jobsCompleted} jobs
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </section>
+            <section className="card p-6">
+              <h2 className="text-lg font-bold text-gray-900">Platform activity</h2>
+              <p className="mt-1 text-sm text-gray-500">Live feed of marketplace events</p>
+              <div className="mt-4">
+                <AdminActivityFeed liveEvents={systemEvents} seedItems={activitySeed} />
+              </div>
+            </section>
+          </div>
+        )}
+
+        {tab === "providers" && (
+          <section className="card overflow-x-auto">
+            <table className="w-full min-w-[800px] text-left text-sm">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Name</th>
+                  <th className="px-4 py-3 font-medium">Services</th>
+                  <th className="px-4 py-3 font-medium">Rating</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {providers.length === 0 ? (
+                  <EmptyRow colSpan={5} message="No providers available" />
+                ) : (
+                  providers.map((p) => {
+                    const providerUser = db.users.find((u) => u.id === p.userId);
+                    const isBanned = providerUser?.banned ?? false;
+                    const status = getProviderAdminStatus(p.approved, p.rejected, isBanned);
+                    return (
+                      <tr
+                        key={p.id}
+                        className="border-b border-gray-100 transition hover:bg-gray-50"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="font-medium">{p.name}</p>
+                          <p className="text-xs text-gray-500">{p.location}</p>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {p.services.slice(0, 2).join(", ")}
+                        </td>
+                        <td className="px-4 py-3">
+                          {p.ratingAvg.toFixed(1)} ⭐ ({p.reviewCount})
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`tag-pill ${PROVIDER_STATUS_STYLES[status]}`}>
+                            {status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            {!p.approved && !isBanned && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={loading}
+                                  onClick={() =>
+                                    run(
+                                      () => approveProvider(p.id, true),
+                                      `${p.name} approved — visible in search`
+                                    )
+                                  }
+                                  className="btn-primary px-3 py-1 text-xs disabled:opacity-60"
+                                >
+                                  ✅ Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={loading}
+                                  onClick={() =>
+                                    run(
+                                      () => rejectProvider(p.id),
+                                      `${p.name} rejected`
+                                    )
+                                  }
+                                  className="btn-secondary px-3 py-1 text-xs text-red-600 disabled:opacity-60"
+                                >
+                                  ❌ Reject
+                                </button>
+                              </>
+                            )}
+                            {p.approved && !isBanned && (
+                              <button
+                                type="button"
+                                disabled={loading}
+                                onClick={() =>
+                                  run(
+                                    () => approveProvider(p.id, false),
+                                    `${p.name} unlisted from search`
+                                  )
+                                }
+                                className="btn-secondary px-3 py-1 text-xs disabled:opacity-60"
+                              >
+                                Unlist
+                              </button>
+                            )}
+                            {providerUser && (
+                              <button
+                                type="button"
+                                disabled={loading}
+                                onClick={() =>
+                                  run(
+                                    () => banUser(providerUser.id, !isBanned),
+                                    isBanned
+                                      ? `${p.name} unbanned`
+                                      : `${p.name} banned — removed from search`
+                                  )
+                                }
+                                className={`rounded-lg px-3 py-1 text-xs font-medium disabled:opacity-60 ${
+                                  isBanned
+                                    ? "bg-green-600 text-white"
+                                    : "bg-red-100 text-red-600"
+                                }`}
+                              >
+                                {isBanned ? "Unban" : "🚫 Ban"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {tab === "users" && (
+          <section className="card overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Name</th>
+                  <th className="px-4 py-3 font-medium">Email</th>
+                  <th className="px-4 py-3 font-medium">Role</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.length === 0 ? (
+                  <EmptyRow colSpan={5} message="No users available" />
+                ) : (
+                  users.map((u) => (
+                    <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{u.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                      <td className="px-4 py-3 capitalize">{u.role}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`tag-pill ${
+                            u.banned ? "bg-gray-800 text-white" : "badge-verified"
                           }`}
                         >
-                          {p.approved ? "Unlist" : "Approve"}
-                        </button>
-                        {providerUser && (
-                          <button
-                            type="button"
-                            disabled={loading}
-                            onClick={() =>
-                              handleBan(providerUser.id, !isBanned, p.name)
-                            }
-                            className={`rounded-lg px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
-                              isBanned
-                                ? "bg-green-600 text-white hover:bg-green-800"
-                                : "bg-red-100 text-red-500 hover:bg-red-200"
-                            }`}
-                          >
-                            {isBanned ? "Unban" : "Ban"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-gray-900">Safety reports</h2>
-        <div className="card mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 font-medium">Reporter</th>
-                <th className="px-4 py-3 font-medium">Provider</th>
-                <th className="px-4 py-3 font-medium">Reason</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                    No reports yet
-                  </td>
-                </tr>
-              ) : (
-                reports.map((r) => (
-                  <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{r.reporterName}</td>
-                    <td className="px-4 py-3">{r.providerName}</td>
-                    <td className="max-w-xs truncate px-4 py-3 text-gray-600">
-                      {r.reason}
-                      {r.details ? ` — ${r.details}` : ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`tag-pill ${
-                          r.status === "open" ? "badge-pending" : "badge-verified"
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.status === "open" && (
+                          {u.banned ? "Banned" : "Active"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
                         <button
                           type="button"
                           disabled={loading}
-                          onClick={() => handleResolveReport(r.id)}
-                          className="rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50"
+                          onClick={() =>
+                            run(
+                              () => banUser(u.id, !u.banned),
+                              u.banned ? `${u.name} unbanned` : `${u.name} banned`
+                            )
+                          }
+                          className={`rounded-lg px-3 py-1 text-xs font-medium disabled:opacity-60 ${
+                            u.banned
+                              ? "bg-green-600 text-white"
+                              : "bg-red-100 text-red-600"
+                          }`}
                         >
-                          Resolve
+                          {u.banned ? "Unban" : "🚫 Ban"}
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </section>
+        )}
 
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-gray-900">Reviews</h2>
-        <div className="card mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 font-medium">Customer</th>
-                <th className="px-4 py-3 font-medium">Rating</th>
-                <th className="px-4 py-3 font-medium">Comment</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reviews.map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-b border-gray-100 transition hover:bg-gray-50"
+        {tab === "bookings" && (
+          <section>
+            <div className="mb-4 flex gap-2">
+              {(
+                [
+                  { id: "active" as const, label: "Active bookings", count: activeBookings.length },
+                  {
+                    id: "completed" as const,
+                    label: "Completed bookings",
+                    count: completedBookings.length,
+                  },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setBookingFilter(f.id)}
+                  className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+                    bookingFilter === f.id
+                      ? "bg-green-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-green-50"
+                  }`}
                 >
-                  <td className="px-4 py-3 font-medium">{r.customerName}</td>
-                  <td className="px-4 py-3">{r.rating} ⭐</td>
-                  <td className="max-w-xs truncate px-4 py-3 text-gray-600">
-                    {r.comment || "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleRemoveReview(r.id)}
-                      className="rounded-lg bg-red-100 px-3 py-1 text-xs font-medium text-red-500 transition hover:bg-red-200 disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
+                  {f.label} ({f.count})
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            </div>
+            <div className="card overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="border-b border-gray-200 bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Customer</th>
+                    <th className="px-4 py-3 font-medium">Provider</th>
+                    <th className="px-4 py-3 font-medium">Service</th>
+                    <th className="px-4 py-3 font-medium">Time</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleBookings.length === 0 ? (
+                    <EmptyRow colSpan={5} message="No bookings in this category" />
+                  ) : (
+                    visibleBookings.map((b) => (
+                      <tr key={b.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium">{b.customerName}</td>
+                        <td className="px-4 py-3">{b.providerName}</td>
+                        <td className="px-4 py-3">{b.service}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {b.date}
+                          {b.time ? ` · ${b.time}` : ""}
+                        </td>
+                        <td className="px-4 py-3">
+                          <BookingStatusBadge status={b.status} />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-gray-900">Customers</h2>
-        <div className="card mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map((u) => (
-                <tr key={u.id} className="border-b border-gray-100 transition hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium">{u.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{u.email}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`tag-pill ${u.banned ? "bg-red-100 text-red-500" : "badge-tag"}`}
-                    >
-                      {u.banned ? "Banned" : "Active"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleBan(u.id, !u.banned, u.name)}
-                      className={`rounded-lg px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
-                        u.banned
-                          ? "bg-green-600 text-white hover:bg-green-800"
-                          : "bg-red-100 text-red-500 hover:bg-red-200"
-                      }`}
-                    >
-                      {u.banned ? "Unban" : "Ban"}
-                    </button>
-                  </td>
+        {tab === "reports" && (
+          <section className="card overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Reporter</th>
+                  <th className="px-4 py-3 font-medium">Provider</th>
+                  <th className="px-4 py-3 font-medium">Reason</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {reports.length === 0 ? (
+                  <EmptyRow colSpan={5} message="No reports available" />
+                ) : (
+                  reports.map((r) => (
+                    <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{r.reporterName}</td>
+                      <td className="px-4 py-3">{r.providerName}</td>
+                      <td className="max-w-xs px-4 py-3 text-gray-600">
+                        {r.reason}
+                        {r.details ? ` — ${r.details}` : ""}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`tag-pill ${
+                            r.status === "open"
+                              ? "badge-pending"
+                              : r.status === "dismissed"
+                                ? "bg-gray-200 text-gray-700"
+                                : "badge-verified"
+                          }`}
+                        >
+                          {r.status === "open"
+                            ? "Open"
+                            : r.status === "dismissed"
+                              ? "Dismissed"
+                              : "Resolved"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.status === "open" && (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() =>
+                                run(
+                                  () => dismissReport(r.id),
+                                  "Report dismissed"
+                                )
+                              }
+                              className="btn-secondary px-3 py-1 text-xs disabled:opacity-60"
+                            >
+                              Dismiss
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() =>
+                                run(
+                                  () => banProviderFromReport(r.id),
+                                  `${r.providerName} banned — report resolved`
+                                )
+                              }
+                              className="btn-primary px-3 py-1 text-xs disabled:opacity-60"
+                            >
+                              Take action (ban)
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {tab === "reviews" && (
+          <section className="card overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Customer</th>
+                  <th className="px-4 py-3 font-medium">Rating</th>
+                  <th className="px-4 py-3 font-medium">Comment</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviews.length === 0 ? (
+                  <EmptyRow colSpan={4} message="No reviews available" />
+                ) : (
+                  reviews.map((r) => (
+                    <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{r.customerName}</td>
+                      <td className="px-4 py-3">
+                        <StarRating rating={r.rating} size="sm" />
+                      </td>
+                      <td className="max-w-xs truncate px-4 py-3 text-gray-600">
+                        {r.comment || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() =>
+                            run(
+                              () => removeReview(r.id),
+                              "Review deleted — provider rating updated"
+                            )
+                          }
+                          className="rounded-lg bg-red-100 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-200 disabled:opacity-60"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

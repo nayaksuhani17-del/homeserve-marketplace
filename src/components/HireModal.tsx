@@ -176,7 +176,7 @@ function HireModalSession({
 
   const title = showDone
     ? isBookingSuccess
-      ? "✅ Booking Confirmed Successfully"
+      ? "✅ Booking Confirmed"
       : doneBooking?.status === "declined"
         ? "Booking Declined"
         : "Request Submitted"
@@ -229,9 +229,7 @@ function HireModalSession({
             {isBookingSuccess ? "✅" : doneBooking.status === "declined" ? "✕" : "…"}
           </div>
           <p className="mt-5 text-xl font-bold text-gray-900">
-            {isBookingSuccess
-              ? "Booking Confirmed Successfully"
-              : bookingStatusLabel(doneBooking.status)}
+            {isBookingSuccess ? "✅ Booking Confirmed" : bookingStatusLabel(doneBooking.status)}
           </p>
           <p className="mt-2 text-base text-gray-600">
             {isBookingSuccess ? (
@@ -376,7 +374,7 @@ function HireModalSession({
               ))}
             </ul>
             <p className="mt-3 border-t border-gray-200 pt-2 text-2xl font-bold text-green-700">
-              ${estimatedCost.toFixed(0)}
+              Total: ${estimatedCost.toFixed(0)}
             </p>
             <p className="mt-1 text-xs text-gray-500">
               {formatProviderPrice(pricingType, price)}

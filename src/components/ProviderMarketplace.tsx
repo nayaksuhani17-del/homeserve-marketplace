@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderCard } from "./ProviderCard";
 import { ProviderPagination } from "./ProviderPagination";
+import { AdvancedFilters } from "./AdvancedFilters";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { getServiceMeta, similarServices } from "@/lib/services";
+import { detectUrgency } from "@/lib/smart";
 import type { ProviderFilters } from "@/lib/mock/types";
 import type { RecommendationLabel } from "@/lib/recommendations";
 import type { MockProvider } from "@/lib/mock/types";
@@ -32,8 +34,9 @@ function filtersFromSearchParams(searchParams: URLSearchParams): ProviderFilters
 export function ProviderMarketplace() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { filterProviders, ready, user } = useMockApp();
+  const { filterProviders, parseSearch, ready, user } = useMockApp();
   const [pending, startTransition] = useTransition();
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const filters = useMemo(
     () => filtersFromSearchParams(searchParams),
@@ -81,7 +84,26 @@ export function ProviderMarketplace() {
     if (query === urlQuery) return;
     const timer = setTimeout(() => {
       startTransition(() => {
-        syncUrl({ ...filters, page: "1" }, query);
+        const parsed = parseSearch(query);
+        const urgent = detectUrgency(query);
+        syncUrl(
+          {
+            ...filters,
+            page: "1",
+            q: parsed.q || query || undefined,
+            service: parsed.service ?? filters.service,
+            sort: parsed.sort ?? filters.sort,
+            minRating: parsed.minRating ? String(parsed.minRating) : filters.minRating,
+            minPrice: parsed.minPrice ? String(parsed.minPrice) : filters.minPrice,
+            maxPrice: parsed.maxPrice ? String(parsed.maxPrice) : filters.maxPrice,
+            maxDistance: parsed.maxDistance
+              ? String(parsed.maxDistance)
+              : filters.maxDistance,
+            availability:
+              urgent ? "today" : parsed.availability ?? filters.availability,
+          },
+          query
+        );
       });
     }, 280);
     return () => clearTimeout(timer);
@@ -93,11 +115,27 @@ export function ProviderMarketplace() {
     filters.status === "pending" && "Pending review",
     filters.status === "all" && "All providers",
     filters.minRating && `${filters.minRating}+ stars`,
+    filters.minPrice && Number(filters.minPrice) > 15 && `From $${filters.minPrice}/hr`,
     filters.maxPrice && Number(filters.maxPrice) < 120 && `Under $${filters.maxPrice}`,
     filters.availability && `Available ${filters.availability}`,
     filters.maxDistance && `Within ${filters.maxDistance} mi`,
     query && `Search: "${query}"`,
   ].filter((f): f is string => Boolean(f));
+
+  function applyFiltersFromPanel(patch: {
+    service?: string;
+    sort?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    minRating?: string;
+    maxDistance?: string;
+    availability?: string;
+    status?: string;
+  }) {
+    startTransition(() => {
+      syncUrl({ ...filters, ...patch, page: "1" }, query);
+    });
+  }
 
   if (!ready) {
     return (
@@ -110,12 +148,19 @@ export function ProviderMarketplace() {
   }
 
   return (
-    <>
+    <div id="marketplace">
       <div className="mt-8">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-gray-900">
             {filters.service ? `${filters.service} providers` : "Available providers"}
           </h2>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            className="btn-secondary text-sm lg:hidden"
+          >
+            {filtersOpen ? "Hide filters" : "Show filters"}
+          </button>
           {result.urgent && (
             <span className="animate-fade-in rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100">
               Fast responders prioritized
@@ -130,14 +175,14 @@ export function ProviderMarketplace() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder='Search — e.g. "plumber" or "affordable cleaning"'
+            placeholder='Try "cheap cleaner near me today" or "plumber 4+ stars"'
             className="input-field"
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
           {pending
             ? "Updating results…"
-            : `${result.total} provider${result.total === 1 ? "" : "s"} · ranked by rating, price & availability`}
+            : `${result.total} provider${result.total === 1 ? "" : "s"} · natural language search supported`}
         </p>
       </div>
 
@@ -151,82 +196,114 @@ export function ProviderMarketplace() {
         </div>
       )}
 
-      {result.list.length > 0 ? (
-        <>
-          {(result.bestMatchId || Object.keys(result.topRankMap).length > 0) && !filters.sort && (
-            <p className="mt-6 text-sm font-medium text-green-700">
-              ✨ Best Match highlighted — top-rated pros for your search
-            </p>
-          )}
-          <div
-            className={`mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 transition-opacity duration-200 ${
-              pending ? "opacity-60" : "opacity-100"
-            }`}
-          >
-            {result.list.map((provider) => {
-              const rank = result.topRankMap[provider.id];
-              const legacy = mockProviderToLegacy(provider);
-              return (
-                <ProviderCard
-                  key={provider.id}
-                  provider={legacy}
-                  selectedService={filters.service}
-                  showHire={!!user && user.role === "customer"}
-                  isTopRated={rank !== undefined && !filters.sort}
-                  rank={rank}
-                  recommendationLabel={result.recommendationMap[provider.id]}
-                  isBestMatch={provider.id === result.bestMatchId}
-                />
-              );
-            })}
-          </div>
-          {result.totalPages > 1 && (
-            <ProviderPagination
-              page={result.page}
-              totalPages={result.totalPages}
-              total={result.total}
-              searchParams={{
-                service: filters.service,
-                sort: filters.sort,
-                q: query || undefined,
-                minPrice: filters.minPrice,
-                maxPrice: filters.maxPrice,
-                minRating: filters.minRating,
-                maxDistance: filters.maxDistance,
-                availability: filters.availability,
-                status: filters.status,
-              }}
-            />
-          )}
-        </>
-      ) : (
-        <div className="mt-12">
-          <EmptyState
-            title="No providers found — try another service"
-            description="We couldn't find a match for your search. Try a different category or broaden your filters."
-            icon="🔍"
-            suggestions={similarServices(filters.service).map(
-              (s) => `${getServiceMeta(s).icon} Browse ${s}`
-            )}
-            action={
-              <div className="flex flex-wrap justify-center gap-3">
-                <Link href="/customer/dashboard" className="btn-primary inline-block">
-                  View all providers
-                </Link>
-                {similarServices(filters.service).slice(0, 2).map((s) => (
-                  <Link
-                    key={s}
-                    href={`/customer/dashboard?service=${encodeURIComponent(s)}`}
-                    className="btn-secondary inline-block"
-                  >
-                    {getServiceMeta(s).icon} {s}
-                  </Link>
-                ))}
-              </div>
-            }
+      <div className="mt-6 grid gap-6 lg:grid-cols-4">
+        <aside
+          className={`lg:col-span-1 ${filtersOpen ? "block" : "hidden lg:block"}`}
+        >
+          <AdvancedFilters
+            key={[
+              filters.service,
+              filters.sort,
+              filters.minPrice,
+              filters.maxPrice,
+              filters.minRating,
+              filters.maxDistance,
+              filters.availability,
+              filters.status,
+            ].join("-")}
+            instant
+            service={filters.service}
+            sort={filters.sort ?? "rating"}
+            minPrice={filters.minPrice}
+            maxPrice={filters.maxPrice}
+            minRating={filters.minRating}
+            maxDistance={filters.maxDistance}
+            availability={filters.availability}
+            status={filters.status ?? "verified"}
+            onApply={applyFiltersFromPanel}
           />
+        </aside>
+
+        <div className="lg:col-span-3">
+          {result.list.length > 0 ? (
+            <>
+              {(result.bestMatchId || Object.keys(result.topRankMap).length > 0) &&
+                !filters.sort && (
+                  <p className="text-sm font-medium text-green-700">
+                    ✨ Best Match highlighted — top-rated pros for your search
+                  </p>
+                )}
+              <div
+                className={`mt-4 grid gap-5 sm:grid-cols-2 transition-opacity duration-200 ${
+                  pending ? "opacity-60" : "opacity-100"
+                }`}
+              >
+                {result.list.map((provider) => {
+                  const rank = result.topRankMap[provider.id];
+                  const legacy = mockProviderToLegacy(provider);
+                  return (
+                    <ProviderCard
+                      key={provider.id}
+                      provider={legacy}
+                      selectedService={filters.service}
+                      showHire={!!user && user.role === "customer"}
+                      isTopRated={rank !== undefined && !filters.sort}
+                      rank={rank}
+                      recommendationLabel={result.recommendationMap[provider.id]}
+                      isBestMatch={provider.id === result.bestMatchId}
+                    />
+                  );
+                })}
+              </div>
+              {result.totalPages > 1 && (
+                <ProviderPagination
+                  page={result.page}
+                  totalPages={result.totalPages}
+                  total={result.total}
+                  searchParams={{
+                    service: filters.service,
+                    sort: filters.sort,
+                    q: query || undefined,
+                    minPrice: filters.minPrice,
+                    maxPrice: filters.maxPrice,
+                    minRating: filters.minRating,
+                    maxDistance: filters.maxDistance,
+                    availability: filters.availability,
+                    status: filters.status,
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <div className="mt-8">
+              <EmptyState
+                title="No providers found — try another search"
+                description="We couldn't find a match. Broaden your filters or browse a popular category."
+                icon="🔍"
+                suggestions={similarServices(filters.service).map(
+                  (s) => `${getServiceMeta(s).icon} Browse ${s}`
+                )}
+                action={
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Link href="/customer/dashboard" className="btn-primary inline-block">
+                      View all providers
+                    </Link>
+                    {similarServices(filters.service).slice(0, 2).map((s) => (
+                      <Link
+                        key={s}
+                        href={`/customer/dashboard?service=${encodeURIComponent(s)}`}
+                        className="btn-secondary inline-block"
+                      >
+                        {getServiceMeta(s).icon} {s}
+                      </Link>
+                    ))}
+                  </div>
+                }
+              />
+            </div>
+          )}
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

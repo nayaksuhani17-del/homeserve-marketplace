@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { StarRating } from "./StarRating";
 import { useToast } from "./Toast";
 import { useMockApp } from "@/context/MockAppContext";
 
@@ -13,6 +14,7 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
   const { addReview, user } = useMockApp();
   const { toast } = useToast();
   const [rating, setRating] = useState(5);
+  const [hover, setHover] = useState(0);
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -37,38 +39,50 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
         setError(result.error || "Something went wrong. Please try again.");
         return;
       }
-      toast("Review submitted", "success");
+      toast("Review submitted — provider rating updated", "success");
       setComment("");
     });
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="card bg-white p-5">
-      <h3 className="font-semibold text-gray-900">Leave a review</h3>
+  const display = hover || rating;
 
-      <div className="mt-3">
-        <label className="mb-1 block text-sm text-gray-700">Rating (1-5)</label>
-        <select
-          value={rating}
-          onChange={(e) => setRating(Number(e.target.value))}
-          required
-          className="input-field"
-        >
-          {[5, 4, 3, 2, 1].map((n) => (
-            <option key={n} value={n}>
-              {"⭐".repeat(n)} ({n})
-            </option>
+  return (
+    <form onSubmit={handleSubmit} className="rounded-xl border border-green-100 bg-green-50/50 p-5">
+      <h3 className="font-semibold text-gray-900">Leave a review</h3>
+      <p className="mt-1 text-sm text-gray-500">Your rating updates the provider instantly.</p>
+
+      <div className="mt-4">
+        <p className="mb-2 text-sm font-medium text-gray-700">Rating</p>
+        <div className="flex items-center gap-1">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRating(n)}
+              onMouseEnter={() => setHover(n)}
+              onMouseLeave={() => setHover(0)}
+              className="rounded-lg p-1 transition-transform duration-150 hover:scale-110 active:scale-95"
+              aria-label={`${n} stars`}
+            >
+              <span
+                className={`text-2xl ${n <= display ? "text-amber-400" : "text-gray-300"}`}
+              >
+                ★
+              </span>
+            </button>
           ))}
-        </select>
+          <span className="ml-2 text-sm text-gray-600">{display} / 5</span>
+        </div>
+        <StarRating rating={display} size="sm" />
       </div>
 
-      <div className="mt-3">
+      <div className="mt-4">
         <label className="mb-1 block text-sm text-gray-700">Comment</label>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           rows={3}
-          placeholder="Share your experience..."
+          placeholder="Share your experience…"
           className="input-field"
         />
       </div>
