@@ -22,10 +22,15 @@ function normalizeBooking(booking: MockBooking): MockBooking {
 function normalizeProvider(provider: MockProvider): MockProvider {
   return {
     ...provider,
+    services: provider.services ?? [],
+    tags: provider.tags ?? [],
     responseSpeed:
       provider.responseSpeed ??
       deriveResponseSpeed(provider.responseTimeMins ?? 60),
     blockedSlots: provider.blockedSlots ?? [],
+    ratingAvg: Number.isFinite(provider.ratingAvg) ? provider.ratingAvg : 0,
+    reviewCount: provider.reviewCount ?? 0,
+    jobsCompleted: provider.jobsCompleted ?? 0,
   };
 }
 

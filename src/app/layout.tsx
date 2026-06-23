@@ -13,8 +13,8 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "HomeServe — Local House Services Marketplace",
-  description: "Find trusted local service providers for your home",
+  title: "HomeServe — Find Trusted Home Services Instantly",
+  description: "Book verified local pros for plumbing, cleaning, electrical, and more.",
 };
 
 export default function RootLayout({
@@ -32,7 +32,8 @@ export default function RootLayout({
             <main className="page-enter flex-1">{children}</main>
             <LiveActivity />
             <footer className="border-t border-gray-200 bg-white py-8 text-center text-sm text-gray-500">
-              © {new Date().getFullYear()} HomeServe — Local House Services Marketplace
+              <p className="font-medium text-gray-700">Trusted by homeowners nationwide</p>
+              <p className="mt-1">© {new Date().getFullYear()} HomeServe — Verified local home services</p>
             </footer>
           </ToastProvider>
         </MockAppProvider>

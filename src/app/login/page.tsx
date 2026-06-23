@@ -22,7 +22,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         )}
       </div>
       <AuthForm redirectTo={params.redirect || "/customer/dashboard"} />
-      <DemoLoginButtons />
+      <DemoLoginButtons redirectTo={params.redirect} />
     </div>
   );
 }

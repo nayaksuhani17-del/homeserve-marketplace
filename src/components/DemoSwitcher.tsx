@@ -3,11 +3,30 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMockApp } from "@/context/MockAppContext";
+import { DEMO_ROLE_REDIRECT } from "@/lib/demo/mode";
 
 const DEMO_ACCOUNTS = [
-  { label: "Sarah Mitchell (Customer)", role: "customer" as const },
-  { label: "Marcus Reed (Provider)", role: "provider" as const },
-  { label: "Admin User", role: "admin" as const },
+  {
+    label: "Enter as Customer",
+    shortLabel: "Customer",
+    role: "customer" as const,
+    icon: "🏠",
+    description: "Search, book, and review pros",
+  },
+  {
+    label: "Enter as Provider",
+    shortLabel: "Provider",
+    role: "provider" as const,
+    icon: "🔧",
+    description: "Manage jobs and schedule",
+  },
+  {
+    label: "Enter as Admin",
+    shortLabel: "Admin",
+    role: "admin" as const,
+    icon: "🛡️",
+    description: "Moderate and approve providers",
+  },
 ];
 
 export function DemoSwitcher() {
@@ -41,7 +60,7 @@ export function DemoSwitcher() {
         <option value="">Switch account…</option>
         {DEMO_ACCOUNTS.map((account) => (
           <option key={account.role} value={account.role}>
-            {account.label}
+            {account.shortLabel}
           </option>
         ))}
       </select>
@@ -49,7 +68,65 @@ export function DemoSwitcher() {
   );
 }
 
-export function DemoLoginButtons() {
+export function HomeDemoButtons() {
+  const router = useRouter();
+  const { demoLogin, loading, user } = useMockApp();
+  const [active, setActive] = useState<string | null>(null);
+
+  async function enterAs(role: "customer" | "provider" | "admin") {
+    setActive(role);
+    const result = await demoLogin(role, DEMO_ROLE_REDIRECT[role]);
+    if (result.redirect) {
+      router.push(result.redirect);
+      router.refresh();
+    }
+    setActive(null);
+  }
+
+  if (user) {
+    return (
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        <p className="text-sm text-gray-600">
+          Signed in as <span className="font-semibold text-gray-900">{user.name}</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => enterAs("customer")}
+          className="btn-secondary text-sm"
+        >
+          Continue as customer →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-8">
+      <p className="text-sm font-medium text-gray-700">Try the live demo — no signup required</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        {DEMO_ACCOUNTS.map((account) => (
+          <button
+            key={account.role}
+            type="button"
+            disabled={loading || active !== null}
+            onClick={() => enterAs(account.role)}
+            className="card card-hover group flex flex-col items-start bg-white p-4 text-left transition-all disabled:opacity-60"
+          >
+            <span className="text-2xl" aria-hidden>
+              {account.icon}
+            </span>
+            <span className="mt-2 font-semibold text-gray-900 group-hover:text-green-700">
+              {active === account.role ? "Signing in…" : account.label}
+            </span>
+            <span className="mt-1 text-xs text-gray-500">{account.description}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function DemoLoginButtons({ redirectTo }: { redirectTo?: string }) {
   const router = useRouter();
   const { demoLogin, loading } = useMockApp();
   const [active, setActive] = useState<string | null>(null);
@@ -58,7 +135,7 @@ export function DemoLoginButtons() {
   async function loginAs(role: "customer" | "provider" | "admin") {
     setActive(role);
     setError(null);
-    const result = await demoLogin(role);
+    const result = await demoLogin(role, redirectTo ?? DEMO_ROLE_REDIRECT[role]);
     if (result.error) {
       setError(result.error);
     } else if (result.redirect) {
@@ -72,7 +149,7 @@ export function DemoLoginButtons() {
     <div className="card mx-auto mt-8 max-w-md border-green-200 bg-green-50 p-6">
       <h2 className="text-center font-semibold text-green-900">Quick demo login</h2>
       <p className="mt-1 text-center text-sm text-green-800">
-        One-click access — all data persists in localStorage.
+        One-click access — explore the full marketplace instantly.
       </p>
       {error && (
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700">

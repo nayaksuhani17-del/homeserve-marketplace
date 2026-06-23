@@ -11,6 +11,7 @@ import { BookingChat } from "@/components/BookingChat";
 import { ReportProviderModal } from "@/components/ReportProviderModal";
 import { useToast } from "@/components/Toast";
 import { useMockApp } from "@/context/MockAppContext";
+import { hasReviewForBooking } from "@/lib/mock/operations";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
 
@@ -20,7 +21,6 @@ export function CustomerDashboardClient() {
     user,
     ready,
     db,
-    loading,
     getStats,
     filterProviders,
     getBookingsForCustomer,
@@ -35,6 +35,7 @@ export function CustomerDashboardClient() {
     providerName: string;
     bookingId?: string;
   } | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready || !user) return;
@@ -76,11 +77,11 @@ export function CustomerDashboardClient() {
     <div className="mx-auto max-w-6xl px-4 py-10 animate-page-enter">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-green-700">✨ Smart marketplace</p>
+          <p className="text-sm font-medium text-green-700">Trusted local marketplace</p>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">{greeting}</h1>
           <p className="mt-1 text-gray-600">
-            {stats.verifiedProviders.toLocaleString()} verified pros ·{" "}
-            {stats.totalBookings.toLocaleString()} bookings on platform
+            {stats.verifiedProviders} verified pros · {stats.jobsCompleted.toLocaleString()}+ jobs
+            completed · Trusted by homeowners
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -100,8 +101,8 @@ export function CustomerDashboardClient() {
       {user && recommended.length > 0 && (
         <section className="mt-8">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Recommended for you</h2>
-            <span className="text-xs text-gray-500">Powered by smart recommendations</span>
+            <h2 className="text-lg font-semibold text-gray-900">Top picks for you</h2>
+            <span className="text-xs text-gray-500">Best Match highlighted</span>
           </div>
           <div className="mt-4 grid gap-5 sm:grid-cols-3">
             {recommended.map((p, i) => (
@@ -140,11 +141,10 @@ export function CustomerDashboardClient() {
           <h2 className="text-xl font-bold text-gray-900">Your bookings</h2>
           <div className="mt-4 space-y-4">
             {bookings.slice(0, 8).map((booking) => {
-              const hasReview = db?.reviews.some(
-                (r) => r.bookingId === booking.id
-              );
               const canReview =
-                booking.status === "completed" && !hasReview;
+                booking.status === "completed" &&
+                db != null &&
+                !hasReviewForBooking(db, booking.id);
               const showChat =
                 booking.status === "confirmed" || booking.status === "completed";
 
@@ -192,20 +192,22 @@ export function CustomerDashboardClient() {
                         booking.status === "confirmed") && (
                         <button
                           type="button"
-                          disabled={loading}
+                          disabled={cancellingId === booking.id}
                           onClick={() =>
                             startTransition(async () => {
+                              setCancellingId(booking.id);
                               const result = await cancelBooking(booking.id);
                               if (result.error) toast(result.error, "error");
                               else toast("Booking cancelled", "success");
+                              setCancellingId(null);
                             })
                           }
                           className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-60"
                         >
-                          Cancel booking
+                          {cancellingId === booking.id ? "Cancelling…" : "Cancel booking"}
                         </button>
                       )}
-                      {booking.status !== "declined" && (
+                      {booking.status === "completed" && (
                         <Link
                           href={`/provider/${booking.providerId}?service=${encodeURIComponent(booking.service)}&rebook=1&quick=1`}
                           className="btn-primary px-3 py-1.5 text-center text-sm"
@@ -243,7 +245,10 @@ export function CustomerDashboardClient() {
                       />
                     </div>
                   )}
-                  {hasReview && booking.status === "completed" && (
+                  {!canReview &&
+                    booking.status === "completed" &&
+                    db != null &&
+                    hasReviewForBooking(db, booking.id) && (
                     <p className="mt-4 text-sm text-green-600">
                       ✓ You reviewed this job
                     </p>

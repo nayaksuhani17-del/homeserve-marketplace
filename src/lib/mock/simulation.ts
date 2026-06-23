@@ -1,4 +1,5 @@
 import type { MockBooking, MockDatabase, MockProvider, ResponseSpeed } from "./types";
+import { DEMO_MODE } from "@/lib/demo/mode";
 
 export const DEFAULT_SLOTS = [
   "08:00",
@@ -22,6 +23,9 @@ export function getResponseSpeed(provider: MockProvider): ResponseSpeed {
 }
 
 export function getResponseDelayMs(speed: ResponseSpeed): number {
+  if (DEMO_MODE) {
+    return 600 + Math.floor(Math.random() * 600);
+  }
   switch (speed) {
     case "fast":
       return 1000 + Math.floor(Math.random() * 1000);
@@ -154,10 +158,11 @@ export function getChatReplyDelayMs(): number {
   return 2000 + Math.floor(Math.random() * 3000);
 }
 
-export function shouldAcceptBooking(seed?: string): boolean {
-  if (seed) {
+export function shouldAcceptBooking(_seed?: string): boolean {
+  if (DEMO_MODE) return true;
+  if (_seed) {
     let h = 0;
-    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < _seed.length; i++) h = (h * 31 + _seed.charCodeAt(i)) >>> 0;
     return h % 100 < 70;
   }
   return Math.random() < 0.7;

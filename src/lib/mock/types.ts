@@ -149,7 +149,7 @@ export type ProviderFilters = {
 
 export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
-export const MOCK_DB_VERSION = 5;
+export const MOCK_DB_VERSION = 6;
 
 export type SystemEvent = {
   id: string;

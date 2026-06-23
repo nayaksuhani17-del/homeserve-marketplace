@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderCard } from "./ProviderCard";
-import { AdvancedFilters } from "./AdvancedFilters";
 import { ProviderPagination } from "./ProviderPagination";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
@@ -43,18 +42,17 @@ export function ProviderMarketplace() {
 
   const urlQuery = filters.q ?? "";
   const [query, setQuery] = useState(urlQuery);
-  const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery);
 
-  if (urlQuery !== prevUrlQuery) {
-    setPrevUrlQuery(urlQuery);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local search input with URL
     setQuery(urlQuery);
-  }
+  }, [urlQuery]);
 
   const emptyResult = {
     list: [] as MockProvider[],
     total: 0,
     page: 1,
-    pageSize: 24,
+    pageSize: 10,
     totalPages: 1,
     topRanked: [] as MockProvider[],
     topRankMap: {} as Record<string, number>,
@@ -115,16 +113,16 @@ export function ProviderMarketplace() {
     <>
       <div className="mt-8">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-green-700">
-            ✨ Powered by smart recommendations
-          </p>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {filters.service ? `${filters.service} providers` : "Available providers"}
+          </h2>
           {result.urgent && (
             <span className="animate-fade-in rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100">
-              🚨 Urgent service available — fast responders boosted
+              Fast responders prioritized
             </span>
           )}
         </div>
-        <div className="input-with-icon mt-2">
+        <div className="input-with-icon mt-3">
           <span className="input-icon-slot text-base" aria-hidden>
             🔍
           </span>
@@ -132,14 +130,14 @@ export function ProviderMarketplace() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder='Search instantly — "urgent plumber ASAP" or "cheap cleaning"'
+            placeholder='Search — e.g. "plumber" or "affordable cleaning"'
             className="input-field"
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
           {pending
             ? "Updating results…"
-            : `${result.total.toLocaleString()} providers match · ranked by rating, price & availability`}
+            : `${result.total} provider${result.total === 1 ? "" : "s"} · ranked by rating, price & availability`}
         </p>
       </div>
 
@@ -153,30 +151,11 @@ export function ProviderMarketplace() {
         </div>
       )}
 
-      <div className="mt-6">
-        <AdvancedFilters
-          key={searchParams.toString()}
-          service={filters.service}
-          sort={filters.sort ?? "rating"}
-          q={query}
-          minPrice={filters.minPrice}
-          maxPrice={filters.maxPrice}
-          minRating={filters.minRating}
-          maxDistance={filters.maxDistance}
-          availability={filters.availability}
-          status={filters.status ?? "verified"}
-          instant
-          onApply={(next) => {
-            syncUrl({ ...filters, ...next, page: "1" }, query);
-          }}
-        />
-      </div>
-
       {result.list.length > 0 ? (
         <>
           {(result.bestMatchId || Object.keys(result.topRankMap).length > 0) && !filters.sort && (
-            <p className="mt-8 text-sm font-medium text-green-700">
-              ⭐ Best Match & top picks highlighted below
+            <p className="mt-6 text-sm font-medium text-green-700">
+              ✨ Best Match highlighted — top-rated pros for your search
             </p>
           )}
           <div
@@ -201,40 +180,38 @@ export function ProviderMarketplace() {
               );
             })}
           </div>
-          <ProviderPagination
-            page={result.page}
-            totalPages={result.totalPages}
-            total={result.total}
-            searchParams={{
-              service: filters.service,
-              sort: filters.sort,
-              q: query || undefined,
-              minPrice: filters.minPrice,
-              maxPrice: filters.maxPrice,
-              minRating: filters.minRating,
-              maxDistance: filters.maxDistance,
-              availability: filters.availability,
-              status: filters.status,
-            }}
-          />
+          {result.totalPages > 1 && (
+            <ProviderPagination
+              page={result.page}
+              totalPages={result.totalPages}
+              total={result.total}
+              searchParams={{
+                service: filters.service,
+                sort: filters.sort,
+                q: query || undefined,
+                minPrice: filters.minPrice,
+                maxPrice: filters.maxPrice,
+                minRating: filters.minRating,
+                maxDistance: filters.maxDistance,
+                availability: filters.availability,
+                status: filters.status,
+              }}
+            />
+          )}
         </>
       ) : (
         <div className="mt-12">
           <EmptyState
-            title="No providers found"
-            description="Try expanding your search radius, adjusting filters, or browsing a similar service."
+            title="No providers found — try another service"
+            description="We couldn't find a match for your search. Try a different category or broaden your filters."
             icon="🔍"
-            suggestions={[
-              "Try expanding your distance range",
-              "Remove price filters",
-              ...similarServices(filters.service).map(
-                (s) => `Browse ${getServiceMeta(s).icon} ${s}`
-              ),
-            ]}
+            suggestions={similarServices(filters.service).map(
+              (s) => `${getServiceMeta(s).icon} Browse ${s}`
+            )}
             action={
               <div className="flex flex-wrap justify-center gap-3">
                 <Link href="/customer/dashboard" className="btn-primary inline-block">
-                  Clear filters
+                  View all providers
                 </Link>
                 {similarServices(filters.service).slice(0, 2).map((s) => (
                   <Link

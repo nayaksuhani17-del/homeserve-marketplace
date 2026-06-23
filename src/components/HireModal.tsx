@@ -59,7 +59,9 @@ function HireModalSession({
   const initialStep: Step =
     quickBook && rebookPrefill?.date && rebookPrefill?.time ? "slots" : "form";
   const [service, setService] = useState(rebookPrefill?.service ?? defaultService);
-  const [date, setDate] = useState(rebookPrefill?.date ?? "");
+  const [date, setDate] = useState(
+    rebookPrefill?.date ?? new Date().toISOString().split("T")[0]!
+  );
   const [selectedSlot, setSelectedSlot] = useState<string | null>(rebookPrefill?.time ?? null);
   const [hours, setHours] = useState(rebookPrefill?.hours ?? 2);
   const [error, setError] = useState<string | null>(null);
@@ -93,13 +95,18 @@ function HireModalSession({
   const doneBooking = step === "done" ? resultBooking : resolvedWhileWaiting;
   const showWaiting = step === "waiting" && !resolvedWhileWaiting;
   const showDone = Boolean(doneBooking);
+  const isBookingSuccess =
+    doneBooking?.status === "confirmed" || doneBooking?.status === "completed";
 
   useEffect(() => {
     if (!resolvedWhileWaiting) return;
     if (notifiedBookingRef.current === resolvedWhileWaiting.id) return;
     notifiedBookingRef.current = resolvedWhileWaiting.id;
-    if (resolvedWhileWaiting.status === "confirmed") {
-      toast("Booking confirmed!", "success");
+    if (
+      resolvedWhileWaiting.status === "confirmed" ||
+      resolvedWhileWaiting.status === "completed"
+    ) {
+      toast("Booking confirmed successfully", "success");
     } else if (resolvedWhileWaiting.status === "declined") {
       toast("Provider declined request", "error");
     }
@@ -130,7 +137,9 @@ function HireModalSession({
       setError("No time slots left for this date. Try another day.");
       return;
     }
-    setSelectedSlot(available[0] ?? null);
+    const preferred =
+      selectedSlot && available.includes(selectedSlot) ? selectedSlot : available[0];
+    setSelectedSlot(preferred ?? null);
     setStep("slots");
   }
 
@@ -143,7 +152,7 @@ function HireModalSession({
     setStep("processing");
 
     startTransition(async () => {
-      await new Promise((r) => setTimeout(r, 400 + Math.random() * 400));
+      await new Promise((r) => setTimeout(r, 200 + Math.random() * 200));
       const result = await createBooking({
         providerId,
         service,
@@ -152,7 +161,7 @@ function HireModalSession({
         hours,
       });
       if (result.error) {
-        setError(result.error);
+        setError(result.error || "Something went wrong. Please try again.");
         setStep("slots");
         return;
       }
@@ -166,8 +175,8 @@ function HireModalSession({
   }
 
   const title = showDone
-    ? doneBooking?.status === "confirmed"
-      ? "Booking Confirmed"
+    ? isBookingSuccess
+      ? "✅ Booking Confirmed Successfully"
       : doneBooking?.status === "declined"
         ? "Booking Declined"
         : "Request Submitted"
@@ -207,31 +216,36 @@ function HireModalSession({
           </div>
         </div>
       ) : showDone && doneBooking ? (
-        <div className="animate-fade-in text-center">
+        <div className="animate-slide-up text-center">
           <div
-            className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full text-3xl ${
-              doneBooking.status === "confirmed"
-                ? "bg-green-100 text-green-600"
+            className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full text-4xl ${
+              isBookingSuccess
+                ? "bg-green-100 text-green-600 ring-4 ring-green-50"
                 : doneBooking.status === "declined"
                   ? "bg-red-100 text-red-600"
                   : "bg-amber-100 text-amber-600"
             }`}
           >
-            {doneBooking.status === "confirmed"
-              ? "✓"
-              : doneBooking.status === "declined"
-                ? "✕"
-                : "…"}
+            {isBookingSuccess ? "✅" : doneBooking.status === "declined" ? "✕" : "…"}
           </div>
-          <p className="mt-4 text-lg font-semibold text-gray-900">
-            {bookingStatusLabel(doneBooking.status)}
+          <p className="mt-5 text-xl font-bold text-gray-900">
+            {isBookingSuccess
+              ? "Booking Confirmed Successfully"
+              : bookingStatusLabel(doneBooking.status)}
           </p>
-          <p className="mt-2 text-sm text-gray-600">
-            {doneBooking.status === "confirmed"
-              ? `${providerName} accepted your ${service} booking.`
-              : doneBooking.status === "declined"
-                ? `${providerName} couldn't take this slot. Try another time or pro.`
-                : `Your request was sent to ${providerName}.`}
+          <p className="mt-2 text-base text-gray-600">
+            {isBookingSuccess ? (
+              <>
+                <span className="font-semibold text-gray-900">{providerName}</span> confirmed
+                your {service} appointment on{" "}
+                <span className="font-medium">{doneBooking.date}</span> at{" "}
+                <span className="font-medium">{doneBooking.time ?? selectedSlot}</span>.
+              </>
+            ) : doneBooking.status === "declined" ? (
+              `${providerName} couldn't take this slot. Try another time or pro.`
+            ) : (
+              `Your request was sent to ${providerName}.`
+            )}
           </p>
           <div className="mt-6 rounded-xl bg-gray-50 p-4 text-left text-sm">
             <p>

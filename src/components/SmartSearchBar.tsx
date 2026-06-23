@@ -74,7 +74,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
     setShowDropdown(false);
 
     startTransition(async () => {
-      await simulateDelay(500);
+      await simulateDelay(280);
       const parsed = parseSearch(q);
       const applied: string[] = [];
       if (parsed.service) applied.push(`Service: ${parsed.service}`);
@@ -100,7 +100,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
       <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
         <div className="input-with-icon flex-1">
           <span className="input-icon-slot text-base" aria-hidden>
-            ✨
+            🔍
           </span>
           <input
             type="text"
@@ -117,7 +117,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
           />
         </div>
         <button type="submit" disabled={loading || !ready} className="btn-primary shrink-0 disabled:opacity-60">
-          {loading ? "Searching…" : "Smart Search"}
+          {loading ? "Searching…" : "Search"}
         </button>
       </form>
 

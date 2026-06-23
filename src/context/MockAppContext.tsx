@@ -55,6 +55,7 @@ import {
   MOCK_SESSION_KEY,
 } from "@/lib/mock/types";
 import { DEMO_PASSWORD } from "@/lib/demo/constants";
+import { DEMO_MODE, DEMO_PROVIDER_PAGE_SIZE, DEMO_ROLE_REDIRECT } from "@/lib/demo/mode";
 import { assignRecommendationLabels } from "@/lib/recommendations";
 import { toProviderCardData, rankProviders } from "@/lib/providers";
 import { detectUrgency } from "@/lib/smart";
@@ -88,14 +89,21 @@ type MockAppContextValue = {
   session: MockSession | null;
   user: MockUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ error?: string; redirect?: string }>;
+  login: (
+    email: string,
+    password: string,
+    redirectTo?: string
+  ) => Promise<{ error?: string; redirect?: string }>;
   register: (
     name: string,
     email: string,
     password: string,
     role: "customer" | "provider"
   ) => Promise<{ error?: string; redirect?: string }>;
-  demoLogin: (role: "customer" | "provider" | "admin") => Promise<{ error?: string; redirect?: string }>;
+  demoLogin: (
+    role: "customer" | "provider" | "admin",
+    redirectTo?: string
+  ) => Promise<{ error?: string; redirect?: string }>;
   logout: () => void;
   createBooking: (input: {
     providerId: string;
@@ -333,6 +341,31 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
               type: "booking_accepted",
               message: `${current.providerName} just accepted a job`,
             });
+
+            if (DEMO_MODE) {
+              const completeTimeout = setTimeout(() => {
+                responseTimeouts.current.delete(`complete:${bookingId}`);
+                setDb((prev) => {
+                  if (!prev) return prev;
+                  const live = prev.bookings.find((b) => b.id === bookingId);
+                  if (!live || live.status !== "confirmed") return prev;
+                  let completed = completeBookingRecord(prev, bookingId);
+                  completed = appendNotification(completed, live.customerId, {
+                    type: "payment",
+                    title: "Job complete",
+                    message: `Your ${live.service} job with ${live.providerName} is complete. Leave a review!`,
+                    href: "/customer/dashboard",
+                  });
+                  saveDb(completed);
+                  emitSystemEvent({
+                    type: "job_completed",
+                    message: `${live.service} job marked complete`,
+                  });
+                  return completed;
+                });
+              }, 1200);
+              responseTimeouts.current.set(`complete:${bookingId}`, completeTimeout);
+            }
           } else {
             next = appendNotification(next, current.customerId, {
               type: "booking",
@@ -358,15 +391,24 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    const hadStoredDb =
+      typeof window !== "undefined" && Boolean(localStorage.getItem(MOCK_DB_KEY));
     let stored = loadDb();
+    let nextSession: MockSession | null = null;
     if (!stored) {
       stored = buildInitialDatabase();
+      if (hadStoredDb) {
+        saveSession(null);
+      } else {
+        nextSession = loadSession();
+      }
+    } else {
+      nextSession = loadSession();
     }
     saveDb(stored);
-    // Client-only hydration from localStorage (valid setState-in-effect use case)
     // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap mock DB on mount
     setDb(stored);
-    setSession(loadSession());
+    setSession(nextSession);
     setFavoriteIds(loadFavoriteIds());
     setReady(true);
   }, []);
@@ -403,7 +445,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   }, [db, session]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, redirectTo?: string) => {
       if (!db) return { error: "App not ready" };
       setLoading(true);
       await simulateDelay();
@@ -426,6 +468,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setSession(sess);
       saveSession(sess);
       setLoading(false);
+      if (redirectTo) return { redirect: redirectTo };
       const redirect =
         found.role === "admin"
           ? "/admin"
@@ -473,10 +516,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   );
 
   const demoLogin = useCallback(
-    async (role: "customer" | "provider" | "admin") => {
+    async (role: "customer" | "provider" | "admin", redirectTo?: string) => {
       if (!db) return { error: "App not ready" };
       setLoading(true);
-      await simulateDelay(400);
+      await simulateDelay(DEMO_MODE ? 200 : 400);
       const email = DEMO_ROLE_EMAIL[role];
       const found = db.users.find((u) => u.email === email);
       if (!found) {
@@ -487,13 +530,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setSession(sess);
       saveSession(sess);
       setLoading(false);
-      const redirect =
-        role === "admin"
-          ? "/admin"
-          : role === "provider"
-            ? "/provider/dashboard"
-            : "/customer/dashboard";
-      return { redirect };
+      return { redirect: redirectTo ?? DEMO_ROLE_REDIRECT[role] };
     },
     [db]
   );
@@ -518,20 +555,16 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!input.time) {
         return { error: "Please select an available time slot." };
       }
-      setLoading(true);
-      await simulateDelay(1000);
+      await simulateDelay(DEMO_MODE ? 300 : 1000);
       const provider = db.providers.find((p) => p.id === input.providerId);
       if (!provider) {
-        setLoading(false);
         return { error: "Provider not found." };
       }
       if (!provider.approved) {
-        setLoading(false);
         return { error: "This provider is not approved yet." };
       }
       const providerUser = db.users.find((u) => u.id === provider.userId);
       if (providerUser?.banned) {
-        setLoading(false);
         return { error: "This provider is no longer available." };
       }
       const id = newId("booking");
@@ -541,7 +574,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         id
       );
       if (result.error) {
-        setLoading(false);
         return { error: result.error };
       }
       resumedPending.current.add(id);
@@ -568,7 +600,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "booking_created",
         message: "New booking in your area",
       });
-      setLoading(false);
       return { booking: result.db.bookings.find((b) => b.id === id) };
     },
     [db, user, persist, scheduleBookingResponse, emitSystemEvent, appendNotification]
@@ -980,8 +1011,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (validationError) {
         return { error: validationError };
       }
-      setLoading(true);
-      await simulateDelay();
+      await simulateDelay(DEMO_MODE ? 250 : 600);
       const id = newId("review");
       const next = addReviewRecord(
         db,
@@ -989,7 +1019,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         id
       );
       persist(next);
-      setLoading(false);
       return {};
     },
     [db, user, persist]
@@ -1049,7 +1078,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           list: [],
           total: 0,
           page: 1,
-          pageSize: 24,
+          pageSize: DEMO_PROVIDER_PAGE_SIZE,
           totalPages: 1,
           topRanked: [],
           topRankMap: {},
@@ -1167,6 +1196,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         verifiedProviders: 0,
         pendingProviders: 0,
         totalBookings: 0,
+        jobsCompleted: 0,
+        avgRating: 0,
       };
     }
     return getStats(db);

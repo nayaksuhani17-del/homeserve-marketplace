@@ -6,7 +6,7 @@ import { useMockApp } from "@/context/MockAppContext";
 
 type ReviewFormProps = {
   providerId: string;
-  bookingId?: string;
+  bookingId: string;
 };
 
 export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
@@ -34,10 +34,10 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
         comment,
       });
       if (result.error) {
-        setError(result.error);
+        setError(result.error || "Something went wrong. Please try again.");
         return;
       }
-      toast("Review submitted — rating updated!", "success");
+      toast("Review submitted", "success");
       setComment("");
     });
   }

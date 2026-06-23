@@ -1,3 +1,9 @@
+import { DEMO_PROVIDER_PAGE_SIZE } from "@/lib/demo/mode";
+import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
+import { rankProviders } from "@/lib/providers";
+import { detectUrgency } from "@/lib/smart";
+import { isSlotBlocked, isSlotTaken } from "./simulation";
+import type { ProviderWithUser } from "@/lib/types";
 import type {
   MockBooking,
   MockDatabase,
@@ -6,11 +12,6 @@ import type {
   MockUser,
   ProviderFilters,
 } from "./types";
-import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
-import { rankProviders } from "@/lib/providers";
-import { detectUrgency } from "@/lib/smart";
-import { isSlotBlocked, isSlotTaken } from "./simulation";
-import type { ProviderWithUser } from "@/lib/types";
 
 export function simulateDelay(ms = 600): Promise<void> {
   const jitter = Math.floor(Math.random() * 400);
@@ -149,7 +150,7 @@ export function filterMockProviders(
   db: MockDatabase,
   filters: ProviderFilters
 ): { list: MockProvider[]; total: number; page: number; pageSize: number; totalPages: number } {
-  const pageSize = 24;
+  const pageSize = DEMO_PROVIDER_PAGE_SIZE;
   const list = applyProviderFilters(db, filters);
 
   const total = list.length;
@@ -331,11 +332,17 @@ export function removeReviewRecord(db: MockDatabase, reviewId: string): MockData
   return { ...db, reviews, providers };
 }
 
+export function hasReviewForBooking(db: MockDatabase, bookingId: string): boolean {
+  return db.reviews.some((r) => r.bookingId === bookingId);
+}
+
 export function validateReview(
   db: MockDatabase,
   input: { customerId: string; bookingId?: string }
 ): string | undefined {
-  if (!input.bookingId) return undefined;
+  if (!input.bookingId) {
+    return "A completed booking is required to leave a review.";
+  }
   const booking = db.bookings.find((b) => b.id === input.bookingId);
   if (!booking) return "Booking not found.";
   if (booking.customerId !== input.customerId) return "This is not your booking.";
@@ -453,12 +460,21 @@ export function registerUserRecord(
 }
 
 export function getStats(db: MockDatabase) {
+  const verified = db.providers.filter((p) => p.approved);
+  const jobsCompleted = verified.reduce((s, p) => s + (p.jobsCompleted ?? 0), 0);
+  const avgRating =
+    verified.length > 0
+      ? verified.reduce((s, p) => s + p.ratingAvg, 0) / verified.length
+      : 0;
+
   return {
     totalUsers: db.users.length,
     totalProviders: db.providers.length,
-    verifiedProviders: db.providers.filter((p) => p.approved).length,
+    verifiedProviders: verified.length,
     pendingProviders: db.providers.filter((p) => !p.approved).length,
     totalBookings: db.bookings.length,
+    jobsCompleted,
+    avgRating: Math.round(avgRating * 10) / 10,
   };
 }
 

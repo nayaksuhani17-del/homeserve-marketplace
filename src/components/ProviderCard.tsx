@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DEMO_MODE } from "@/lib/demo/mode";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
@@ -94,13 +95,15 @@ export function ProviderCard({
           </div>
         )}
 
-        <div className="mb-2 flex items-center gap-2 text-xs text-amber-700">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-          </span>
-          {viewers} {viewers === 1 ? "person is" : "people are"} viewing this pro
-        </div>
+        {!DEMO_MODE && (
+          <div className="mb-2 flex items-center gap-2 text-xs text-amber-700">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+            </span>
+            {viewers} {viewers === 1 ? "person is" : "people are"} viewing this pro
+          </div>
+        )}
 
         <div className="mb-3 flex items-start gap-3">
           {user?.avatar_url ? (

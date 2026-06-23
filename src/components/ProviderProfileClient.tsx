@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { StarRating } from "./StarRating";
@@ -69,7 +69,7 @@ export function ProviderProfileClient({
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [autoHireApplied, setAutoHireApplied] = useState(false);
+  const autoHireOpened = useRef(false);
   const {
     user: sessionUser,
     db,
@@ -78,12 +78,21 @@ export function ProviderProfileClient({
     getAvailabilityHint,
   } = useMockApp();
 
-  const shouldAutoOpenHire = autoOpenHire && isLoggedIn && provider.approved;
-  if (shouldAutoOpenHire && !autoHireApplied) {
-    setAutoHireApplied(true);
-    setHireOpen(true);
-  }
+  useEffect(() => {
+    if (
+      autoOpenHire &&
+      isLoggedIn &&
+      provider.approved &&
+      !autoHireOpened.current
+    ) {
+      autoHireOpened.current = true;
+      queueMicrotask(() => setHireOpen(true));
+    }
+  }, [autoOpenHire, isLoggedIn, provider.approved]);
+
   const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
+  const liveProvider = db?.providers.find((p) => p.id === provider.id);
+  const liveReviews = db?.reviews.filter((r) => r.providerId === provider.id) ?? reviews;
 
   const reviewableBooking =
     sessionUser?.role === "customer"
@@ -97,7 +106,8 @@ export function ProviderProfileClient({
   const rebookPrefill = getRebookPrefill(provider.id);
   const availabilityHint = getAvailabilityHint(provider.id);
   const tags = computeProviderTags(provider as Parameters<typeof computeProviderTags>[0]);
-  const reviewCount = provider.review_count ?? reviews.length;
+  const reviewCount = liveProvider?.reviewCount ?? liveReviews.length;
+  const displayRating = liveProvider?.ratingAvg ?? provider.rating_avg ?? 0;
   const responseLabel = formatResponseTime(provider.response_time_mins);
   const priceDisplay = formatProviderPrice(provider.pricing_type, Number(provider.price));
   const viewers = getViewerCount(provider.id);
@@ -162,7 +172,7 @@ export function ProviderProfileClient({
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-4">
-            <StarRating rating={Number(provider.rating_avg)} />
+            <StarRating rating={Number(displayRating)} />
             <span className="text-sm text-gray-500">
               {reviewCount} reviews · {provider.jobs_completed ?? 0} jobs completed
             </span>
@@ -265,7 +275,9 @@ export function ProviderProfileClient({
                   </button>
                 ) : (
                   <Link
-                    href={`/login?redirect=/provider/${provider.id}?service=${encodeURIComponent(defaultService)}&hire=1`}
+                    href={`/login?redirect=${encodeURIComponent(
+                      `/provider/${provider.id}?service=${encodeURIComponent(defaultService)}&hire=1`
+                    )}`}
                     className="btn-primary px-8 py-3 text-base"
                   >
                     Log in to Hire

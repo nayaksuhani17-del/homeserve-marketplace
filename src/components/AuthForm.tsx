@@ -34,12 +34,12 @@ export function AuthForm({ redirectTo = "/" }: AuthFormProps) {
       return;
     }
 
-    const result = await login(email, password);
+    const result = await login(email, password, redirectTo);
     if (result.error) {
       setMessage(result.error);
       return;
     }
-    router.push(result.redirect ?? redirectTo ?? "/customer/dashboard");
+    router.push(result.redirect ?? "/customer/dashboard");
     router.refresh();
   }
 

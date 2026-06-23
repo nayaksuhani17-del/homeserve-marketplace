@@ -114,13 +114,25 @@ export function buildInitialDatabase(): MockDatabase {
     };
   });
 
+  const linkedBookingIds = new Set<string>();
   const reviews: MockReview[] = DEMO_REVIEWS.map((r, i) => {
     const cid = userId(r.customerKey);
+    const pid = providerId(r.providerKey);
+    const linkedBooking = bookings.find(
+      (b) =>
+        b.customerId === cid &&
+        b.providerId === pid &&
+        b.status === "completed" &&
+        !linkedBookingIds.has(b.id)
+    );
+    if (linkedBooking) linkedBookingIds.add(linkedBooking.id);
+
     return {
       id: reviewId(i),
       customerId: cid,
       customerName: userNameById.get(cid) ?? "Customer",
-      providerId: providerId(r.providerKey),
+      providerId: pid,
+      bookingId: linkedBooking?.id,
       rating: r.rating,
       comment: r.comment,
       createdAt: new Date(Date.now() - i * 86400000 * 5).toISOString(),
