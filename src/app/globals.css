@@ -2,25 +2,92 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #111827;
+  --brand: #16a34a;
+  --brand-light: #dcfce7;
+  --brand-medium: #22c55e;
+  --brand-dark: #166534;
+  --surface: #f9fafb;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+  --star: #facc15;
+  --warning: #f59e0b;
+  --error: #ef4444;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-light: var(--brand-light);
+  --color-brand-medium: var(--brand-medium);
+  --color-brand-dark: var(--brand-dark);
+  --color-surface: var(--surface);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@layer utilities {
+  .card {
+    @apply rounded-2xl border border-gray-200 bg-gray-50 shadow-sm transition-all duration-200;
+  }
+
+  .card-hover {
+    @apply hover:scale-[1.02] hover:border-green-200 hover:shadow-lg hover:shadow-green-100/60;
+  }
+
+  .btn-primary {
+    @apply rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-green-800 hover:shadow-md active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 hover:border-gray-300 hover:bg-gray-50;
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 transition-all duration-200 focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-100;
+  }
+
+  .tag-pill {
+    @apply rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-verified {
+    @apply rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-medium text-white;
+  }
+
+  .badge-tag {
+    @apply rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800;
+  }
+
+  .link-brand {
+    @apply font-medium text-green-600 transition-colors duration-200 hover:text-green-800 hover:underline;
+  }
+
+  .text-secondary {
+    @apply text-gray-500;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.25s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
