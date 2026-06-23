@@ -28,7 +28,7 @@ export function BookingStatusBadge({
   showPayment = false,
 }: BookingStatusBadgeProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <span className="inline-flex flex-wrap items-center gap-2">
       <span className={`tag-pill ${STATUS_STYLES[status]}`}>
         {bookingStatusLabel(status)}
       </span>
@@ -37,6 +37,6 @@ export function BookingStatusBadge({
           {paymentStatusLabel(paymentStatus)}
         </span>
       )}
-    </div>
+    </span>
   );
 }

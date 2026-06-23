@@ -287,7 +287,9 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     };
     setSystemEvents((prev) => [full, ...prev].slice(0, 24));
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(SYSTEM_EVENT, { detail: full }));
+      queueMicrotask(() => {
+        window.dispatchEvent(new CustomEvent(SYSTEM_EVENT, { detail: full }));
+      });
     }
   }, []);
 

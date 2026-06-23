@@ -210,9 +210,9 @@ function HireModalSession({
             <p className="mt-1">
               <span className="text-gray-500">When:</span> {date} at {selectedSlot}
             </p>
-            <p className="mt-2">
+            <div className="mt-2">
               <BookingStatusBadge status="pending" />
-            </p>
+            </div>
           </div>
         </div>
       ) : showDone && doneBooking ? (
