@@ -1,5 +1,4 @@
 import { SERVICE_CATEGORIES } from "@/lib/constants";
-import { chatCompletion } from "./openai";
 import { parseSearchFallback } from "./parse-search";
 
 const KEYWORDS: Record<string, string[]> = {
@@ -37,6 +36,15 @@ function fallbackReply(message: string, service?: string): string {
 export async function guessServiceFromIntent(message: string) {
   const fallbackService = guessService(message);
 
+  if (fallbackService) {
+    return {
+      service: fallbackService,
+      reply: fallbackReply(message, fallbackService),
+      fallback: true,
+    };
+  }
+
+  const { chatCompletion } = await import("./openai");
   const ai = await chatCompletion(
     `You are a friendly home services assistant. Given a user problem:
 1. Pick the best service category from: ${SERVICE_CATEGORIES.join(", ")}

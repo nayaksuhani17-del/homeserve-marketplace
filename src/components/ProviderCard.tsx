@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { StarRating } from "./StarRating";
-import { HireModal } from "./HireModal";
 import { TagBadge } from "./ChatProviderCard";
 import { computeProviderTags, getProviderUser } from "@/lib/providers";
+import { formatResponseTime } from "@/lib/recommendations";
 import type { ProviderWithUser } from "@/lib/types";
+
+const HireModal = dynamic(
+  () => import("./HireModal").then((m) => m.HireModal),
+  { ssr: false }
+);
 
 type ProviderCardProps = {
   provider: ProviderWithUser;
@@ -27,6 +33,9 @@ export function ProviderCard({
   const defaultService = selectedService || provider.services[0] || "General";
   const user = getProviderUser(provider);
   const tags = computeProviderTags(provider);
+  const responseLabel = formatResponseTime(provider.response_time_mins);
+  const reviewCount = provider.review_count ?? Math.floor((provider.jobs_completed ?? 20) / 8);
+  const hireCount = provider.jobs_completed ?? 0;
 
   return (
     <>
@@ -48,6 +57,8 @@ export function ProviderCard({
             <img
               src={user.avatar_url}
               alt=""
+              loading="lazy"
+              decoding="async"
               className="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-gray-100"
             />
           ) : (
@@ -78,6 +89,10 @@ export function ProviderCard({
         </div>
 
         <StarRating rating={Number(provider.rating_avg)} size="sm" />
+        <p className="mt-1 text-xs text-gray-500">
+          {reviewCount} reviews · {hireCount} people hired
+        </p>
+        <p className="mt-0.5 text-xs font-medium text-green-600">{responseLabel}</p>
 
         <div className="mt-2 flex flex-wrap gap-1">
           {tags.map((tag) => (
@@ -113,7 +128,7 @@ export function ProviderCard({
             </Link>
             {showHire && provider.approved && (
               <button type="button" onClick={() => setHireOpen(true)} className="btn-primary px-3 py-1.5">
-                Hire
+                Hire Now
               </button>
             )}
           </div>

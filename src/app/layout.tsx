@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { ClientNavbar } from "@/components/ClientNavbar";
 import { DemoSession } from "@/components/DemoSession";
-import { Navbar } from "@/components/Navbar";
+import { LiveActivity } from "@/components/LiveActivity";
+import { ToastProvider } from "@/components/Toast";
+import { MockAppProvider } from "@/context/MockAppContext";
 import "./globals.css";
 
 const geist = Geist({
@@ -22,12 +25,17 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable} h-full`}>
       <body className="min-h-full bg-white font-sans text-gray-900 antialiased">
-        <DemoSession />
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <footer className="border-t border-gray-200 bg-white py-8 text-center text-sm text-gray-500">
-          © {new Date().getFullYear()} HomeServe — Local House Services Marketplace
-        </footer>
+        <MockAppProvider>
+          <ToastProvider>
+            <DemoSession />
+            <ClientNavbar />
+            <main className="page-enter flex-1">{children}</main>
+            <LiveActivity />
+            <footer className="border-t border-gray-200 bg-white py-8 text-center text-sm text-gray-500">
+              © {new Date().getFullYear()} HomeServe — Local House Services Marketplace
+            </footer>
+          </ToastProvider>
+        </MockAppProvider>
       </body>
     </html>
   );

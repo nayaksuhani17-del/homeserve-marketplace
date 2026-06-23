@@ -26,6 +26,8 @@ export type Provider = {
   tags?: string[] | null;
   available_today?: boolean | null;
   available_tomorrow?: boolean | null;
+  response_time_mins?: number | null;
+  review_count?: number | null;
   created_at?: string;
   users?: Pick<User, "name" | "email" | "avatar_url">;
 };

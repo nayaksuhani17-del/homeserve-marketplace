@@ -1,30 +1,17 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { getAppUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/actions";
 import { DemoSwitcher } from "@/components/DemoSwitcher";
 
 export async function Navbar() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-
-  let profile = null;
-  if (authUser) {
-    const { data } = await supabase
-      .from("users")
-      .select("name, role")
-      .eq("id", authUser.id)
-      .single();
-    profile = data;
-  }
+  const appUser = await getAppUser();
 
   const dashboardHref =
-    profile?.role === "admin"
+    appUser?.role === "admin"
       ? "/admin"
-      : profile?.role === "provider"
+      : appUser?.role === "provider"
         ? "/provider/dashboard"
-        : profile?.role === "customer"
+        : appUser?.role === "customer"
           ? "/customer/dashboard"
           : null;
 
@@ -38,19 +25,25 @@ export async function Navbar() {
           <Link href="/" className="transition-colors duration-200 hover:text-green-600">
             Home
           </Link>
-          {dashboardHref && (
+          <Link
+            href="/customer/dashboard"
+            className="transition-colors duration-200 hover:text-green-600"
+          >
+            Browse
+          </Link>
+          {dashboardHref && dashboardHref !== "/customer/dashboard" && (
             <Link href={dashboardHref} className="transition-colors duration-200 hover:text-green-600">
               Dashboard
             </Link>
           )}
           <DemoSwitcher />
-          {authUser ? (
+          {appUser ? (
             <form action={signOut}>
               <button
                 type="submit"
                 className="rounded-lg bg-gray-100 px-3 py-1.5 transition-colors duration-200 hover:bg-gray-200"
               >
-                Sign out{profile?.name ? ` (${profile.name})` : ""}
+                Sign out ({appUser.name})
               </button>
             </form>
           ) : (

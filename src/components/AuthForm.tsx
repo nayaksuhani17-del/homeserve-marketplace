@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { useMockApp, DEFAULT_DEMO_PASSWORD } from "@/context/MockAppContext";
 import type { UserRole } from "@/lib/constants";
 
 type AuthFormProps = {
@@ -11,69 +11,45 @@ type AuthFormProps = {
 
 export function AuthForm({ redirectTo = "/" }: AuthFormProps) {
   const router = useRouter();
-  const supabase = createClient();
+  const { login, register, loading, ready } = useMockApp();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Exclude<UserRole, "admin">>("customer");
-  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setMessage(null);
 
-    try {
-      if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { name, role },
-          },
-        });
-        if (error) throw error;
-        setMessage("Account created! Check your email to confirm, then log in.");
-        setMode("login");
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-
-        const { data: profile } = await supabase
-          .from("users")
-          .select("role, banned")
-          .eq("id", data.user.id)
-          .single();
-
-        if (profile?.banned) {
-          await supabase.auth.signOut();
-          throw new Error("Your account has been banned.");
-        }
-
-        const dest =
-          profile?.role === "admin"
-            ? "/admin"
-            : profile?.role === "provider"
-              ? "/provider/dashboard"
-              : redirectTo || "/customer/dashboard";
-
-        router.push(dest);
-        router.refresh();
+    if (mode === "signup") {
+      const result = await register(name, email, password, role);
+      if (result.error) {
+        setMessage(result.error);
+        return;
       }
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Authentication failed");
-    } finally {
-      setLoading(false);
+      router.push(result.redirect ?? "/customer/dashboard");
+      router.refresh();
+      return;
     }
+
+    const result = await login(email, password);
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+    router.push(result.redirect ?? redirectTo ?? "/customer/dashboard");
+    router.refresh();
   }
 
   return (
     <div className="card mx-auto w-full max-w-md bg-white p-8">
+      <p className="mb-4 rounded-xl bg-green-50 px-3 py-2 text-center text-xs text-green-800">
+        Local demo — data saved in your browser. Seed accounts use password{" "}
+        <code className="font-mono">{DEFAULT_DEMO_PASSWORD}</code>
+      </p>
+
       <div className="mb-6 flex rounded-xl bg-gray-100 p-1">
         <button
           type="button"
@@ -158,16 +134,16 @@ export function AuthForm({ redirectTo = "/" }: AuthFormProps) {
         </div>
 
         {message && (
-          <p
-            className={`text-sm ${
-              message.includes("created") ? "text-green-600" : "text-red-500"
-            }`}
-          >
+          <p className={`text-sm ${message.includes("created") ? "text-green-600" : "text-red-500"}`}>
             {message}
           </p>
         )}
 
-        <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={loading || !ready}
+          className="btn-primary w-full disabled:opacity-60"
+        >
           {loading ? "Please wait..." : mode === "login" ? "Log in" : "Create account"}
         </button>
       </form>

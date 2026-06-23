@@ -1,30 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Skeleton } from "./Skeleton";
+import { useMemo } from "react";
+import { generateProviderSummaryFallback, generateReviewInsightsFallback } from "@/lib/ai/summaries";
 
-export function ProviderAISummary({ providerId }: { providerId: string }) {
-  const [summary, setSummary] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+type ProviderAISummaryProps = {
+  provider: {
+    name: string;
+    services: string[];
+    rating_avg: number;
+    hourly_rate: number;
+    years_experience?: number | null;
+    jobs_completed?: number | null;
+    description?: string;
+  };
+};
 
-  useEffect(() => {
-    fetch(`/api/ai/provider-summary?id=${providerId}`)
-      .then((r) => r.json())
-      .then((d) => setSummary(d.summary))
-      .catch(() => setSummary(null))
-      .finally(() => setLoading(false));
-  }, [providerId]);
-
-  if (loading) {
-    return (
-      <div className="card border-green-100 bg-green-50 p-5">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="mt-3 h-12 w-full" />
-      </div>
-    );
-  }
-
-  if (!summary) return null;
+export function ProviderAISummary({ provider }: ProviderAISummaryProps) {
+  const summary = useMemo(
+    () =>
+      generateProviderSummaryFallback({
+        name: provider.name,
+        services: provider.services,
+        rating_avg: provider.rating_avg,
+        hourly_rate: provider.hourly_rate,
+        years_experience: provider.years_experience,
+        jobs_completed: provider.jobs_completed,
+        description: provider.description,
+      }),
+    [provider]
+  );
 
   return (
     <div className="card border-green-100 bg-green-50 p-5">
@@ -36,33 +40,19 @@ export function ProviderAISummary({ providerId }: { providerId: string }) {
   );
 }
 
-export function ReviewInsightsPanel({ providerId }: { providerId: string }) {
-  const [insights, setInsights] = useState<{ likes: string[]; complaints: string[] } | null>(null);
-  const [loading, setLoading] = useState(true);
+type ReviewInsightsPanelProps = {
+  reviews: Array<{ rating: number; comment: string }>;
+};
 
-  useEffect(() => {
-    fetch(`/api/ai/review-insights?id=${providerId}`)
-      .then((r) => r.json())
-      .then(setInsights)
-      .catch(() => setInsights(null))
-      .finally(() => setLoading(false));
-  }, [providerId]);
+export function ReviewInsightsPanel({ reviews }: ReviewInsightsPanelProps) {
+  const insights = useMemo(() => generateReviewInsightsFallback(reviews), [reviews]);
 
-  if (loading) {
-    return (
-      <div className="card p-5">
-        <Skeleton className="h-5 w-40" />
-        <Skeleton className="mt-4 h-20 w-full" />
-      </div>
-    );
-  }
-
-  if (!insights) return null;
+  if (reviews.length === 0) return null;
 
   return (
     <div className="card p-5">
       <div className="flex items-center gap-2 font-semibold text-gray-900">
-        <span>✨</span> AI Review Insights
+        <span>✨</span> Customers love…
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl bg-green-50 p-4">
@@ -80,7 +70,7 @@ export function ReviewInsightsPanel({ providerId }: { providerId: string }) {
           <ul className="mt-2 space-y-1">
             {insights.complaints.map((item, i) => (
               <li key={i} className="flex gap-2 text-sm text-amber-700">
-                <span>•</span> {item}
+                <span>·</span> {item}
               </li>
             ))}
           </ul>

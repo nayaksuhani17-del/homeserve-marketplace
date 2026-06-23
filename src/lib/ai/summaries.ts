@@ -33,6 +33,10 @@ export function generateProviderSummaryFallback(p: ProviderForSummary): string {
 export async function generateProviderSummary(
   provider: ProviderForSummary
 ): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    return generateProviderSummaryFallback(provider);
+  }
+
   const ai = await chatCompletion(
     "Write a single compelling 1-2 sentence summary for a home services marketplace provider profile. Be specific and professional. No quotes.",
     `Name: ${provider.name}\nServices: ${provider.services.join(", ")}\nRating: ${provider.rating_avg}\nRate: $${provider.hourly_rate}/hr\nExperience: ${provider.years_experience} years\nJobs: ${provider.jobs_completed}\nBio: ${provider.description?.slice(0, 200)}`,
@@ -75,6 +79,10 @@ export function generateReviewInsightsFallback(reviews: ReviewForInsights[]) {
 export async function generateReviewInsights(reviews: ReviewForInsights[]) {
   if (reviews.length === 0) {
     return { likes: ["No reviews yet"], complaints: ["Not enough data"] };
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return generateReviewInsightsFallback(reviews);
   }
 
   const reviewText = reviews

@@ -1,8 +1,17 @@
 import Link from "next/link";
-import { SmartAssistant } from "@/components/SmartAssistant";
+import dynamic from "next/dynamic";
 import { SmartSearchBar } from "@/components/SmartSearchBar";
+import { HomeStats } from "@/components/HomeStats";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
-import { buildDemoProviders } from "@/lib/demo/providers";
+
+const SmartAssistant = dynamic(
+  () => import("@/components/SmartAssistant").then((m) => m.SmartAssistant),
+  {
+    loading: () => (
+      <div className="card h-[28rem] animate-pulse bg-gradient-to-b from-gray-50 to-white" />
+    ),
+  }
+);
 
 const FEATURES = [
   {
@@ -23,23 +32,19 @@ const FEATURES = [
 ];
 
 export default function HomePage() {
-  const allProviders = buildDemoProviders();
-  const verified = allProviders.filter((p) => p.approved).length;
-  const pending = allProviders.length - verified;
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-green-100 to-white px-6 py-16 shadow-sm sm:px-12">
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-green-200/40 blur-3xl" />
         <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-green-100/60 blur-2xl" />
         <div className="relative">
-          <p className="text-sm font-medium text-green-700">AI-powered marketplace</p>
+          <p className="text-sm font-medium text-green-700">AI-powered marketplace · local demo</p>
           <h1 className="mt-2 max-w-2xl text-4xl font-bold leading-tight text-gray-900 sm:text-5xl">
             Home services, matched intelligently
           </h1>
           <p className="mt-4 max-w-xl text-lg text-gray-600">
             Tell us what you need. Our smart assistant finds verified local pros —
-            ranked by rating, price, and availability.
+            ranked by rating, price, and availability. All data saved in your browser.
           </p>
           <div className="mt-8 max-w-2xl">
             <SmartSearchBar placeholder="Try: cheap plumber near me available today" />
@@ -47,24 +52,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-green-700">{allProviders.length.toLocaleString()}+</p>
-          <p className="text-xs text-gray-500">Providers on platform</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-green-700">{verified.toLocaleString()}</p>
-          <p className="text-xs text-gray-500">Verified pros</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-amber-600">{pending.toLocaleString()}</p>
-          <p className="text-xs text-gray-500">Awaiting review</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-green-700">12.4k</p>
-          <p className="text-xs text-gray-500">Bookings this month</p>
-        </div>
-      </section>
+      <HomeStats />
 
       <section className="mt-12">
         <SmartAssistant />

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createBookingAction } from "@/lib/actions";
 import { Modal } from "./Modal";
+import { useToast } from "./Toast";
+import { useMockApp } from "@/context/MockAppContext";
 
 type HireModalProps = {
   open: boolean;
@@ -21,6 +22,7 @@ export function HireModal({
   hourlyRate,
   defaultService,
 }: HireModalProps) {
+  const { createBooking, user } = useMockApp();
   const [service, setService] = useState(defaultService);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("10:00");
@@ -35,6 +37,7 @@ export function HireModal({
     hours: number;
   } | null>(null);
   const [pending, startTransition] = useTransition();
+  const { toast } = useToast();
 
   const estimatedCost = hourlyRate * hours;
   const minDate = new Date().toISOString().split("T")[0];
@@ -49,27 +52,44 @@ export function HireModal({
     e.preventDefault();
     setError(null);
 
-    const fd = new FormData();
-    fd.set("provider_id", providerId);
-    fd.set("service", service);
-    fd.set("date", date);
-    fd.set("time", time);
-    fd.set("hours", String(hours));
+    if (!user) {
+      setError("You must be logged in to book.");
+      return;
+    }
+    if (!service.trim() || !date.trim()) {
+      setError("Please fill all fields.");
+      return;
+    }
 
     startTransition(async () => {
-      const result = await createBookingAction(fd);
+      const result = await createBooking({
+        providerId,
+        service,
+        date,
+        time,
+        hours,
+      });
       if (result.error) {
         setError(result.error);
         return;
       }
-      if (result.success && result.booking) {
-        setConfirmed(result.booking);
+      if (result.booking) {
+        setConfirmed({
+          service: result.booking.service,
+          date: result.booking.date,
+          time: result.booking.time ?? null,
+          providerName: result.booking.providerName,
+          estimatedCost: result.booking.estimatedCost,
+          hours: result.booking.hours,
+        });
+        toast("Booking confirmed!", "success");
+        toast("New job request sent to provider", "info");
       }
     });
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title={confirmed ? "Booking confirmed!" : `Hire ${providerName}`}>
+    <Modal open={open} onClose={handleClose} title={confirmed ? "Booking Confirmed ✅" : `Hire ${providerName}`}>
       {confirmed ? (
         <div className="text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl text-green-600">

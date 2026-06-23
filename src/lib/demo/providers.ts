@@ -13,6 +13,7 @@ import {
   getCatalogStats,
 } from "./catalog";
 import { rankProviders, toProviderCardData, type ProviderCardData } from "../providers";
+import { assignRecommendationLabels } from "../recommendations";
 import type { ProviderWithUser } from "../types";
 
 function ratingForSeedProvider(userKey: string): number {
@@ -23,7 +24,7 @@ function ratingForSeedProvider(userKey: string): number {
 }
 
 function buildSeedProviders(): ProviderWithUser[] {
-  return DEMO_PROVIDERS.map((p) => {
+  return DEMO_PROVIDERS.map((p, i) => {
     const user = getDemoUserByKey(p.userKey)!;
     return {
       id: providerId(p.userKey),
@@ -41,6 +42,8 @@ function buildSeedProviders(): ProviderWithUser[] {
       tags: p.tags,
       available_today: p.availableToday,
       available_tomorrow: p.availableTomorrow,
+      response_time_mins: p.availableToday ? 8 + (i % 22) : 55 + (i % 90),
+      review_count: Math.floor(4 + p.jobsCompleted / 18),
       users: {
         name: user.name,
         email: user.email,
@@ -51,16 +54,41 @@ function buildSeedProviders(): ProviderWithUser[] {
 }
 
 let allProvidersCache: ProviderWithUser[] | null = null;
+let providerByIdCache: Map<string, ProviderWithUser> | null = null;
+let demoStatsCache: { total: number; verified: number; pending: number } | null = null;
+const filterResultCache = new Map<string, DemoProviderResult>();
+
+function ensureDemoCache() {
+  if (allProvidersCache) return;
+
+  const seed = buildSeedProviders();
+  const seedIds = new Set(seed.map((p) => p.id));
+  const catalog = getCatalogProviders().filter((p) => !seedIds.has(p.id));
+  allProvidersCache = [...seed, ...catalog];
+
+  providerByIdCache = new Map(allProvidersCache.map((p) => [p.id, p]));
+
+  const verified = allProvidersCache.filter((p) => p.approved).length;
+  demoStatsCache = {
+    total: allProvidersCache.length,
+    verified,
+    pending: allProvidersCache.length - verified,
+  };
+}
 
 /** Featured seed providers + 350 generated catalog entries. */
 export function buildDemoProviders(): ProviderWithUser[] {
-  if (!allProvidersCache) {
-    const seed = buildSeedProviders();
-    const seedIds = new Set(seed.map((p) => p.id));
-    const catalog = getCatalogProviders().filter((p) => !seedIds.has(p.id));
-    allProvidersCache = [...seed, ...catalog];
-  }
-  return allProvidersCache;
+  ensureDemoCache();
+  return allProvidersCache!;
+}
+
+export function getDemoStats() {
+  ensureDemoCache();
+  return demoStatsCache!;
+}
+
+function filtersCacheKey(filters: DemoProviderFilters): string {
+  return JSON.stringify(filters);
 }
 
 export { getCatalogStats, DEMO_PAGE_SIZE, CATALOG_SIZE };
@@ -68,26 +96,36 @@ export { getCatalogStats, DEMO_PAGE_SIZE, CATALOG_SIZE };
 export function getDemoProviderCards(service?: string, limit = 3): ProviderCardData[] {
   const verified = buildDemoProviders().filter((p) => p.approved);
 
+  let matched: ProviderWithUser[];
   if (service) {
-    const matched = rankProviders(
+    const serviceMatched = rankProviders(
       verified.filter((p) => p.services.includes(service)),
       service
     );
-    if (matched.length >= limit) {
-      return matched.slice(0, limit).map(toProviderCardData);
+    if (serviceMatched.length >= limit) {
+      matched = serviceMatched;
+    } else {
+      const rest = rankProviders(
+        verified.filter((p) => !serviceMatched.some((m) => m.id === p.id)),
+        service
+      );
+      matched = [...serviceMatched, ...rest];
     }
-    const rest = rankProviders(
-      verified.filter((p) => !matched.some((m) => m.id === p.id)),
-      service
-    );
-    return [...matched, ...rest].slice(0, limit).map(toProviderCardData);
+  } else {
+    matched = rankProviders(verified, service);
   }
 
-  return rankProviders(verified, service).slice(0, limit).map(toProviderCardData);
+  const slice = matched.slice(0, Math.max(limit, 3));
+  const labels = assignRecommendationLabels(slice);
+
+  return slice.slice(0, limit).map((p) =>
+    toProviderCardData(p, { recommendationLabel: labels.get(p.id) })
+  );
 }
 
 export function getDemoProviderById(id: string): ProviderWithUser | undefined {
-  return buildDemoProviders().find((p) => p.id === id);
+  ensureDemoCache();
+  return providerByIdCache!.get(id);
 }
 
 export type DemoProviderFilters = {
@@ -110,6 +148,7 @@ export type DemoProviderResult = {
   pageSize: number;
   totalPages: number;
   stats: { total: number; verified: number; pending: number };
+  topRanked: ProviderWithUser[];
 };
 
 export function applyDemoFilters(filters: DemoProviderFilters): ProviderWithUser[] {
@@ -157,6 +196,11 @@ export function applyDemoFilters(filters: DemoProviderFilters): ProviderWithUser
 
   if (filters.sort === "price") {
     list.sort((a, b) => Number(a.hourly_rate) - Number(b.hourly_rate));
+  } else if (filters.sort === "distance") {
+    list.sort(
+      (a, b) =>
+        Number(a.distance_miles ?? 999) - Number(b.distance_miles ?? 999)
+    );
   } else {
     list = rankProviders(list, filters.service);
   }
@@ -165,7 +209,12 @@ export function applyDemoFilters(filters: DemoProviderFilters): ProviderWithUser
 }
 
 export function filterDemoProviders(filters: DemoProviderFilters): DemoProviderResult {
+  const cacheKey = filtersCacheKey(filters);
+  const cached = filterResultCache.get(cacheKey);
+  if (cached) return cached;
+
   const list = applyDemoFilters(filters);
+  const stats = getDemoStats();
 
   const pageSize = DEMO_PAGE_SIZE;
   const total = list.length;
@@ -173,21 +222,23 @@ export function filterDemoProviders(filters: DemoProviderFilters): DemoProviderR
   const page = Math.min(Math.max(1, Number(filters.page) || 1), totalPages);
   const start = (page - 1) * pageSize;
 
-  const all = buildDemoProviders();
-  const stats = {
-    total: all.length,
-    verified: all.filter((p) => p.approved).length,
-    pending: all.filter((p) => !p.approved).length,
-  };
-
-  return {
+  const result: DemoProviderResult = {
     providers: list.slice(start, start + pageSize),
     total,
     page,
     pageSize,
     totalPages,
     stats,
+    topRanked: rankProviders(list, filters.service).slice(0, 3),
   };
+
+  if (filterResultCache.size > 64) {
+    const firstKey = filterResultCache.keys().next().value;
+    if (firstKey) filterResultCache.delete(firstKey);
+  }
+  filterResultCache.set(cacheKey, result);
+
+  return result;
 }
 
 export function getDemoReviewsForProvider(providerIdValue: string) {
@@ -222,4 +273,9 @@ export function getDemoAdminProviders() {
       rating_avg: p.rating_avg,
       users: p.users,
     }));
+}
+
+// Warm catalog on server startup so first request is fast.
+if (typeof window === "undefined") {
+  ensureDemoCache();
 }

@@ -1,5 +1,4 @@
 import { SERVICE_CATEGORIES } from "@/lib/constants";
-import { chatCompletion } from "./openai";
 
 export type SearchFilters = {
   service?: string;
@@ -69,6 +68,12 @@ export function parseSearchFallback(query: string): SearchFilters {
 }
 
 export async function parseSearchQuery(query: string): Promise<SearchFilters> {
+  const fallback = parseSearchFallback(query);
+  if (fallback.service || !process.env.OPENAI_API_KEY) {
+    return fallback;
+  }
+
+  const { chatCompletion } = await import("./openai");
   const jsonSchema = `{
   "service": "one of: ${SERVICE_CATEGORIES.join(", ")} or null",
   "sort": "rating or price or null",

@@ -2,38 +2,41 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { getAppUser } from "@/lib/auth/session";
+import {
+  appendDemoBooking,
+  clearDemoSession,
+} from "@/lib/demo/session";
+import { getDemoProviderById } from "@/lib/demo/providers";
+import { getProviderUser } from "@/lib/providers";
 
 export async function getCurrentUser() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const appUser = await getAppUser();
+  if (!appUser) return null;
 
-  if (!authUser) return null;
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("*")
-    .eq("id", authUser.id)
-    .single();
-
-  return profile;
+  return {
+    id: appUser.id,
+    name: appUser.name,
+    email: appUser.email,
+    role: appUser.role,
+    banned: false,
+  };
 }
 
 export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  if (isSupabaseConfigured()) {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+  }
+  await clearDemoSession();
   redirect("/");
 }
 
 export async function createBooking(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "You must be logged in to book a service." };
+  const appUser = await getAppUser();
+  if (!appUser) return { error: "You must be logged in to book a service." };
 
   const providerId = formData.get("provider_id") as string;
   const service = formData.get("service") as string;
@@ -44,6 +47,47 @@ export async function createBooking(formData: FormData) {
   if (!providerId || !service || !date) {
     return { error: "Missing booking details." };
   }
+
+  if (appUser.source === "demo") {
+    const provider = getDemoProviderById(providerId);
+    const providerUser = provider ? getProviderUser(provider) : null;
+    const hourlyRate = Number(provider?.hourly_rate ?? 0);
+
+    const booking = await appendDemoBooking({
+      providerId,
+      providerName: providerUser?.name ?? "Provider",
+      service,
+      date,
+      time,
+      status: "pending",
+    });
+
+    if (!booking) return { error: "Could not save booking." };
+
+    revalidatePath("/customer/dashboard");
+    revalidatePath(`/provider/${providerId}`);
+
+    return {
+      success: true,
+      booking: {
+        id: booking.id,
+        service,
+        date,
+        time,
+        providerName: booking.providerName,
+        hourlyRate,
+        estimatedCost: hourlyRate * hours,
+        hours,
+      },
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "You must be logged in to book a service." };
 
   const { data: provider } = await supabase
     .from("providers")
@@ -99,6 +143,14 @@ export async function createBookingAction(formData: FormData) {
 }
 
 export async function createReview(formData: FormData) {
+  const appUser = await getAppUser();
+  if (!appUser) return { error: "You must be logged in." };
+
+  if (appUser.source === "demo") {
+    revalidatePath("/customer/dashboard");
+    return { success: true };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -133,6 +185,14 @@ export async function createReviewAction(formData: FormData) {
 }
 
 export async function upsertProviderProfile(formData: FormData) {
+  const appUser = await getAppUser();
+  if (!appUser) return { error: "You must be logged in." };
+
+  if (appUser.source === "demo") {
+    revalidatePath("/provider/dashboard");
+    return { success: true };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

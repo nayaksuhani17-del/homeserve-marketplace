@@ -1,4 +1,5 @@
 import type { ProviderWithUser } from "./types";
+import { formatResponseTime, type RecommendationLabel } from "./recommendations";
 
 export function getProviderUser(provider: ProviderWithUser) {
   const u = provider.users;
@@ -55,9 +56,16 @@ export type ProviderCardData = {
   approved: boolean;
   tags: string[];
   description?: string;
+  recommendationLabel?: RecommendationLabel;
+  responseTimeLabel?: string;
+  reviewCount?: number;
+  jobsCompleted?: number;
 };
 
-export function toProviderCardData(p: ProviderWithUser): ProviderCardData {
+export function toProviderCardData(
+  p: ProviderWithUser,
+  extras?: Partial<Pick<ProviderCardData, "recommendationLabel">>
+): ProviderCardData {
   const user = getProviderUser(p);
   return {
     id: p.id,
@@ -71,5 +79,9 @@ export function toProviderCardData(p: ProviderWithUser): ProviderCardData {
     approved: p.approved,
     tags: computeProviderTags(p),
     description: p.description,
+    recommendationLabel: extras?.recommendationLabel,
+    responseTimeLabel: formatResponseTime(p.response_time_mins),
+    reviewCount: p.review_count ?? undefined,
+    jobsCompleted: p.jobs_completed ?? undefined,
   };
 }

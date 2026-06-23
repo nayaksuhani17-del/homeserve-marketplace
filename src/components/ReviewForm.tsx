@@ -1,4 +1,8 @@
-import { createReviewAction } from "@/lib/actions";
+"use client";
+
+import { useState, useTransition } from "react";
+import { useToast } from "./Toast";
+import { useMockApp } from "@/context/MockAppContext";
 
 type ReviewFormProps = {
   providerId: string;
@@ -6,15 +10,50 @@ type ReviewFormProps = {
 };
 
 export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
+  const { addReview, user } = useMockApp();
+  const { toast } = useToast();
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!user) {
+      setError("You must be logged in.");
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await addReview({
+        providerId,
+        bookingId,
+        rating,
+        comment,
+      });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      toast("Review submitted — rating updated!", "success");
+      setComment("");
+    });
+  }
+
   return (
-    <form action={createReviewAction} className="card bg-white p-5">
+    <form onSubmit={handleSubmit} className="card bg-white p-5">
       <h3 className="font-semibold text-gray-900">Leave a review</h3>
-      <input type="hidden" name="provider_id" value={providerId} />
-      {bookingId && <input type="hidden" name="booking_id" value={bookingId} />}
 
       <div className="mt-3">
         <label className="mb-1 block text-sm text-gray-700">Rating (1-5)</label>
-        <select name="rating" required className="input-field">
+        <select
+          value={rating}
+          onChange={(e) => setRating(Number(e.target.value))}
+          required
+          className="input-field"
+        >
           {[5, 4, 3, 2, 1].map((n) => (
             <option key={n} value={n}>
               {"⭐".repeat(n)} ({n})
@@ -26,15 +65,18 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
       <div className="mt-3">
         <label className="mb-1 block text-sm text-gray-700">Comment</label>
         <textarea
-          name="comment"
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
           rows={3}
           placeholder="Share your experience..."
           className="input-field"
         />
       </div>
 
-      <button type="submit" className="btn-primary mt-4">
-        Submit review
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      <button type="submit" disabled={pending} className="btn-primary mt-4 disabled:opacity-60">
+        {pending ? "Submitting…" : "Submit review"}
       </button>
     </form>
   );

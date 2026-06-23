@@ -187,6 +187,11 @@ function buildCatalogProvider(index: number): ProviderWithUser {
   if (availableToday) tags.push("Fast Responder");
   if (jobsCompleted >= 150) tags.push("Popular");
 
+  const responseTimeMins = availableToday
+    ? Math.floor(5 + seeded(index, 18) * 25)
+    : Math.floor(45 + seeded(index, 18) * 180);
+  const reviewCount = Math.floor(3 + seeded(index, 19) * 45);
+
   return {
     id: catalogProviderId(index),
     user_id: catalogUserId(index),
@@ -203,6 +208,8 @@ function buildCatalogProvider(index: number): ProviderWithUser {
     tags: tags.slice(0, 3),
     available_today: availableToday,
     available_tomorrow: availableTomorrow,
+    response_time_mins: responseTimeMins,
+    review_count: reviewCount,
     users: {
       name,
       email,

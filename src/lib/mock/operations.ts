@@ -1,0 +1,310 @@
+import type {
+  MockBooking,
+  MockDatabase,
+  MockProvider,
+  MockReview,
+  MockUser,
+  ProviderFilters,
+} from "./types";
+import { rankProviders } from "@/lib/providers";
+import type { ProviderWithUser } from "@/lib/types";
+
+export function simulateDelay(ms = 600): Promise<void> {
+  const jitter = Math.floor(Math.random() * 400);
+  return new Promise((resolve) => setTimeout(resolve, ms + jitter));
+}
+
+export function recalculateProviderRating(
+  providerId: string,
+  providers: MockProvider[],
+  reviews: MockReview[]
+): MockProvider[] {
+  const providerReviews = reviews.filter((r) => r.providerId === providerId);
+  return providers.map((p) => {
+    if (p.id !== providerId) return p;
+    if (providerReviews.length === 0) return p;
+    const avg =
+      providerReviews.reduce((s, r) => s + r.rating, 0) / providerReviews.length;
+    return {
+      ...p,
+      ratingAvg: Math.round(avg * 10) / 10,
+      reviewCount: providerReviews.length,
+    };
+  });
+}
+
+export function mockProviderToLegacy(p: MockProvider): ProviderWithUser {
+  return {
+    id: p.id,
+    user_id: p.userId,
+    services: p.services,
+    hourly_rate: p.hourlyRate,
+    location: p.location,
+    description: p.description,
+    availability: p.availability,
+    rating_avg: p.ratingAvg,
+    approved: p.approved,
+    distance_miles: p.distanceMiles,
+    jobs_completed: p.jobsCompleted,
+    years_experience: p.yearsExperience,
+    tags: p.tags,
+    available_today: p.availableToday,
+    available_tomorrow: p.availableTomorrow,
+    response_time_mins: p.responseTimeMins,
+    review_count: p.reviewCount,
+    users: {
+      name: p.name,
+      email: p.email,
+      avatar_url: p.avatarUrl,
+    },
+  };
+}
+
+export function applyProviderFilters(
+  db: MockDatabase,
+  filters: ProviderFilters,
+  source?: MockProvider[]
+): MockProvider[] {
+  let list = [...(source ?? db.providers)];
+
+  if (filters.status === "pending") {
+    list = list.filter((p) => !p.approved);
+  } else if (filters.status === "verified") {
+    list = list.filter((p) => p.approved);
+  }
+
+  if (filters.service) {
+    list = list.filter((p) => p.services.includes(filters.service!));
+  }
+
+  if (filters.q) {
+    const q = filters.q.toLowerCase();
+    list = list.filter(
+      (p) =>
+        p.location.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.name.toLowerCase().includes(q) ||
+        p.services.some((s) => s.toLowerCase().includes(q))
+    );
+  }
+
+  if (filters.minPrice) {
+    list = list.filter((p) => p.hourlyRate >= Number(filters.minPrice));
+  }
+  if (filters.maxPrice && Number(filters.maxPrice) < 120) {
+    list = list.filter((p) => p.hourlyRate <= Number(filters.maxPrice));
+  }
+  if (filters.minRating) {
+    list = list.filter((p) => p.ratingAvg >= Number(filters.minRating));
+  }
+  if (filters.maxDistance) {
+    list = list.filter((p) => p.distanceMiles <= Number(filters.maxDistance));
+  }
+  if (filters.availability === "today") {
+    list = list.filter((p) => p.availableToday);
+  }
+  if (filters.availability === "tomorrow") {
+    list = list.filter((p) => p.availableTomorrow);
+  }
+
+  const legacy = list.map(mockProviderToLegacy);
+
+  if (filters.sort === "price") {
+    list.sort((a, b) => a.hourlyRate - b.hourlyRate);
+  } else if (filters.sort === "distance") {
+    list.sort((a, b) => a.distanceMiles - b.distanceMiles);
+  } else {
+    const ranked = rankProviders(legacy, filters.service);
+    const order = new Map(ranked.map((p, i) => [p.id, i]));
+    list.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
+  }
+
+  return list;
+}
+
+export function filterMockProviders(
+  db: MockDatabase,
+  filters: ProviderFilters
+): { list: MockProvider[]; total: number; page: number; pageSize: number; totalPages: number } {
+  const pageSize = 24;
+  const list = applyProviderFilters(db, filters);
+
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, Number(filters.page) || 1), totalPages);
+  const start = (page - 1) * pageSize;
+
+  return {
+    list: list.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
+}
+
+export function getTopRankedProviders(
+  db: MockDatabase,
+  filters: ProviderFilters,
+  limit = 3
+): MockProvider[] {
+  const verified = applyProviderFilters(db, {
+    ...filters,
+    status: "verified",
+    page: undefined,
+  });
+  return verified.slice(0, limit);
+}
+
+export function createBookingRecord(
+  db: MockDatabase,
+  input: {
+    customerId: string;
+    providerId: string;
+    service: string;
+    date: string;
+    time?: string | null;
+    hours: number;
+  },
+  bookingId: string
+): MockDatabase {
+  const customer = db.users.find((u) => u.id === input.customerId);
+  const provider = db.providers.find((p) => p.id === input.providerId);
+  if (!customer || !provider) return db;
+
+  const booking: MockBooking = {
+    id: bookingId,
+    customerId: customer.id,
+    customerName: customer.name,
+    providerId: provider.id,
+    providerName: provider.name,
+    service: input.service,
+    date: input.date,
+    time: input.time,
+    hours: input.hours,
+    estimatedCost: provider.hourlyRate * input.hours,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  };
+
+  return {
+    ...db,
+    bookings: [booking, ...db.bookings],
+    providers: db.providers.map((p) =>
+      p.id === provider.id ? { ...p, jobsCompleted: p.jobsCompleted + 1 } : p
+    ),
+  };
+}
+
+export function addReviewRecord(
+  db: MockDatabase,
+  input: {
+    customerId: string;
+    providerId: string;
+    bookingId?: string;
+    rating: number;
+    comment: string;
+  },
+  reviewId: string
+): MockDatabase {
+  const customer = db.users.find((u) => u.id === input.customerId);
+  if (!customer) return db;
+
+  const review: MockReview = {
+    id: reviewId,
+    customerId: customer.id,
+    customerName: customer.name,
+    providerId: input.providerId,
+    bookingId: input.bookingId,
+    rating: input.rating,
+    comment: input.comment,
+    createdAt: new Date().toISOString(),
+  };
+
+  const reviews = [review, ...db.reviews];
+  const providers = recalculateProviderRating(input.providerId, db.providers, reviews);
+
+  return { ...db, reviews, providers };
+}
+
+export function updateProviderRecord(
+  db: MockDatabase,
+  userId: string,
+  patch: Partial<
+    Pick<
+      MockProvider,
+      | "services"
+      | "hourlyRate"
+      | "location"
+      | "description"
+      | "availability"
+      | "availableToday"
+      | "availableTomorrow"
+    >
+  >
+): MockDatabase {
+  return {
+    ...db,
+    providers: db.providers.map((p) =>
+      p.userId === userId ? { ...p, ...patch } : p
+    ),
+  };
+}
+
+export function approveProviderRecord(
+  db: MockDatabase,
+  providerId: string,
+  approved: boolean
+): MockDatabase {
+  return {
+    ...db,
+    providers: db.providers.map((p) =>
+      p.id === providerId ? { ...p, approved } : p
+    ),
+  };
+}
+
+export function banUserRecord(
+  db: MockDatabase,
+  userId: string,
+  banned: boolean
+): MockDatabase {
+  return {
+    ...db,
+    users: db.users.map((u) => (u.id === userId ? { ...u, banned } : u)),
+  };
+}
+
+export function registerUserRecord(
+  db: MockDatabase,
+  user: MockUser,
+  provider?: MockProvider
+): MockDatabase {
+  const users = [...db.users.filter((u) => u.email !== user.email), user];
+  let providers = db.providers;
+  if (provider) {
+    providers = [...providers.filter((p) => p.userId !== user.id), provider];
+  }
+  return { ...db, users, providers };
+}
+
+export function getStats(db: MockDatabase) {
+  return {
+    totalUsers: db.users.length,
+    totalProviders: db.providers.length,
+    verifiedProviders: db.providers.filter((p) => p.approved).length,
+    pendingProviders: db.providers.filter((p) => !p.approved).length,
+    totalBookings: db.bookings.length,
+  };
+}
+
+export function getReviewsForProvider(db: MockDatabase, providerId: string) {
+  return db.reviews
+    .filter((r) => r.providerId === providerId)
+    .map((r) => ({
+      rating: r.rating,
+      comment: r.comment,
+      created_at: r.createdAt,
+      users: { name: r.customerName },
+    }));
+}

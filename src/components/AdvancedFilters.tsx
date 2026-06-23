@@ -12,18 +12,74 @@ type AdvancedFiltersProps = {
   maxDistance?: string;
   availability?: string;
   status?: string;
+  instant?: boolean;
+  onApply?: (filters: {
+    service?: string;
+    sort?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    minRating?: string;
+    maxDistance?: string;
+    availability?: string;
+    status?: string;
+  }) => void;
 };
 
 export function AdvancedFilters(props: AdvancedFiltersProps) {
+  if (props.instant && props.onApply) {
+    return <InstantFilters {...props} onApply={props.onApply} />;
+  }
+
   return (
     <form method="get" className="card space-y-5 p-5">
+      <FilterFields {...props} />
+      <button type="submit" className="btn-primary">
+        Apply filters
+      </button>
+    </form>
+  );
+}
+
+function InstantFilters({
+  onApply,
+  ...props
+}: AdvancedFiltersProps & {
+  onApply: NonNullable<AdvancedFiltersProps["onApply"]>;
+}) {
+  function emit(form: HTMLFormElement) {
+    const fd = new FormData(form);
+    onApply({
+      service: (fd.get("service") as string) || undefined,
+      sort: (fd.get("sort") as string) || "rating",
+      minPrice: (fd.get("minPrice") as string) || undefined,
+      maxPrice: (fd.get("maxPrice") as string) || undefined,
+      minRating: (fd.get("minRating") as string) || undefined,
+      maxDistance: (fd.get("maxDistance") as string) || undefined,
+      availability: (fd.get("availability") as string) || undefined,
+      status: (fd.get("status") as string) || undefined,
+    });
+  }
+
+  return (
+    <form
+      className="card space-y-5 p-5"
+      onChange={(e) => emit(e.currentTarget)}
+    >
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-gray-900">Filters</h2>
         <a href="/customer/dashboard" className="link-brand text-xs">
           Clear all
         </a>
       </div>
+      <FilterFields {...props} />
+      <p className="text-xs text-gray-500">Filters apply instantly as you change them.</p>
+    </form>
+  );
+}
 
+function FilterFields(props: AdvancedFiltersProps) {
+  return (
+    <>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label htmlFor="service" className="mb-1 block text-sm font-medium text-gray-700">
@@ -44,6 +100,7 @@ export function AdvancedFilters(props: AdvancedFiltersProps) {
           <select id="sort" name="sort" defaultValue={props.sort} className="input-field">
             <option value="rating">Top Rated</option>
             <option value="price">Lowest Price</option>
+            <option value="distance">Closest</option>
           </select>
         </div>
 
@@ -85,19 +142,21 @@ export function AdvancedFilters(props: AdvancedFiltersProps) {
           <label htmlFor="status" className="mb-1 block text-sm font-medium text-gray-700">
             Verification
           </label>
-          <select id="status" name="status" defaultValue={props.status ?? ""} className="input-field">
-            <option value="">All providers</option>
+          <select id="status" name="status" defaultValue={props.status ?? "verified"} className="input-field">
             <option value="verified">Verified only</option>
+            <option value="all">All providers</option>
             <option value="pending">Pending review</option>
           </select>
         </div>
 
-        <div>
-          <label htmlFor="q" className="mb-1 block text-sm font-medium text-gray-700">
-            Keywords
-          </label>
-          <input id="q" type="search" name="q" defaultValue={props.q ?? ""} placeholder="Location, keywords..." className="input-field" />
-        </div>
+        {!props.instant && (
+          <div>
+            <label htmlFor="q" className="mb-1 block text-sm font-medium text-gray-700">
+              Keywords
+            </label>
+            <input id="q" type="search" name="q" defaultValue={props.q ?? ""} placeholder="Location, keywords..." className="input-field" />
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -130,10 +189,6 @@ export function AdvancedFilters(props: AdvancedFiltersProps) {
           />
         </div>
       </div>
-
-      <button type="submit" className="btn-primary">
-        Apply filters
-      </button>
-    </form>
+    </>
   );
 }
