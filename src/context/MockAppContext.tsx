@@ -55,6 +55,7 @@ import type {
 } from "@/lib/mock/types";
 import {
   MOCK_DB_KEY,
+  MOCK_SESSION_COOKIE,
   MOCK_SESSION_KEY,
 } from "@/lib/mock/types";
 import { DEMO_PASSWORD } from "@/lib/demo/constants";
@@ -205,11 +206,23 @@ function loadSession(): MockSession | null {
   }
 }
 
+function syncSessionCookie(active: boolean) {
+  if (typeof document === "undefined") return;
+  const maxAge = 60 * 60 * 24 * 7;
+  if (active) {
+    document.cookie = `${MOCK_SESSION_COOKIE}=1; path=/; max-age=${maxAge}; SameSite=Lax`;
+  } else {
+    document.cookie = `${MOCK_SESSION_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+  }
+}
+
 function saveSession(session: MockSession | null) {
   if (session) {
     localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(session));
+    syncSessionCookie(true);
   } else {
     localStorage.removeItem(MOCK_SESSION_KEY);
+    syncSessionCookie(false);
   }
 }
 
@@ -395,6 +408,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setDb(stored);
       setSession(nextSession);
+      syncSessionCookie(Boolean(nextSession));
       setFavoriteIds(loadFavoriteIds());
       setReady(true);
     }

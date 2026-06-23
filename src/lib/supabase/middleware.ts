@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { MOCK_SESSION_COOKIE } from "@/lib/mock/types";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -30,8 +31,15 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  const mockDemoAuth = request.cookies.get(MOCK_SESSION_COOKIE)?.value === "1";
 
-  if (!user && (pathname.startsWith("/customer") || pathname.startsWith("/provider/dashboard") || pathname.startsWith("/admin"))) {
+  if (
+    !user &&
+    !mockDemoAuth &&
+    (pathname.startsWith("/customer") ||
+      pathname.startsWith("/provider/dashboard") ||
+      pathname.startsWith("/admin"))
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", pathname);

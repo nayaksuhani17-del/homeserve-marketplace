@@ -31,10 +31,11 @@ const DEMO_ACCOUNTS = [
 
 export function DemoSwitcher() {
   const router = useRouter();
-  const { demoLogin, loading } = useMockApp();
+  const { demoLogin, loading, ready } = useMockApp();
   const [busy, setBusy] = useState(false);
 
   async function switchAccount(role: "customer" | "provider" | "admin") {
+    if (!ready) return;
     setBusy(true);
     const result = await demoLogin(role);
     if (result.redirect) {
@@ -48,7 +49,7 @@ export function DemoSwitcher() {
     <div className="flex items-center gap-2">
       <span className="hidden text-xs text-green-700 sm:inline">Demo:</span>
       <select
-        disabled={loading || busy}
+        disabled={!ready || loading || busy}
         defaultValue=""
         onChange={(e) => {
           const role = e.target.value as "customer" | "provider" | "admin";
@@ -70,13 +71,18 @@ export function DemoSwitcher() {
 
 export function HomeDemoButtons() {
   const router = useRouter();
-  const { demoLogin, loading, user } = useMockApp();
+  const { demoLogin, loading, ready, user } = useMockApp();
   const [active, setActive] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function enterAs(role: "customer" | "provider" | "admin") {
+    if (!ready) return;
     setActive(role);
+    setError(null);
     const result = await demoLogin(role, DEMO_ROLE_REDIRECT[role]);
-    if (result.redirect) {
+    if (result.error) {
+      setError(result.error);
+    } else if (result.redirect) {
       router.push(result.redirect);
       router.refresh();
     }
@@ -95,12 +101,15 @@ export function HomeDemoButtons() {
       {!user && (
         <p className="text-sm font-medium text-gray-700">Try the live demo — no signup required</p>
       )}
+      {error && (
+        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      )}
       <div className={`grid gap-3 sm:grid-cols-3 ${user ? "mt-2" : "mt-3"}`}>
         {DEMO_ACCOUNTS.map((account) => (
           <button
             key={account.role}
             type="button"
-            disabled={loading || active !== null}
+            disabled={!ready || loading || active !== null}
             onClick={() => enterAs(account.role)}
             className={`card card-hover group flex flex-col items-start bg-white p-4 text-left transition-all disabled:opacity-60 ${
               user?.role === account.role ? "ring-2 ring-green-500" : ""
@@ -122,11 +131,12 @@ export function HomeDemoButtons() {
 
 export function DemoLoginButtons({ redirectTo }: { redirectTo?: string }) {
   const router = useRouter();
-  const { demoLogin, loading } = useMockApp();
+  const { demoLogin, loading, ready } = useMockApp();
   const [active, setActive] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function loginAs(role: "customer" | "provider" | "admin") {
+    if (!ready) return;
     setActive(role);
     setError(null);
     const result = await demoLogin(role, redirectTo ?? DEMO_ROLE_REDIRECT[role]);
@@ -155,11 +165,15 @@ export function DemoLoginButtons({ redirectTo }: { redirectTo?: string }) {
           <button
             key={account.role}
             type="button"
-            disabled={loading || active !== null}
+            disabled={!ready || loading || active !== null}
             onClick={() => loginAs(account.role)}
             className="rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-green-900 shadow-sm ring-1 ring-green-200 transition-all duration-200 hover:bg-green-100 disabled:opacity-50"
           >
-            {active === account.role ? "Signing in…" : account.label}
+            {!ready
+              ? "Loading demo…"
+              : active === account.role
+                ? "Signing in…"
+                : account.label}
           </button>
         ))}
       </div>

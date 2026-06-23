@@ -100,6 +100,18 @@ body {
   .page-enter {
     animation: pageEnter 0.3s ease-out;
   }
+
+  .ai-panel-collapsed {
+    @apply rounded-3xl border border-green-200/80 bg-gradient-to-br from-[#DCFCE7] to-green-50 shadow-lg transition-all duration-300 hover:border-green-300 hover:shadow-xl;
+  }
+
+  .ai-panel-expanded {
+    @apply overflow-hidden rounded-3xl border border-green-200/80 bg-white shadow-xl ring-1 ring-green-100/50;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.35s ease-out;
+  }
 }
 
 @keyframes fadeIn {
@@ -115,4 +127,9 @@ body {
 @keyframes pageEnter {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }

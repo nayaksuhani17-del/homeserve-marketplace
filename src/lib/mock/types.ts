@@ -153,6 +153,8 @@ export type ProviderFilters = {
 
 export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
+/** Cookie flag so middleware allows mock-authenticated demo routes. */
+export const MOCK_SESSION_COOKIE = "homeserve-mock-auth";
 export const MOCK_DB_VERSION = 11;
 
 export type SystemEvent = {

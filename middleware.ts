@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { DEMO_MODE } from "@/lib/demo/mode";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { updateSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured() || DEMO_MODE) {
     return NextResponse.next();
   }
   return updateSession(request);

@@ -1,7 +1,8 @@
 import type { PricingType } from "./pricing";
 import { estimateBookingCost } from "./pricing";
 
-const URGENCY_PATTERN = /\b(asap|urgent|urgently|emergency|immediately|right now|today)\b/i;
+const URGENCY_PATTERN =
+  /\b(asap|urgent|urgently|emergency|immediately|right away|right now|same day|today|now)\b/i;
 
 export function detectUrgency(text: string): boolean {
   return URGENCY_PATTERN.test(text);
