@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Modal } from "./Modal";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import {
@@ -24,30 +24,32 @@ type QuoteModalProps = {
   defaultService?: string;
 };
 
-export function QuoteModal({
+export function QuoteModal(props: QuoteModalProps) {
+  if (!props.open) return null;
+  return (
+    <QuoteModalInner
+      key={`${props.providerName}-${props.defaultService ?? ""}-${props.profile.services.join(",")}`}
+      {...props}
+    />
+  );
+}
+
+function QuoteModalInner({
   open,
   onClose,
   providerName,
   profile,
   defaultService,
 }: QuoteModalProps) {
-  const [service, setService] = useState(defaultService || profile.services[0] || SERVICE_CATEGORIES[0]);
+  const [service, setService] = useState(
+    defaultService || profile.services[0] || SERVICE_CATEGORIES[0]
+  );
   const [description, setDescription] = useState("");
   const [jobSize, setJobSize] = useState<JobSize>("medium");
   const [urgency, setUrgency] = useState<Urgency>("normal");
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    if (!open) return;
-    setService(defaultService || profile.services[0] || SERVICE_CATEGORIES[0]);
-    setDescription("");
-    setJobSize("medium");
-    setUrgency("normal");
-    setResult(null);
-    setAnalyzing(false);
-  }, [open, defaultService, profile.services]);
 
   function handleClose() {
     setResult(null);

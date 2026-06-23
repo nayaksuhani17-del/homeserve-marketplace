@@ -206,7 +206,10 @@ export async function upsertProviderProfile(formData: FormData) {
 
   const services = formData.getAll("services") as string[];
   const pricingType = (formData.get("pricing_type") as "hourly" | "fixed" | "estimate") || "hourly";
-  const price = Number(formData.get("price") ?? formData.get("hourly_rate"));
+  const price = Number(
+    formData.get(pricingType === "hourly" ? "hourly_rate" : "price") ??
+      formData.get("hourly_rate")
+  );
   const location = formData.get("location") as string;
   const description = formData.get("description") as string;
   const availability = formData.get("availability") as string;

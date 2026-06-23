@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { StarRating } from "./StarRating";
 import { RecommendationBadge } from "./RecommendationBadge";
 import type { ProviderCardData } from "@/lib/providers";
@@ -20,11 +21,11 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
     >
       <div className="flex gap-3">
         {provider.avatarUrl ? (
-          <img
+          <Image
             src={provider.avatarUrl}
             alt=""
-            loading="lazy"
-            decoding="async"
+            width={40}
+            height={40}
             className="h-10 w-10 rounded-full object-cover ring-2 ring-white"
           />
         ) : (

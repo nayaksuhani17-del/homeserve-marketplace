@@ -65,6 +65,7 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     responseTimeMins: Number(p.response_time_mins ?? 60),
     responseSpeed: deriveResponseSpeed(Number(p.response_time_mins ?? 60)),
     reviewCount: Number(p.review_count ?? 0),
+    blockedSlots: [],
   };
 }
 
@@ -146,6 +147,8 @@ export function buildInitialDatabase(): MockDatabase {
     bookings,
     reviews,
     chatMessages: [],
+    notifications: [],
+    reports: [],
   };
 }
 
@@ -197,6 +200,7 @@ export function newGuestProvider(user: MockUser): MockProvider {
     responseTimeMins: 30,
     responseSpeed: "fast",
     reviewCount: 0,
+    blockedSlots: [],
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ProviderProfileClient } from "@/components/ProviderProfileClient";
@@ -10,17 +10,16 @@ import { mockProviderToLegacy } from "@/lib/mock/operations";
 export function ProviderProfilePageClient({ providerId }: { providerId: string }) {
   const { getProvider, getProviderReviews, user, ready, trackProviderView } = useMockApp();
   const searchParams = useSearchParams();
-  const [autoHire, setAutoHire] = useState(false);
 
   useEffect(() => {
     if (providerId && ready) trackProviderView(providerId);
   }, [providerId, ready, trackProviderView]);
 
-  useEffect(() => {
-    if (searchParams.get("hire") === "1" && user) {
-      setAutoHire(true);
-    }
-  }, [searchParams, user]);
+  const autoOpenHire = Boolean(
+    user &&
+      (searchParams.get("hire") === "1" || searchParams.get("rebook") === "1")
+  );
+  const quickRebook = searchParams.get("quick") === "1";
 
   if (!ready) {
     return (
@@ -57,7 +56,8 @@ export function ProviderProfilePageClient({ providerId }: { providerId: string }
           reviews={reviews}
           defaultService={defaultService}
           isLoggedIn={!!user}
-          autoOpenHire={autoHire}
+          autoOpenHire={autoOpenHire}
+          quickRebook={quickRebook}
         />
       </div>
     </div>

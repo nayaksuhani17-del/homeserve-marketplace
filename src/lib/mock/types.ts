@@ -3,9 +3,16 @@ import type { ServicePackage } from "@/lib/quotes";
 
 export type MockRole = "admin" | "customer" | "provider";
 
-export type BookingStatus = "pending" | "confirmed" | "declined" | "completed";
-export type PaymentStatus = "none" | "authorized" | "released";
+export type BookingStatus =
+  | "pending"
+  | "confirmed"
+  | "declined"
+  | "completed"
+  | "cancelled";
+
+export type PaymentStatus = "none" | "authorized" | "released" | "refunded";
 export type ResponseSpeed = "fast" | "medium" | "slow";
+export type ReportStatus = "open" | "resolved";
 
 export type MockUser = {
   id: string;
@@ -44,6 +51,8 @@ export type MockProvider = {
   responseTimeMins: number;
   responseSpeed: ResponseSpeed;
   reviewCount: number;
+  /** `${date}:${time}` slots the provider has blocked */
+  blockedSlots: string[];
 };
 
 export type MockBooking = {
@@ -62,6 +71,8 @@ export type MockBooking = {
   createdAt: string;
   respondedAt?: string;
   completedAt?: string;
+  cancelledAt?: string;
+  cancelledBy?: "customer" | "provider" | "admin";
 };
 
 export type MockReview = {
@@ -84,6 +95,30 @@ export type MockChatMessage = {
   createdAt: string;
 };
 
+export type MockNotification = {
+  id: string;
+  userId: string;
+  type: "booking" | "payment" | "message" | "system" | "report";
+  title: string;
+  message: string;
+  read: boolean;
+  href?: string;
+  createdAt: string;
+};
+
+export type MockReport = {
+  id: string;
+  reporterId: string;
+  reporterName: string;
+  providerId: string;
+  providerName: string;
+  bookingId?: string;
+  reason: string;
+  details: string;
+  status: ReportStatus;
+  createdAt: string;
+};
+
 export type MockDatabase = {
   version: number;
   users: MockUser[];
@@ -91,6 +126,8 @@ export type MockDatabase = {
   bookings: MockBooking[];
   reviews: MockReview[];
   chatMessages: MockChatMessage[];
+  notifications: MockNotification[];
+  reports: MockReport[];
 };
 
 export type MockSession = {
@@ -112,11 +149,34 @@ export type ProviderFilters = {
 
 export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
-export const MOCK_DB_VERSION = 4;
+export const MOCK_DB_VERSION = 5;
 
 export type SystemEvent = {
   id: string;
-  type: "booking_accepted" | "booking_declined" | "booking_created" | "job_completed" | "payment";
+  type:
+    | "booking_accepted"
+    | "booking_declined"
+    | "booking_created"
+    | "booking_cancelled"
+    | "job_completed"
+    | "payment"
+    | "report";
   message: string;
   at: string;
+};
+
+export type MarketplaceAnalytics = {
+  totalBookings: number;
+  pendingBookings: number;
+  confirmedBookings: number;
+  completedBookings: number;
+  cancelledBookings: number;
+  declinedBookings: number;
+  acceptanceRate: number;
+  completionRate: number;
+  cancellationRate: number;
+  estimatedGmv: number;
+  avgBookingValue: number;
+  openReports: number;
+  bookingsLast7Days: number;
 };

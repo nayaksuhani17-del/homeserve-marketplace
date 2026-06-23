@@ -7,14 +7,23 @@ import { StatCard } from "@/components/StatCard";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { BookingChat } from "@/components/BookingChat";
+import { ProviderScheduleManager } from "@/components/ProviderScheduleManager";
 import { useMockApp } from "@/context/MockAppContext";
 import { useToast } from "@/components/Toast";
 import { getComparablePrice } from "@/lib/pricing";
 
 export function ProviderDashboardClient() {
   const router = useRouter();
-  const { user, ready, loading, getProviderForUser, getBookingsForProvider, completeBooking } =
-    useMockApp();
+  const {
+    user,
+    ready,
+    loading,
+    getProviderForUser,
+    getBookingsForProvider,
+    completeBooking,
+    respondToBooking,
+    cancelBooking,
+  } = useMockApp();
   const { toast } = useToast();
   const [, startTransition] = useTransition();
 
@@ -60,6 +69,25 @@ export function ProviderDashboardClient() {
         return;
       }
       toast("Job marked complete — payment released", "success");
+    });
+  }
+
+  function handleRespond(bookingId: string, accepted: boolean) {
+    startTransition(async () => {
+      const result = await respondToBooking(bookingId, accepted);
+      if (result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      toast(accepted ? "Booking accepted" : "Booking declined", accepted ? "success" : "info");
+    });
+  }
+
+  function handleCancel(bookingId: string) {
+    startTransition(async () => {
+      const result = await cancelBooking(bookingId);
+      if (result.error) toast(result.error, "error");
+      else toast("Booking cancelled for customer", "success");
     });
   }
 
@@ -114,6 +142,8 @@ export function ProviderDashboardClient() {
               availableTomorrow={provider.availableTomorrow}
             />
           </div>
+
+          <ProviderScheduleManager />
         </>
       ) : (
         <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -172,16 +202,48 @@ export function ProviderDashboardClient() {
                       />
                     </div>
                   </div>
-                  {booking.status === "confirmed" && (
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleComplete(booking.id)}
-                      className="btn-primary shrink-0 px-4 py-2 text-sm disabled:opacity-60"
-                    >
-                      Mark job complete
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {booking.status === "pending" && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleRespond(booking.id, true)}
+                          className="btn-primary px-3 py-1.5 text-sm disabled:opacity-60"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleRespond(booking.id, false)}
+                          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-60"
+                        >
+                          Decline
+                        </button>
+                      </>
+                    )}
+                    {booking.status === "confirmed" && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleComplete(booking.id)}
+                          className="btn-primary shrink-0 px-4 py-2 text-sm disabled:opacity-60"
+                        >
+                          Mark job complete
+                        </button>
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleCancel(booking.id)}
+                          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-60"
+                        >
+                          Cancel job
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {(booking.status === "confirmed" || booking.status === "completed") && (

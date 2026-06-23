@@ -10,11 +10,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { normalizeMockDatabase } from "@/lib/mock/normalize";
 import { buildInitialDatabase, newGuestProvider, newGuestUser, newId } from "@/lib/mock/seed";
 import {
   addReviewRecord,
+  addNotificationRecord,
   approveProviderRecord,
   banUserRecord,
+  cancelBookingRecord,
   completeBookingRecord,
   createBookingRecord,
   filterMockProviders,
@@ -22,16 +25,24 @@ import {
   getReviewsForProvider,
   getStats,
   mockProviderToLegacy,
+  markNotificationsReadRecord,
   registerUserRecord,
   resolveBookingRecord,
+  resolveReportRecord,
   addChatMessageRecord,
   removeReviewRecord,
   simulateDelay,
+  submitReportRecord,
+  toggleProviderBlockedSlotRecord,
   updateProviderRecord,
   validateReview,
 } from "@/lib/mock/operations";
+import { getMarketplaceAnalytics } from "@/lib/mock/analytics";
 import type {
+  MarketplaceAnalytics,
+  MockBooking,
   MockDatabase,
+  MockNotification,
   MockProvider,
   MockSession,
   MockUser,
@@ -52,8 +63,10 @@ import { parseAssistantContext } from "@/lib/ai/parse-intent";
 import { resolveIntentFast } from "@/lib/ai/intent-fast";
 import {
   generateProviderChatReply,
+  getAvailabilityHint as getAvailabilityHintForProvider,
   getAvailableSlots as getAvailableSlotsForProvider,
   getChatReplyDelayMs,
+  getNextAvailableSlot,
   getResponseDelayMs,
   getResponseSpeed,
   shouldAcceptBooking,
@@ -96,6 +109,25 @@ type MockAppContextValue = {
   sendChatMessage: (bookingId: string, text: string) => Promise<{ error?: string }>;
   getChatMessages: (bookingId: string) => MockDatabase["chatMessages"];
   removeReview: (reviewId: string) => Promise<void>;
+  cancelBooking: (bookingId: string) => Promise<{ error?: string }>;
+  respondToBooking: (
+    bookingId: string,
+    accepted: boolean
+  ) => Promise<{ error?: string }>;
+  reportProvider: (input: {
+    providerId: string;
+    bookingId?: string;
+    reason: string;
+    details: string;
+  }) => Promise<{ error?: string }>;
+  resolveReport: (reportId: string) => Promise<void>;
+  getNotifications: () => MockNotification[];
+  unreadNotificationCount: number;
+  markNotificationsRead: (ids?: string[]) => void;
+  getAnalytics: () => MarketplaceAnalytics;
+  toggleBlockedSlot: (date: string, time: string) => Promise<{ error?: string }>;
+  getAvailabilityHint: (providerId: string) => string;
+  getRebookPrefill: (providerId: string) => Partial<MockBooking> | null;
   systemEvents: SystemEvent[];
   addReview: (input: {
     providerId: string;
@@ -155,14 +187,14 @@ function loadDb(): MockDatabase | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as MockDatabase;
     if (parsed.version !== MOCK_DB_VERSION) return null;
-    return parsed;
+    return normalizeMockDatabase(parsed);
   } catch {
     return null;
   }
 }
 
 function saveDb(db: MockDatabase) {
-  localStorage.setItem(MOCK_DB_KEY, JSON.stringify(db));
+  localStorage.setItem(MOCK_DB_KEY, JSON.stringify(normalizeMockDatabase(db)));
 }
 
 function loadSession(): MockSession | null {
@@ -199,6 +231,46 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const responseTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const resumedPending = useRef(new Set<string>());
 
+  const clearScheduledResponse = useCallback((bookingId: string) => {
+    const existing = responseTimeouts.current.get(bookingId);
+    if (existing) {
+      clearTimeout(existing);
+      responseTimeouts.current.delete(bookingId);
+    }
+  }, []);
+
+  const appendNotification = useCallback(
+    (
+      sourceDb: MockDatabase,
+      userId: string,
+      notification: Omit<MockNotification, "id" | "userId" | "read" | "createdAt">
+    ): MockDatabase => {
+      return addNotificationRecord(sourceDb, {
+        id: newId("notif"),
+        userId,
+        ...notification,
+      });
+    },
+    []
+  );
+
+  const notifyBookingParties = useCallback(
+    (
+      sourceDb: MockDatabase,
+      booking: MockBooking,
+      customerPayload: Omit<MockNotification, "id" | "userId" | "read" | "createdAt">,
+      providerUserId?: string,
+      providerPayload?: Omit<MockNotification, "id" | "userId" | "read" | "createdAt">
+    ): MockDatabase => {
+      let next = appendNotification(sourceDb, booking.customerId, customerPayload);
+      if (providerUserId && providerPayload) {
+        next = appendNotification(next, providerUserId, providerPayload);
+      }
+      return next;
+    },
+    [appendNotification]
+  );
+
   const emitSystemEvent = useCallback((event: Omit<SystemEvent, "id" | "at">) => {
     const full: SystemEvent = {
       ...event,
@@ -231,20 +303,50 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           if (!current || current.status !== "pending") return prev;
 
           const accepted = shouldAcceptBooking(bookingId);
-          const next = resolveBookingRecord(prev, bookingId, accepted);
-          saveDb(next);
+          let next = resolveBookingRecord(prev, bookingId, accepted);
+          const providerUser = prev.providers.find(
+            (p) => p.id === current.providerId
+          );
+          const providerAccount = providerUser
+            ? prev.users.find((u) => u.id === providerUser.userId)
+            : undefined;
 
           if (accepted) {
+            next = notifyBookingParties(
+              next,
+              { ...current, status: "confirmed", paymentStatus: "authorized" },
+              {
+                type: "booking",
+                title: "Booking confirmed",
+                message: `${current.providerName} accepted your ${current.service} request.`,
+                href: "/customer/dashboard",
+              },
+              providerAccount?.id,
+              {
+                type: "booking",
+                title: "Job confirmed",
+                message: `You accepted ${current.customerName}'s booking.`,
+                href: "/provider/dashboard",
+              }
+            );
             emitSystemEvent({
               type: "booking_accepted",
               message: `${current.providerName} just accepted a job`,
             });
           } else {
+            next = appendNotification(next, current.customerId, {
+              type: "booking",
+              title: "Booking declined",
+              message: `${current.providerName} couldn't take your ${current.service} request.`,
+              href: "/customer/dashboard",
+            });
             emitSystemEvent({
               type: "booking_declined",
               message: `${current.providerName} declined a booking request`,
             });
           }
+
+          saveDb(next);
 
           return next;
         });
@@ -252,15 +354,17 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
       responseTimeouts.current.set(bookingId, timeout);
     },
-    [emitSystemEvent]
+    [emitSystemEvent, appendNotification, notifyBookingParties]
   );
 
   useEffect(() => {
     let stored = loadDb();
     if (!stored) {
       stored = buildInitialDatabase();
-      saveDb(stored);
     }
+    saveDb(stored);
+    // Client-only hydration from localStorage (valid setState-in-effect use case)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap mock DB on mount
     setDb(stored);
     setSession(loadSession());
     setFavoriteIds(loadFavoriteIds());
@@ -280,15 +384,17 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   }, [ready, db, scheduleBookingResponse]);
 
   useEffect(() => {
+    const timeouts = responseTimeouts.current;
     return () => {
-      responseTimeouts.current.forEach((t) => clearTimeout(t));
-      responseTimeouts.current.clear();
+      timeouts.forEach((t) => clearTimeout(t));
+      timeouts.clear();
     };
   }, []);
 
   const persist = useCallback((next: MockDatabase) => {
-    setDb(next);
-    saveDb(next);
+    const normalized = normalizeMockDatabase(next);
+    setDb(normalized);
+    saveDb(normalized);
   }, []);
 
   const user = useMemo(() => {
@@ -438,9 +544,26 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: result.error };
       }
-      persist(result.db);
       resumedPending.current.add(id);
       scheduleBookingResponse(id, result.db);
+
+      const providerAccount = result.db.users.find((u) => u.id === provider.userId);
+      let next = appendNotification(result.db, user.id, {
+        type: "booking",
+        title: "Request sent",
+        message: `Waiting for ${provider.name} to respond to your ${input.service} request.`,
+        href: "/customer/dashboard",
+      });
+      if (providerAccount) {
+        next = appendNotification(next, providerAccount.id, {
+          type: "booking",
+          title: "New job request",
+          message: `${user.name} requested ${input.service} on ${input.date}.`,
+          href: "/provider/dashboard",
+        });
+      }
+      persist(next);
+
       emitSystemEvent({
         type: "booking_created",
         message: "New booking in your area",
@@ -448,7 +571,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { booking: result.db.bookings.find((b) => b.id === id) };
     },
-    [db, user, persist, scheduleBookingResponse, emitSystemEvent]
+    [db, user, persist, scheduleBookingResponse, emitSystemEvent, appendNotification]
   );
 
   const completeBooking = useCallback(
@@ -461,7 +584,13 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       }
       setLoading(true);
       await simulateDelay(500);
-      const next = completeBookingRecord(db, bookingId);
+      let next = completeBookingRecord(db, bookingId);
+      next = appendNotification(next, booking.customerId, {
+        type: "payment",
+        title: "Job complete",
+        message: `${booking.providerName} marked your ${booking.service} job complete. Payment released.`,
+        href: "/customer/dashboard",
+      });
       persist(next);
       emitSystemEvent({
         type: "job_completed",
@@ -474,7 +603,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return {};
     },
-    [db, user, persist, emitSystemEvent]
+    [db, user, persist, emitSystemEvent, appendNotification]
   );
 
   const getAvailableSlots = useCallback(
@@ -487,12 +616,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const getChatMessages = useCallback(
     (bookingId: string) =>
-      db?.chatMessages
+      (db?.chatMessages ?? [])
         .filter((m) => m.bookingId === bookingId)
         .sort(
           (a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        ) ?? [],
+        ),
     [db]
   );
 
@@ -514,7 +643,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
             : null;
       if (!senderRole) return { error: "You cannot message on this booking." };
 
-      let next = addChatMessageRecord(db, {
+      const next = addChatMessageRecord(db, {
         id: newId("chat"),
         bookingId,
         senderRole,
@@ -556,6 +685,283 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     },
     [db, persist]
+  );
+
+  const cancelBooking = useCallback(
+    async (bookingId: string) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      const booking = db.bookings.find((b) => b.id === bookingId);
+      if (!booking) return { error: "Booking not found." };
+
+      const provider = db.providers.find((p) => p.id === booking.providerId);
+      const isCustomer = user.id === booking.customerId;
+      const isProvider = provider?.userId === user.id;
+      const isAdmin = user.role === "admin";
+      if (!isCustomer && !isProvider && !isAdmin) {
+        return { error: "You cannot cancel this booking." };
+      }
+
+      setLoading(true);
+      await simulateDelay(500);
+      clearScheduledResponse(bookingId);
+
+      const cancelledBy = isAdmin ? "admin" : isProvider ? "provider" : "customer";
+      const result = cancelBookingRecord(db, bookingId, cancelledBy);
+      if (result.error) {
+        setLoading(false);
+        return { error: result.error };
+      }
+
+      let next = result.db;
+      const refundNote =
+        booking.paymentStatus === "authorized" ? " Payment refunded." : "";
+      next = appendNotification(next, booking.customerId, {
+        type: "booking",
+        title: "Booking cancelled",
+        message: `Your ${booking.service} booking on ${booking.date} was cancelled.${refundNote}`,
+        href: "/customer/dashboard",
+      });
+      if (provider) {
+        next = appendNotification(next, provider.userId, {
+          type: "booking",
+          title: "Booking cancelled",
+          message: `${booking.customerName}'s ${booking.service} booking was cancelled.`,
+          href: "/provider/dashboard",
+        });
+      }
+
+      persist(next);
+      emitSystemEvent({
+        type: "booking_cancelled",
+        message: `${booking.service} booking cancelled`,
+      });
+      setLoading(false);
+      return {};
+    },
+    [db, user, persist, clearScheduledResponse, appendNotification, emitSystemEvent]
+  );
+
+  const respondToBooking = useCallback(
+    async (bookingId: string, accepted: boolean) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      const booking = db.bookings.find((b) => b.id === bookingId);
+      if (!booking) return { error: "Booking not found." };
+      if (booking.status !== "pending") {
+        return { error: "This request was already handled." };
+      }
+
+      const provider = db.providers.find((p) => p.id === booking.providerId);
+      if (!provider || provider.userId !== user.id) {
+        return { error: "Only the assigned provider can respond." };
+      }
+
+      setLoading(true);
+      await simulateDelay(400);
+      clearScheduledResponse(bookingId);
+
+      let next = resolveBookingRecord(db, bookingId, accepted);
+      if (accepted) {
+        next = notifyBookingParties(
+          next,
+          { ...booking, status: "confirmed", paymentStatus: "authorized" },
+          {
+            type: "booking",
+            title: "Booking confirmed",
+            message: `${provider.name} accepted your ${booking.service} request.`,
+            href: "/customer/dashboard",
+          },
+          user.id,
+          {
+            type: "booking",
+            title: "You accepted a job",
+            message: `${booking.customerName}'s ${booking.service} booking is confirmed.`,
+            href: "/provider/dashboard",
+          }
+        );
+        emitSystemEvent({
+          type: "booking_accepted",
+          message: `${provider.name} accepted a booking`,
+        });
+      } else {
+        next = appendNotification(next, booking.customerId, {
+          type: "booking",
+          title: "Booking declined",
+          message: `${provider.name} declined your ${booking.service} request.`,
+          href: "/customer/dashboard",
+        });
+        emitSystemEvent({
+          type: "booking_declined",
+          message: `${provider.name} declined a request`,
+        });
+      }
+
+      persist(next);
+      setLoading(false);
+      return {};
+    },
+    [
+      db,
+      user,
+      persist,
+      clearScheduledResponse,
+      notifyBookingParties,
+      appendNotification,
+      emitSystemEvent,
+    ]
+  );
+
+  const reportProvider = useCallback(
+    async (input: {
+      providerId: string;
+      bookingId?: string;
+      reason: string;
+      details: string;
+    }) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      if (!input.reason.trim()) return { error: "Please select a reason." };
+
+      setLoading(true);
+      await simulateDelay(500);
+      const reportId = newId("report");
+      const result = submitReportRecord(
+        db,
+        { ...input, reporterId: user.id },
+        reportId
+      );
+      if (result.error) {
+        setLoading(false);
+        return { error: result.error };
+      }
+
+      const provider = db.providers.find((p) => p.id === input.providerId);
+      let next = result.db;
+      const admin = db.users.find((u) => u.role === "admin");
+      if (admin) {
+        next = appendNotification(next, admin.id, {
+          type: "report",
+          title: "New safety report",
+          message: `${user.name} reported ${provider?.name ?? "a provider"}: ${input.reason}`,
+          href: "/admin",
+        });
+      }
+      persist(next);
+      emitSystemEvent({
+        type: "report",
+        message: "New provider report submitted",
+      });
+      setLoading(false);
+      return {};
+    },
+    [db, user, persist, appendNotification, emitSystemEvent]
+  );
+
+  const resolveReport = useCallback(
+    async (reportId: string) => {
+      if (!db) return;
+      setLoading(true);
+      await simulateDelay(300);
+      persist(resolveReportRecord(db, reportId));
+      setLoading(false);
+    },
+    [db, persist]
+  );
+
+  const getNotifications = useCallback(() => {
+    if (!db || !user) return [];
+    return (db.notifications ?? [])
+      .filter((n) => n.userId === user.id)
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+  }, [db, user]);
+
+  const unreadNotificationCount = useMemo(() => {
+    if (!db || !user) return 0;
+    return (db.notifications ?? []).filter((n) => n.userId === user.id && !n.read)
+      .length;
+  }, [db, user]);
+
+  const markNotificationsRead = useCallback(
+    (ids?: string[]) => {
+      if (!db || !user) return;
+      persist(markNotificationsReadRecord(db, user.id, ids));
+    },
+    [db, user, persist]
+  );
+
+  const getAnalytics = useCallback(() => {
+    if (!db) {
+      return {
+        totalBookings: 0,
+        pendingBookings: 0,
+        confirmedBookings: 0,
+        completedBookings: 0,
+        cancelledBookings: 0,
+        declinedBookings: 0,
+        acceptanceRate: 0,
+        completionRate: 0,
+        cancellationRate: 0,
+        estimatedGmv: 0,
+        avgBookingValue: 0,
+        openReports: 0,
+        bookingsLast7Days: 0,
+      };
+    }
+    return getMarketplaceAnalytics(db);
+  }, [db]);
+
+  const toggleBlockedSlot = useCallback(
+    async (date: string, time: string) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      setLoading(true);
+      await simulateDelay(300);
+      const result = toggleProviderBlockedSlotRecord(db, user.id, date, time);
+      if (result.error) {
+        setLoading(false);
+        return { error: result.error };
+      }
+      persist(result.db);
+      setLoading(false);
+      return {};
+    },
+    [db, user, persist]
+  );
+
+  const getAvailabilityHint = useCallback(
+    (providerId: string) => {
+      if (!db) return "Loading availability…";
+      const provider = db.providers.find((p) => p.id === providerId);
+      if (!provider) return "Provider not found.";
+      return getAvailabilityHintForProvider(db, provider);
+    },
+    [db]
+  );
+
+  const getRebookPrefill = useCallback(
+    (providerId: string): Partial<MockBooking> | null => {
+      if (!db || !user) return null;
+      const past = db.bookings
+        .filter(
+          (b) =>
+            b.customerId === user.id &&
+            b.providerId === providerId &&
+            ["completed", "confirmed", "cancelled", "declined"].includes(b.status)
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0];
+      if (!past) return null;
+      const next = getNextAvailableSlot(db, providerId);
+      return {
+        service: past.service,
+        hours: past.hours,
+        date: next?.date,
+        time: next?.time,
+      };
+    },
+    [db, user]
   );
 
   const addReview = useCallback(
@@ -848,6 +1254,17 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     sendChatMessage,
     getChatMessages,
     removeReview,
+    cancelBooking,
+    respondToBooking,
+    reportProvider,
+    resolveReport,
+    getNotifications,
+    unreadNotificationCount,
+    markNotificationsRead,
+    getAnalytics,
+    toggleBlockedSlot,
+    getAvailabilityHint,
+    getRebookPrefill,
     systemEvents,
     addReview,
     updateProvider,

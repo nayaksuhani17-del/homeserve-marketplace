@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChatProviderCard } from "./ChatProviderCard";
 import { useMockApp } from "@/context/MockAppContext";
@@ -17,7 +17,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
   const [loading, setLoading] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [preview, setPreview] = useState<ReturnType<typeof toProviderCardData>[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const suggestions = useMemo(() => matchSearchSuggestions(query), [query]);
   const [showDropdown, setShowDropdown] = useState(false);
   const router = useRouter();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,12 +35,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
   }, []);
 
   useEffect(() => {
-    setSuggestions(matchSearchSuggestions(query));
-    if (!query.trim() || !ready) {
-      setPreview([]);
-      if (!query.trim()) setShowDropdown(false);
-      return;
-    }
+    if (!query.trim() || !ready) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -110,7 +105,10 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (!e.target.value.trim()) setShowDropdown(false);
+            }}
             onFocus={() => setShowDropdown(true)}
             placeholder={placeholder ?? 'Try "cheap electrician near me available today"'}
             className="input-field"
@@ -123,7 +121,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
         </button>
       </form>
 
-      {showDropdown && (suggestions.length > 0 || preview.length > 0) && (
+      {showDropdown && (suggestions.length > 0 || (query.trim() && preview.length > 0)) && (
         <div className="animate-slide-up absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
           {suggestions.length > 0 && !query.trim() && (
             <div className="border-b border-gray-100 p-2">
@@ -154,7 +152,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
               ))}
             </div>
           )}
-          {preview.length > 0 && (
+          {query.trim() && preview.length > 0 && (
             <>
               <p className="border-b border-gray-100 px-4 py-2 text-xs font-medium text-gray-500">
                 Top matches as you type

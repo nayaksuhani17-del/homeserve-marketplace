@@ -22,8 +22,10 @@ const EVENT_EMOJI: Record<SystemEvent["type"], string> = {
   booking_accepted: "✅",
   booking_declined: "❌",
   booking_created: "📅",
+  booking_cancelled: "🚫",
   job_completed: "🏁",
   payment: "💳",
+  report: "🛡️",
 };
 
 const NAMES = ["Sarah", "Mike", "Emily", "James", "Lisa", "Alex", "Priya", "Tom", "Nina", "David"];

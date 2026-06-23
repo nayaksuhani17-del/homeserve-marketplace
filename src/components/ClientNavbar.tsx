@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
 import { DemoSwitcher } from "@/components/DemoSwitcher";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export function ClientNavbar() {
   const { user, logout, ready } = useMockApp();
@@ -54,6 +55,7 @@ export function ClientNavbar() {
             </Link>
           )}
           <DemoSwitcher />
+          <NotificationBell />
           {ready && user ? (
             <button
               type="button"

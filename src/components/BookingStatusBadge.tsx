@@ -6,12 +6,14 @@ const STATUS_STYLES: Record<MockBooking["status"], string> = {
   confirmed: "bg-green-100 text-green-800",
   declined: "bg-red-100 text-red-700",
   completed: "bg-blue-100 text-blue-800",
+  cancelled: "bg-gray-200 text-gray-700",
 };
 
 const PAYMENT_STYLES: Record<MockBooking["paymentStatus"], string> = {
   none: "text-gray-500",
   authorized: "text-indigo-600",
   released: "text-green-600",
+  refunded: "text-orange-600",
 };
 
 type BookingStatusBadgeProps = {

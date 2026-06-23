@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   };
 
   const email = body.email?.trim().toLowerCase();
-  let demoUser = resolveDemoUser(email, body.role);
+  const demoUser = resolveDemoUser(email, body.role);
 
   if (!demoUser && email && !isSupabaseConfigured()) {
     const name =

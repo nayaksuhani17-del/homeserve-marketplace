@@ -64,7 +64,7 @@ export function useToast() {
   const ctx = useContext(ToastContext);
   if (!ctx) {
     return {
-      toast: (_message: string, _type?: ToastType) => {},
+      toast: () => {},
     };
   }
   return ctx;

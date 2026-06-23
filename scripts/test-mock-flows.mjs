@@ -1,11 +1,6 @@
 /**
  * Smoke test for mock database flows (run: node scripts/test-mock-flows.mjs)
  */
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-
-// Register ts paths won't work - use dynamic import after building or test pure logic
-// Test via compiled approach - run with tsx if available
 
 console.log("Testing mock flows...");
 

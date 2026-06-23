@@ -3,6 +3,7 @@
 import { useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { StatCard } from "@/components/StatCard";
+import { AdminAnalytics } from "@/components/AdminAnalytics";
 import { useMockApp } from "@/context/MockAppContext";
 import { useToast } from "@/components/Toast";
 import { formatProviderPrice } from "@/lib/pricing";
@@ -16,6 +17,7 @@ export function AdminPanelClient() {
     approveProvider,
     banUser,
     removeReview,
+    resolveReport,
     getStats,
     loading,
   } = useMockApp();
@@ -49,6 +51,7 @@ export function AdminPanelClient() {
   const customers = db.users.filter((u) => u.role === "customer");
   const providerUsers = db.users.filter((u) => u.role === "provider");
   const reviews = db.reviews.slice(0, 50);
+  const reports = (db.reports ?? []).slice(0, 50);
 
   function handleApprove(providerId: string, approved: boolean) {
     startTransition(async () => {
@@ -74,6 +77,13 @@ export function AdminPanelClient() {
     startTransition(async () => {
       await removeReview(reviewId);
       toast("Review removed — provider rating recalculated", "success");
+    });
+  }
+
+  function handleResolveReport(reportId: string) {
+    startTransition(async () => {
+      await resolveReport(reportId);
+      toast("Report resolved", "success");
     });
   }
 
@@ -110,6 +120,8 @@ export function AdminPanelClient() {
         <StatCard label="Pending approvals" value={stats.pendingProviders} accent="dark" />
         <StatCard label="Total bookings" value={stats.totalBookings} accent="light" />
       </div>
+
+      <AdminAnalytics />
 
       <section className="mt-10">
         <h2 className="text-xl font-bold text-gray-900">Providers</h2>
@@ -194,6 +206,64 @@ export function AdminPanelClient() {
                   </tr>
                 );
               })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-bold text-gray-900">Safety reports</h2>
+        <div className="card mt-4 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 font-medium">Reporter</th>
+                <th className="px-4 py-3 font-medium">Provider</th>
+                <th className="px-4 py-3 font-medium">Reason</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                    No reports yet
+                  </td>
+                </tr>
+              ) : (
+                reports.map((r) => (
+                  <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium">{r.reporterName}</td>
+                    <td className="px-4 py-3">{r.providerName}</td>
+                    <td className="max-w-xs truncate px-4 py-3 text-gray-600">
+                      {r.reason}
+                      {r.details ? ` — ${r.details}` : ""}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`tag-pill ${
+                          r.status === "open" ? "badge-pending" : "badge-verified"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.status === "open" && (
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleResolveReport(r.id)}
+                          className="rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-800 disabled:opacity-50"
+                        >
+                          Resolve
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

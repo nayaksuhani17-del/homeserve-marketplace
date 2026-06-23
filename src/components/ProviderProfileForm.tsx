@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition } from "react";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { PRICING_TYPE_LABELS } from "@/lib/pricing";
 import type { PricingType } from "@/lib/pricing";
@@ -23,6 +23,14 @@ type ProviderProfileFormProps = {
 };
 
 export function ProviderProfileForm({ defaultValues }: ProviderProfileFormProps) {
+  const formKey = defaultValues
+    ? `${defaultValues.location}-${defaultValues.price}-${defaultValues.services.join(",")}`
+    : "empty";
+
+  return <ProviderProfileFormInner key={formKey} defaultValues={defaultValues} />;
+}
+
+function ProviderProfileFormInner({ defaultValues }: ProviderProfileFormProps) {
   const { updateProvider } = useMockApp();
   const { toast } = useToast();
   const [services, setServices] = useState<string[]>(defaultValues?.services ?? []);
@@ -39,20 +47,6 @@ export function ProviderProfileForm({ defaultValues }: ProviderProfileFormProps)
   const [availableTomorrow, setAvailableTomorrow] = useState(defaultValues?.availableTomorrow ?? true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    if (!defaultValues) return;
-    setServices(defaultValues.services ?? []);
-    setPricingType(defaultValues.pricing_type ?? "hourly");
-    setPrice(defaultValues.price ?? 30);
-    setBasePrice(defaultValues.base_price ?? defaultValues.price ?? 35);
-    setHourlyRate(defaultValues.hourly_rate ?? defaultValues.price ?? 30);
-    setLocation(defaultValues.location ?? "");
-    setDescription(defaultValues.description ?? "");
-    setAvailability(defaultValues.availability ?? "Mon-Fri: 9am-5pm");
-    setAvailableToday(defaultValues.availableToday ?? true);
-    setAvailableTomorrow(defaultValues.availableTomorrow ?? true);
-  }, [defaultValues]);
 
   function toggleService(service: string) {
     setServices((prev) =>

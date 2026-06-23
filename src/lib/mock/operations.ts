@@ -9,7 +9,7 @@ import type {
 import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
 import { rankProviders } from "@/lib/providers";
 import { detectUrgency } from "@/lib/smart";
-import { isSlotTaken } from "./simulation";
+import { isSlotBlocked, isSlotTaken } from "./simulation";
 import type { ProviderWithUser } from "@/lib/types";
 
 export function simulateDelay(ms = 600): Promise<void> {
@@ -202,6 +202,13 @@ export function createBookingRecord(
     };
   }
 
+  if (input.time && isSlotBlocked(provider, input.date, input.time)) {
+    return {
+      db,
+      error: "This time slot is blocked by the provider. Please choose another slot.",
+    };
+  }
+
   const booking: MockBooking = {
     id: bookingId,
     customerId: customer.id,
@@ -308,7 +315,7 @@ export function addChatMessageRecord(
   return {
     ...db,
     chatMessages: [
-      ...db.chatMessages,
+      ...(db.chatMessages ?? []),
       { ...message, createdAt: new Date().toISOString() },
     ],
   };
@@ -396,6 +403,7 @@ export function updateProviderRecord(
       | "availability"
       | "availableToday"
       | "availableTomorrow"
+      | "blockedSlots"
     >
   >
 ): MockDatabase {
@@ -463,4 +471,149 @@ export function getReviewsForProvider(db: MockDatabase, providerId: string) {
       created_at: r.createdAt,
       users: { name: r.customerName },
     }));
+}
+
+export function cancelBookingRecord(
+  db: MockDatabase,
+  bookingId: string,
+  cancelledBy: "customer" | "provider" | "admin"
+): { db: MockDatabase; error?: string } {
+  const booking = db.bookings.find((b) => b.id === bookingId);
+  if (!booking) return { db, error: "Booking not found." };
+  if (["completed", "declined", "cancelled"].includes(booking.status)) {
+    return { db, error: "This booking cannot be cancelled." };
+  }
+
+  const now = new Date().toISOString();
+  const paymentStatus =
+    booking.paymentStatus === "authorized" ? "refunded" : booking.paymentStatus;
+
+  return {
+    db: {
+      ...db,
+      bookings: db.bookings.map((b) =>
+        b.id === bookingId
+          ? {
+              ...b,
+              status: "cancelled",
+              paymentStatus,
+              cancelledAt: now,
+              cancelledBy,
+            }
+          : b
+      ),
+    },
+  };
+}
+
+export function submitReportRecord(
+  db: MockDatabase,
+  input: {
+    reporterId: string;
+    providerId: string;
+    bookingId?: string;
+    reason: string;
+    details: string;
+  },
+  reportId: string
+): { db: MockDatabase; error?: string } {
+  const reporter = db.users.find((u) => u.id === input.reporterId);
+  const provider = db.providers.find((p) => p.id === input.providerId);
+  if (!reporter || !provider) return { db, error: "Could not submit report." };
+
+  const report = {
+    id: reportId,
+    reporterId: reporter.id,
+    reporterName: reporter.name,
+    providerId: provider.id,
+    providerName: provider.name,
+    bookingId: input.bookingId,
+    reason: input.reason,
+    details: input.details,
+    status: "open" as const,
+    createdAt: new Date().toISOString(),
+  };
+
+  return {
+    db: {
+      ...db,
+      reports: [report, ...(db.reports ?? [])],
+    },
+  };
+}
+
+export function resolveReportRecord(
+  db: MockDatabase,
+  reportId: string
+): MockDatabase {
+  return {
+    ...db,
+    reports: (db.reports ?? []).map((r) =>
+      r.id === reportId ? { ...r, status: "resolved" as const } : r
+    ),
+  };
+}
+
+export function addNotificationRecord(
+  db: MockDatabase,
+  notification: {
+    id: string;
+    userId: string;
+    type: "booking" | "payment" | "message" | "system" | "report";
+    title: string;
+    message: string;
+    href?: string;
+  }
+): MockDatabase {
+  return {
+    ...db,
+    notifications: [
+      {
+        ...notification,
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
+      ...(db.notifications ?? []),
+    ].slice(0, 200),
+  };
+}
+
+export function markNotificationsReadRecord(
+  db: MockDatabase,
+  userId: string,
+  notificationIds?: string[]
+): MockDatabase {
+  return {
+    ...db,
+    notifications: (db.notifications ?? []).map((n) => {
+      if (n.userId !== userId) return n;
+      if (notificationIds && !notificationIds.includes(n.id)) return n;
+      return { ...n, read: true };
+    }),
+  };
+}
+
+export function toggleProviderBlockedSlotRecord(
+  db: MockDatabase,
+  userId: string,
+  date: string,
+  time: string
+): { db: MockDatabase; error?: string } {
+  const provider = db.providers.find((p) => p.userId === userId);
+  if (!provider) return { db, error: "Provider profile not found." };
+
+  const key = `${date}:${time}`;
+  const blocked = provider.blockedSlots ?? [];
+  const nextBlocked = blocked.includes(key)
+    ? blocked.filter((s) => s !== key)
+    : [...blocked, key];
+
+  return {
+    db: {
+      ...db,
+      providers: db.providers.map((p) =>
+        p.userId === userId ? { ...p, blockedSlots: nextBlocked } : p
+      ),
+    },
+  };
 }

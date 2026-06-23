@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useMockApp } from "@/context/MockAppContext";
+import { CHAT_QUICK_PROMPTS } from "@/lib/mock/simulation";
 import type { MockBooking } from "@/lib/mock/types";
 
 type BookingChatProps = {
@@ -15,6 +16,7 @@ export function BookingChat({ booking }: BookingChatProps) {
   const [pending, startTransition] = useTransition();
   const [providerTyping, setProviderTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messages = getChatMessages(booking.id);
   const chatEnabled =
@@ -25,15 +27,10 @@ export function BookingChat({ booking }: BookingChatProps) {
   }, [messages.length, providerTyping]);
 
   useEffect(() => {
-    if (messages.length === 0) return;
-    const last = messages[messages.length - 1];
-    if (last?.senderRole === "customer") {
-      setProviderTyping(true);
-      const timer = setTimeout(() => setProviderTyping(false), 3500);
-      return () => clearTimeout(timer);
-    }
-    setProviderTyping(false);
-  }, [messages]);
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    };
+  }, []);
 
   if (!chatEnabled) {
     return (
@@ -55,6 +52,11 @@ export function BookingChat({ booking }: BookingChatProps) {
         return;
       }
       setText("");
+      if (user?.role === "customer") {
+        setProviderTyping(true);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = setTimeout(() => setProviderTyping(false), 3500);
+      }
     });
   }
 
@@ -108,6 +110,18 @@ export function BookingChat({ booking }: BookingChatProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="border-t border-gray-100 p-3">
+        <div className="mb-2 flex flex-wrap gap-1">
+          {CHAT_QUICK_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => setText(prompt)}
+              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-200"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
         <div className="flex gap-2">
           <input
             type="text"

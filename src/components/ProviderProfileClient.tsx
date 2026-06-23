@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { StarRating } from "./StarRating";
 import { TagBadge } from "./ChatProviderCard";
 import { HireModal } from "./HireModal";
@@ -12,6 +13,7 @@ import { FavoriteButton } from "./FavoriteButton";
 import { getViewerCount } from "@/lib/trust";
 import { getServiceMeta } from "@/lib/services";
 import { ReviewForm } from "./ReviewForm";
+import { ReportProviderModal } from "./ReportProviderModal";
 import { useMockApp } from "@/context/MockAppContext";
 import { computeProviderTags } from "@/lib/providers";
 import { formatProviderPrice, PRICING_TYPE_LABELS } from "@/lib/pricing";
@@ -53,6 +55,7 @@ type ProviderProfileClientProps = {
   defaultService: string;
   isLoggedIn: boolean;
   autoOpenHire?: boolean;
+  quickRebook?: boolean;
 };
 
 export function ProviderProfileClient({
@@ -61,16 +64,25 @@ export function ProviderProfileClient({
   defaultService,
   isLoggedIn,
   autoOpenHire,
+  quickRebook = false,
 }: ProviderProfileClientProps) {
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
-  const { user: sessionUser, db, getBookingsForCustomer } = useMockApp();
+  const [reportOpen, setReportOpen] = useState(false);
+  const [autoHireApplied, setAutoHireApplied] = useState(false);
+  const {
+    user: sessionUser,
+    db,
+    getBookingsForCustomer,
+    getRebookPrefill,
+    getAvailabilityHint,
+  } = useMockApp();
 
-  useEffect(() => {
-    if (autoOpenHire && isLoggedIn && provider.approved) {
-      setHireOpen(true);
-    }
-  }, [autoOpenHire, isLoggedIn, provider.approved]);
+  const shouldAutoOpenHire = autoOpenHire && isLoggedIn && provider.approved;
+  if (shouldAutoOpenHire && !autoHireApplied) {
+    setAutoHireApplied(true);
+    setHireOpen(true);
+  }
   const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
 
   const reviewableBooking =
@@ -82,6 +94,8 @@ export function ProviderProfileClient({
             !db?.reviews.some((r) => r.bookingId === b.id)
         )
       : undefined;
+  const rebookPrefill = getRebookPrefill(provider.id);
+  const availabilityHint = getAvailabilityHint(provider.id);
   const tags = computeProviderTags(provider as Parameters<typeof computeProviderTags>[0]);
   const reviewCount = provider.review_count ?? reviews.length;
   const responseLabel = formatResponseTime(provider.response_time_mins);
@@ -99,9 +113,11 @@ export function ProviderProfileClient({
         <div className="relative px-6 pb-8 sm:px-8">
           <div className="-mt-16 flex flex-col gap-4 sm:-mt-20 sm:flex-row sm:items-end sm:justify-between">
             {user?.avatar_url ? (
-              <img
+              <Image
                 src={user.avatar_url}
                 alt=""
+                width={144}
+                height={144}
                 className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-lg sm:h-36 sm:w-36"
               />
             ) : (
@@ -230,32 +246,48 @@ export function ProviderProfileClient({
           </div>
 
           {provider.approved ? (
-            <div className="mt-8 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setQuoteOpen(true)}
-                className="btn-secondary px-8 py-3 text-base"
-              >
-                Get Instant Quote
-              </button>
-              {isLoggedIn ? (
-                <button type="button" onClick={() => setHireOpen(true)} className="btn-primary px-8 py-3 text-base">
-                  Hire Now
-                </button>
-              ) : (
-                <Link
-                  href={`/login?redirect=/provider/${provider.id}?service=${encodeURIComponent(defaultService)}&hire=1`}
-                  className="btn-primary px-8 py-3 text-base"
+            <div className="mt-8">
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setQuoteOpen(true)}
+                  className="btn-secondary px-8 py-3 text-base"
                 >
-                  Log in to Hire
-                </Link>
+                  Get Instant Quote
+                </button>
+                {isLoggedIn ? (
+                  <button
+                    type="button"
+                    onClick={() => setHireOpen(true)}
+                    className="btn-primary px-8 py-3 text-base"
+                  >
+                    Hire Now
+                  </button>
+                ) : (
+                  <Link
+                    href={`/login?redirect=/provider/${provider.id}?service=${encodeURIComponent(defaultService)}&hire=1`}
+                    className="btn-primary px-8 py-3 text-base"
+                  >
+                    Log in to Hire
+                  </Link>
+                )}
+              </div>
+              <p className="mt-3 text-sm text-green-700">{availabilityHint}</p>
+              {isLoggedIn && sessionUser?.role === "customer" && (
+                <button
+                  type="button"
+                  onClick={() => setReportOpen(true)}
+                  className="mt-2 text-xs text-gray-500 underline hover:text-red-600"
+                >
+                  Report a safety concern
+                </button>
               )}
             </div>
-          ) : !provider.approved ? (
+          ) : (
             <p className="mt-8 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
               This provider is not yet approved and cannot be booked.
             </p>
-          ) : null}
+          )}
         </div>
       </article>
 
@@ -324,6 +356,15 @@ export function ProviderProfileClient({
         hourlyRate={Number(provider.hourly_rate ?? provider.price)}
         availableToday={Boolean(provider.available_today)}
         defaultService={defaultService}
+        rebookPrefill={rebookPrefill ?? undefined}
+        quickBook={quickRebook}
+      />
+
+      <ReportProviderModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        providerId={provider.id}
+        providerName={user?.name ?? "Provider"}
       />
     </>
   );

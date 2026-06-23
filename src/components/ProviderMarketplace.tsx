@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderCard } from "./ProviderCard";
@@ -35,19 +35,20 @@ export function ProviderMarketplace() {
   const searchParams = useSearchParams();
   const { filterProviders, ready, user } = useMockApp();
   const [pending, startTransition] = useTransition();
-  const skipQueryEffect = useRef(true);
 
   const filters = useMemo(
     () => filtersFromSearchParams(searchParams),
     [searchParams]
   );
 
-  const [query, setQuery] = useState(filters.q ?? "");
+  const urlQuery = filters.q ?? "";
+  const [query, setQuery] = useState(urlQuery);
+  const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery);
 
-  useEffect(() => {
-    setQuery(filters.q ?? "");
-    skipQueryEffect.current = true;
-  }, [filters.q]);
+  if (urlQuery !== prevUrlQuery) {
+    setPrevUrlQuery(urlQuery);
+    setQuery(urlQuery);
+  }
 
   const emptyResult = {
     list: [] as MockProvider[],
@@ -79,17 +80,14 @@ export function ProviderMarketplace() {
   );
 
   useEffect(() => {
-    if (skipQueryEffect.current) {
-      skipQueryEffect.current = false;
-      return;
-    }
+    if (query === urlQuery) return;
     const timer = setTimeout(() => {
       startTransition(() => {
         syncUrl({ ...filters, page: "1" }, query);
       });
     }, 280);
     return () => clearTimeout(timer);
-  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, urlQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeFilters = [
     filters.service && `Service: ${filters.service}`,

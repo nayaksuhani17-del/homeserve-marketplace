@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Modal } from "./Modal";
 import { useToast } from "./Toast";
 import { useMockApp } from "@/context/MockAppContext";
@@ -22,11 +22,26 @@ type HireModalProps = {
   hourlyRate?: number;
   availableToday?: boolean;
   defaultService: string;
+  rebookPrefill?: Partial<Pick<MockBooking, "service" | "date" | "time" | "hours">>;
+  quickBook?: boolean;
 };
 
 type Step = "form" | "slots" | "processing" | "waiting" | "done";
 
-export function HireModal({
+export function HireModal(props: HireModalProps) {
+  if (!props.open) return null;
+  const sessionKey = [
+    props.providerId,
+    props.defaultService,
+    props.rebookPrefill?.service ?? "",
+    props.rebookPrefill?.date ?? "",
+    props.rebookPrefill?.time ?? "",
+    props.quickBook ? "1" : "0",
+  ].join("|");
+  return <HireModalSession key={sessionKey} {...props} open />;
+}
+
+function HireModalSession({
   open,
   onClose,
   providerId,
@@ -37,18 +52,23 @@ export function HireModal({
   hourlyRate,
   defaultService,
   availableToday = false,
+  rebookPrefill,
+  quickBook = false,
 }: HireModalProps) {
-  const { createBooking, getAvailableSlots, db } = useMockApp();
-  const [service, setService] = useState(defaultService);
-  const [date, setDate] = useState("");
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [hours, setHours] = useState(2);
+  const { createBooking, getAvailableSlots, getAvailabilityHint, db } = useMockApp();
+  const initialStep: Step =
+    quickBook && rebookPrefill?.date && rebookPrefill?.time ? "slots" : "form";
+  const [service, setService] = useState(rebookPrefill?.service ?? defaultService);
+  const [date, setDate] = useState(rebookPrefill?.date ?? "");
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(rebookPrefill?.time ?? null);
+  const [hours, setHours] = useState(rebookPrefill?.hours ?? 2);
   const [error, setError] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>("form");
+  const [step, setStep] = useState<Step>(initialStep);
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [resultBooking, setResultBooking] = useState<MockBooking | null>(null);
   const [pending, startTransition] = useTransition();
   const { toast } = useToast();
+  const notifiedBookingRef = useRef<string | null>(null);
 
   const rate = hourlyRate ?? price;
   const estimatedCost = estimateBookingCost(pricingType, price, hours);
@@ -62,20 +82,28 @@ export function HireModal({
   const bestTime = suggestBestTimeToday(availableToday);
   const minDate = new Date().toISOString().split("T")[0];
   const slots = date ? getAvailableSlots(providerId, date) : [];
+  const availabilityHint = getAvailabilityHint(providerId);
+
+  const liveBooking =
+    bookingId && db ? db.bookings.find((b) => b.id === bookingId) : undefined;
+  const resolvedWhileWaiting =
+    step === "waiting" && liveBooking && liveBooking.status !== "pending"
+      ? liveBooking
+      : null;
+  const doneBooking = step === "done" ? resultBooking : resolvedWhileWaiting;
+  const showWaiting = step === "waiting" && !resolvedWhileWaiting;
+  const showDone = Boolean(doneBooking);
 
   useEffect(() => {
-    if (!bookingId || !db || step !== "waiting") return;
-    const booking = db.bookings.find((b) => b.id === bookingId);
-    if (!booking || booking.status === "pending") return;
-
-    setResultBooking(booking);
-    setStep("done");
-    if (booking.status === "confirmed") {
+    if (!resolvedWhileWaiting) return;
+    if (notifiedBookingRef.current === resolvedWhileWaiting.id) return;
+    notifiedBookingRef.current = resolvedWhileWaiting.id;
+    if (resolvedWhileWaiting.status === "confirmed") {
       toast("Booking confirmed!", "success");
-    } else if (booking.status === "declined") {
+    } else if (resolvedWhileWaiting.status === "declined") {
       toast("Provider declined request", "error");
     }
-  }, [db, bookingId, step, toast]);
+  }, [resolvedWhileWaiting, toast]);
 
   function resetState() {
     setSelectedSlot(null);
@@ -137,20 +165,19 @@ export function HireModal({
     });
   }
 
-  const title =
-    step === "done"
-      ? resultBooking?.status === "confirmed"
-        ? "Booking Confirmed"
-        : resultBooking?.status === "declined"
-          ? "Booking Declined"
-          : "Request Submitted"
-      : step === "waiting"
-        ? "Waiting for provider"
-        : step === "processing"
-          ? "Creating booking…"
-          : step === "slots"
-            ? "Pick a time"
-            : `Hire ${providerName}`;
+  const title = showDone
+    ? doneBooking?.status === "confirmed"
+      ? "Booking Confirmed"
+      : doneBooking?.status === "declined"
+        ? "Booking Declined"
+        : "Request Submitted"
+    : showWaiting
+      ? "Waiting for provider"
+      : step === "processing"
+        ? "Creating booking…"
+        : step === "slots"
+          ? "Pick a time"
+          : `Hire ${providerName}`;
 
   return (
     <Modal open={open} onClose={handleClose} title={title}>
@@ -160,7 +187,7 @@ export function HireModal({
           <p className="mt-4 font-medium text-gray-900">Submitting your request</p>
           <p className="mt-1 text-sm text-gray-500">Securing your time slot…</p>
         </div>
-      ) : step === "waiting" ? (
+      ) : showWaiting ? (
         <div className="py-8 text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-amber-200 border-t-amber-500" />
           <p className="mt-4 font-medium text-gray-900">Provider is responding…</p>
@@ -179,57 +206,57 @@ export function HireModal({
             </p>
           </div>
         </div>
-      ) : step === "done" && resultBooking ? (
+      ) : showDone && doneBooking ? (
         <div className="animate-fade-in text-center">
           <div
             className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full text-3xl ${
-              resultBooking.status === "confirmed"
+              doneBooking.status === "confirmed"
                 ? "bg-green-100 text-green-600"
-                : resultBooking.status === "declined"
+                : doneBooking.status === "declined"
                   ? "bg-red-100 text-red-600"
                   : "bg-amber-100 text-amber-600"
             }`}
           >
-            {resultBooking.status === "confirmed"
+            {doneBooking.status === "confirmed"
               ? "✓"
-              : resultBooking.status === "declined"
+              : doneBooking.status === "declined"
                 ? "✕"
                 : "…"}
           </div>
           <p className="mt-4 text-lg font-semibold text-gray-900">
-            {bookingStatusLabel(resultBooking.status)}
+            {bookingStatusLabel(doneBooking.status)}
           </p>
           <p className="mt-2 text-sm text-gray-600">
-            {resultBooking.status === "confirmed"
+            {doneBooking.status === "confirmed"
               ? `${providerName} accepted your ${service} booking.`
-              : resultBooking.status === "declined"
+              : doneBooking.status === "declined"
                 ? `${providerName} couldn't take this slot. Try another time or pro.`
                 : `Your request was sent to ${providerName}.`}
           </p>
           <div className="mt-6 rounded-xl bg-gray-50 p-4 text-left text-sm">
             <p>
-              <span className="text-gray-500">Date:</span> {resultBooking.date}
+              <span className="text-gray-500">Date:</span> {doneBooking.date}
             </p>
             <p className="mt-1">
               <span className="text-gray-500">Time:</span>{" "}
-              {resultBooking.time ?? "TBD"}
+              {doneBooking.time ?? "TBD"}
             </p>
             <p className="mt-1">
-              <span className="text-gray-500">Duration:</span> ~{resultBooking.hours}h
+              <span className="text-gray-500">Duration:</span> ~{doneBooking.hours}h
             </p>
             <p className="mt-2 border-t border-gray-200 pt-2 font-semibold text-green-700">
-              Estimated cost: ${resultBooking.estimatedCost.toFixed(0)}
+              Estimated cost: ${doneBooking.estimatedCost.toFixed(0)}
             </p>
             <div className="mt-3">
               <BookingStatusBadge
-                status={resultBooking.status}
-                paymentStatus={resultBooking.paymentStatus}
+                status={doneBooking.status}
+                paymentStatus={doneBooking.paymentStatus}
                 showPayment
               />
             </div>
-            {resultBooking.paymentStatus !== "none" && (
+            {doneBooking.paymentStatus !== "none" && (
               <p className="mt-2 text-xs text-gray-500">
-                {paymentStatusLabel(resultBooking.paymentStatus)}
+                {paymentStatusLabel(doneBooking.paymentStatus)}
               </p>
             )}
           </div>
@@ -288,6 +315,7 @@ export function HireModal({
           <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
             ⚡ {bestTime}
           </div>
+          <p className="text-xs text-gray-500">{availabilityHint}</p>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Service</label>

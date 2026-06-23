@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import Image from "next/image";
 import { StarRating } from "./StarRating";
 import { TagBadge } from "./ChatProviderCard";
 import { RecommendationBadge } from "./RecommendationBadge";
@@ -103,11 +104,11 @@ export function ProviderCard({
 
         <div className="mb-3 flex items-start gap-3">
           {user?.avatar_url ? (
-            <img
+            <Image
               src={user.avatar_url}
               alt=""
-              loading="lazy"
-              decoding="async"
+              width={56}
+              height={56}
               className="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-gray-100 transition-transform duration-300 group-hover:scale-105"
             />
           ) : (

@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ProviderCard } from "@/components/ProviderCard";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ProviderMarketplace } from "@/components/ProviderMarketplace";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { BookingChat } from "@/components/BookingChat";
+import { ReportProviderModal } from "@/components/ReportProviderModal";
+import { useToast } from "@/components/Toast";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
@@ -18,12 +20,21 @@ export function CustomerDashboardClient() {
     user,
     ready,
     db,
+    loading,
     getStats,
     filterProviders,
     getBookingsForCustomer,
     getRecentlyViewedProviders,
     getSavedProviders,
+    cancelBooking,
   } = useMockApp();
+  const { toast } = useToast();
+  const [, startTransition] = useTransition();
+  const [reportTarget, setReportTarget] = useState<{
+    providerId: string;
+    providerName: string;
+    bookingId?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!ready || !user) return;
@@ -169,15 +180,53 @@ export function CustomerDashboardClient() {
                           This provider is no longer available at that time.
                         </p>
                       )}
+                      {booking.status === "cancelled" && (
+                        <p className="mt-2 text-xs text-gray-600">
+                          This booking was cancelled
+                          {booking.paymentStatus === "refunded" ? " — payment refunded." : "."}
+                        </p>
+                      )}
                     </div>
-                    {booking.status !== "declined" && (
-                      <Link
-                        href={`/provider/${booking.providerId}?service=${encodeURIComponent(booking.service)}&hire=1`}
-                        className="btn-secondary shrink-0 px-3 py-1.5 text-sm"
+                    <div className="flex shrink-0 flex-col gap-2">
+                      {(booking.status === "pending" ||
+                        booking.status === "confirmed") && (
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() =>
+                            startTransition(async () => {
+                              const result = await cancelBooking(booking.id);
+                              if (result.error) toast(result.error, "error");
+                              else toast("Booking cancelled", "success");
+                            })
+                          }
+                          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-60"
+                        >
+                          Cancel booking
+                        </button>
+                      )}
+                      {booking.status !== "declined" && (
+                        <Link
+                          href={`/provider/${booking.providerId}?service=${encodeURIComponent(booking.service)}&rebook=1&quick=1`}
+                          className="btn-primary px-3 py-1.5 text-center text-sm"
+                        >
+                          Quick rebook
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReportTarget({
+                            providerId: booking.providerId,
+                            providerName: booking.providerName,
+                            bookingId: booking.id,
+                          })
+                        }
+                        className="text-xs text-gray-500 underline hover:text-red-600"
                       >
-                        Hire again
-                      </Link>
-                    )}
+                        Report issue
+                      </button>
+                    </div>
                   </div>
 
                   {showChat && (
@@ -207,6 +256,16 @@ export function CustomerDashboardClient() {
       )}
 
       <ProviderMarketplace />
+
+      {reportTarget && (
+        <ReportProviderModal
+          open
+          onClose={() => setReportTarget(null)}
+          providerId={reportTarget.providerId}
+          providerName={reportTarget.providerName}
+          bookingId={reportTarget.bookingId}
+        />
+      )}
     </div>
   );
 }
