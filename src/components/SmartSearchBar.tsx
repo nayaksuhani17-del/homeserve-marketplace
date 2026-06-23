@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChatProviderCard } from "./ChatProviderCard";
 import { useMockApp } from "@/context/MockAppContext";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { toProviderCardData } from "@/lib/providers";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { matchSearchSuggestions } from "@/lib/services";
@@ -114,8 +115,15 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
             autoComplete="off"
           />
         </div>
-        <button type="submit" disabled={loading || !ready} className="btn-primary shrink-0 disabled:opacity-60">
-          {loading ? "Searching…" : "Search"}
+        <button type="submit" disabled={loading || !ready} className="btn-primary flex shrink-0 items-center justify-center gap-2 disabled:opacity-60">
+          {loading ? (
+            <>
+              <LoadingSpinner size="sm" className="border-white border-t-transparent" />
+              <span>Searching…</span>
+            </>
+          ) : (
+            "Search"
+          )}
         </button>
       </form>
 
