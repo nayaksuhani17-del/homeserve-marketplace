@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ProviderProfileForm } from "@/components/ProviderProfileForm";
 import { StatCard } from "@/components/StatCard";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
+import { BookingStatusBadge } from "@/components/BookingStatusBadge";
+import { BookingChat } from "@/components/BookingChat";
 import { useMockApp } from "@/context/MockAppContext";
+import { useToast } from "@/components/Toast";
+import { getComparablePrice } from "@/lib/pricing";
 
 export function ProviderDashboardClient() {
   const router = useRouter();
-  const { user, ready, getProviderForUser, getBookingsForProvider } = useMockApp();
+  const { user, ready, loading, getProviderForUser, getBookingsForProvider, completeBooking } =
+    useMockApp();
+  const { toast } = useToast();
+  const [, startTransition] = useTransition();
 
   useEffect(() => {
     if (!ready) return;
@@ -37,10 +44,24 @@ export function ProviderDashboardClient() {
   const provider = getProviderForUser(user.id);
   const bookings = provider ? getBookingsForProvider(provider.id) : [];
   const confirmedCount = bookings.filter((b) => b.status === "confirmed").length;
-  const totalJobs = provider?.jobsCompleted ?? confirmedCount;
-  const hourlyRate = provider?.hourlyRate ?? 0;
+  const pendingCount = bookings.filter((b) => b.status === "pending").length;
+  const totalJobs = provider?.jobsCompleted ?? 0;
+  const price = provider?.price ?? 0;
   const avgRating = provider?.ratingAvg ?? 0;
-  const fakeEarnings = Math.round(totalJobs * hourlyRate * 2.5);
+  const fakeEarnings = Math.round(
+    totalJobs * getComparablePrice(provider?.pricingType ?? "hourly", price) * 2.5
+  );
+
+  function handleComplete(bookingId: string) {
+    startTransition(async () => {
+      const result = await completeBooking(bookingId);
+      if (result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      toast("Job marked complete — payment released", "success");
+    });
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -63,10 +84,27 @@ export function ProviderDashboardClient() {
               : "⏳ Your profile is pending admin approval — you won't appear in search until approved."}
           </div>
 
+          {pendingCount > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {pendingCount} booking request{pendingCount === 1 ? "" : "s"} awaiting your response
+              (simulated auto-accept/reject).
+            </div>
+          )}
+
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             <StatCard label="Jobs completed" value={totalJobs} sub="All time" accent="primary" />
-            <StatCard label="Average rating" value={avgRating.toFixed(1)} sub={`${provider.reviewCount} reviews`} accent="medium" />
-            <StatCard label="Est. earnings" value={`$${fakeEarnings.toLocaleString()}`} sub="Based on completed jobs" accent="dark" />
+            <StatCard
+              label="Average rating"
+              value={avgRating.toFixed(1)}
+              sub={`${provider.reviewCount} reviews`}
+              accent="medium"
+            />
+            <StatCard
+              label="Est. earnings"
+              value={`$${fakeEarnings.toLocaleString()}`}
+              sub="Based on completed jobs"
+              accent="dark"
+            />
           </div>
 
           <div className="mt-8">
@@ -90,6 +128,9 @@ export function ProviderDashboardClient() {
             provider
               ? {
                   services: provider.services,
+                  pricing_type: provider.pricingType,
+                  price: provider.price,
+                  base_price: provider.basePrice,
                   hourly_rate: provider.hourlyRate,
                   location: provider.location,
                   description: provider.description,
@@ -104,23 +145,50 @@ export function ProviderDashboardClient() {
 
       {bookings.length > 0 && (
         <section className="mt-10">
-          <h2 className="text-xl font-bold text-gray-900">Upcoming bookings</h2>
-          <p className="text-sm text-gray-500">Jobs from customers — synced from mock database</p>
-          <div className="mt-4 space-y-3">
+          <h2 className="text-xl font-bold text-gray-900">Bookings</h2>
+          <p className="text-sm text-gray-500">
+            {confirmedCount} active · responses simulated automatically
+          </p>
+          <div className="mt-4 space-y-4">
             {bookings.map((booking) => (
               <div key={booking.id} className="card p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-gray-900">
-                    {booking.customerName} — {booking.service}
-                  </p>
-                  <span className={`tag-pill ${booking.status === "confirmed" ? "badge-verified" : "badge-pending"}`}>
-                    {booking.status}
-                  </span>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {booking.customerName} — {booking.service}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {booking.date}
+                      {booking.time ? ` at ${booking.time}` : ""} · ${booking.estimatedCost} est.
+                    </p>
+                    <div className="mt-2">
+                      <BookingStatusBadge
+                        status={booking.status}
+                        paymentStatus={booking.paymentStatus}
+                        showPayment={
+                          booking.status === "confirmed" ||
+                          booking.status === "completed"
+                        }
+                      />
+                    </div>
+                  </div>
+                  {booking.status === "confirmed" && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleComplete(booking.id)}
+                      className="btn-primary shrink-0 px-4 py-2 text-sm disabled:opacity-60"
+                    >
+                      Mark job complete
+                    </button>
+                  )}
                 </div>
-                <p className="mt-1 text-sm text-gray-500">
-                  {booking.date}
-                  {booking.time ? ` at ${booking.time}` : ""} · ${booking.estimatedCost} est.
-                </p>
+
+                {(booking.status === "confirmed" || booking.status === "completed") && (
+                  <div className="mt-4">
+                    <BookingChat booking={booking} />
+                  </div>
+                )}
               </div>
             ))}
           </div>

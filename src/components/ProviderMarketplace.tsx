@@ -10,7 +10,10 @@ import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
+import { getServiceMeta, similarServices } from "@/lib/services";
 import type { ProviderFilters } from "@/lib/mock/types";
+import type { RecommendationLabel } from "@/lib/recommendations";
+import type { MockProvider } from "@/lib/mock/types";
 
 function filtersFromSearchParams(searchParams: URLSearchParams): ProviderFilters {
   return {
@@ -46,17 +49,22 @@ export function ProviderMarketplace() {
     skipQueryEffect.current = true;
   }, [filters.q]);
 
+  const emptyResult = {
+    list: [] as MockProvider[],
+    total: 0,
+    page: 1,
+    pageSize: 24,
+    totalPages: 1,
+    topRanked: [] as MockProvider[],
+    topRankMap: {} as Record<string, number>,
+    recommendationMap: {} as Record<string, RecommendationLabel>,
+    bestMatchId: undefined as string | undefined,
+    urgent: false,
+  };
+
   const result = ready
     ? filterProviders({ ...filters, q: query || undefined })
-    : {
-        list: [],
-        total: 0,
-        page: 1,
-        pageSize: 24,
-        totalPages: 1,
-        topRanked: [],
-        topRankMap: {},
-      };
+    : emptyResult;
 
   const syncUrl = useCallback(
     (next: ProviderFilters, q: string) => {
@@ -89,7 +97,7 @@ export function ProviderMarketplace() {
     filters.status === "pending" && "Pending review",
     filters.status === "all" && "All providers",
     filters.minRating && `${filters.minRating}+ stars`,
-    filters.maxPrice && Number(filters.maxPrice) < 120 && `Under $${filters.maxPrice}/hr`,
+    filters.maxPrice && Number(filters.maxPrice) < 120 && `Under $${filters.maxPrice}`,
     filters.availability && `Available ${filters.availability}`,
     filters.maxDistance && `Within ${filters.maxDistance} mi`,
     query && `Search: "${query}"`,
@@ -108,7 +116,17 @@ export function ProviderMarketplace() {
   return (
     <>
       <div className="mt-8">
-        <div className="input-with-icon">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-green-700">
+            ✨ Powered by smart recommendations
+          </p>
+          {result.urgent && (
+            <span className="animate-fade-in rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100">
+              🚨 Urgent service available — fast responders boosted
+            </span>
+          )}
+        </div>
+        <div className="input-with-icon mt-2">
           <span className="input-icon-slot text-base" aria-hidden>
             🔍
           </span>
@@ -116,14 +134,14 @@ export function ProviderMarketplace() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder='Search instantly — "cheap cleaner near me today"'
+            placeholder='Search instantly — "urgent plumber ASAP" or "cheap cleaning"'
             className="input-field"
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
           {pending
             ? "Updating results…"
-            : `${result.total.toLocaleString()} providers match your search`}
+            : `${result.total.toLocaleString()} providers match · ranked by rating, price & availability`}
         </p>
       </div>
 
@@ -158,9 +176,9 @@ export function ProviderMarketplace() {
 
       {result.list.length > 0 ? (
         <>
-          {Object.keys(result.topRankMap).length > 0 && !filters.sort && (
+          {(result.bestMatchId || Object.keys(result.topRankMap).length > 0) && !filters.sort && (
             <p className="mt-8 text-sm font-medium text-green-700">
-              ⭐ Top picks highlighted below
+              ⭐ Best Match & top picks highlighted below
             </p>
           )}
           <div
@@ -170,14 +188,17 @@ export function ProviderMarketplace() {
           >
             {result.list.map((provider) => {
               const rank = result.topRankMap[provider.id];
+              const legacy = mockProviderToLegacy(provider);
               return (
                 <ProviderCard
                   key={provider.id}
-                  provider={mockProviderToLegacy(provider)}
+                  provider={legacy}
                   selectedService={filters.service}
                   showHire={!!user && user.role === "customer"}
                   isTopRated={rank !== undefined && !filters.sort}
                   rank={rank}
+                  recommendationLabel={result.recommendationMap[provider.id]}
+                  isBestMatch={provider.id === result.bestMatchId}
                 />
               );
             })}
@@ -203,12 +224,30 @@ export function ProviderMarketplace() {
         <div className="mt-12">
           <EmptyState
             title="No providers found"
-            description="Try adjusting your filters or search for a different service."
-            icon="🏠"
+            description="Try expanding your search radius, adjusting filters, or browsing a similar service."
+            icon="🔍"
+            suggestions={[
+              "Try expanding your distance range",
+              "Remove price filters",
+              ...similarServices(filters.service).map(
+                (s) => `Browse ${getServiceMeta(s).icon} ${s}`
+              ),
+            ]}
             action={
-              <Link href="/customer/dashboard" className="btn-primary inline-block">
-                Clear filters
-              </Link>
+              <div className="flex flex-wrap justify-center gap-3">
+                <Link href="/customer/dashboard" className="btn-primary inline-block">
+                  Clear filters
+                </Link>
+                {similarServices(filters.service).slice(0, 2).map((s) => (
+                  <Link
+                    key={s}
+                    href={`/customer/dashboard?service=${encodeURIComponent(s)}`}
+                    className="btn-secondary inline-block"
+                  >
+                    {getServiceMeta(s).icon} {s}
+                  </Link>
+                ))}
+              </div>
             }
           />
         </div>

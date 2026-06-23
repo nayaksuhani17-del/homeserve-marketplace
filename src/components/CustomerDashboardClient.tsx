@@ -6,12 +6,24 @@ import { useRouter } from "next/navigation";
 import { ProviderCard } from "@/components/ProviderCard";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ProviderMarketplace } from "@/components/ProviderMarketplace";
+import { BookingStatusBadge } from "@/components/BookingStatusBadge";
+import { BookingChat } from "@/components/BookingChat";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
+import { assignRecommendationLabels } from "@/lib/recommendations";
 
 export function CustomerDashboardClient() {
   const router = useRouter();
-  const { user, ready, getStats, filterProviders, getBookingsForCustomer } = useMockApp();
+  const {
+    user,
+    ready,
+    db,
+    getStats,
+    filterProviders,
+    getBookingsForCustomer,
+    getRecentlyViewedProviders,
+    getSavedProviders,
+  } = useMockApp();
 
   useEffect(() => {
     if (!ready || !user) return;
@@ -31,9 +43,15 @@ export function CustomerDashboardClient() {
   const stats = getStats();
   const bookings = user?.role === "customer" ? getBookingsForCustomer(user.id) : [];
   const recommended = filterProviders({ status: "verified" }).topRanked;
+  const recent = user ? getRecentlyViewedProviders() : [];
+  const savedCount = user ? getSavedProviders().length : 0;
   const greeting = user
     ? `Welcome back, ${user.name.split(" ")[0]} 👋`
     : "Find your perfect pro";
+
+  const recLabels = assignRecommendationLabels(
+    recommended.map(mockProviderToLegacy)
+  );
 
   if (user && user.role !== "customer") {
     return (
@@ -44,34 +62,63 @@ export function CustomerDashboardClient() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-10 animate-page-enter">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-green-700">Your marketplace</p>
+          <p className="text-sm font-medium text-green-700">✨ Smart marketplace</p>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">{greeting}</h1>
           <p className="mt-1 text-gray-600">
             {stats.verifiedProviders.toLocaleString()} verified pros ·{" "}
             {stats.totalBookings.toLocaleString()} bookings on platform
           </p>
         </div>
-        {!user && (
-          <Link href="/login" className="btn-primary">
-            Log in to book
-          </Link>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {user && (
+            <Link href="/customer/saved" className="btn-secondary">
+              ♥ Saved ({savedCount})
+            </Link>
+          )}
+          {!user && (
+            <Link href="/login" className="btn-primary">
+              Log in to book
+            </Link>
+          )}
+        </div>
       </div>
 
       {user && recommended.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-lg font-semibold text-gray-900">Recommended for you</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Recommended for you</h2>
+            <span className="text-xs text-gray-500">Powered by smart recommendations</span>
+          </div>
           <div className="mt-4 grid gap-5 sm:grid-cols-3">
-            {recommended.map((p) => (
+            {recommended.map((p, i) => (
               <ProviderCard
                 key={p.id}
                 provider={mockProviderToLegacy(p)}
                 showHire
-                isTopRated
+                isBestMatch={i === 0}
+                recommendationLabel={recLabels.get(p.id)}
               />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {user && recent.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold text-gray-900">Recently viewed</h2>
+          <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+            {recent.map((p) => (
+              <Link
+                key={p.id}
+                href={`/provider/${p.id}`}
+                className="card card-hover shrink-0 px-4 py-3 text-sm"
+              >
+                <p className="font-medium text-gray-900">{p.name}</p>
+                <p className="text-xs text-gray-500">{p.services[0]}</p>
+              </Link>
             ))}
           </div>
         </section>
@@ -79,25 +126,82 @@ export function CustomerDashboardClient() {
 
       {user && bookings.length > 0 && (
         <section className="mt-10">
-          <h2 className="text-xl font-bold text-gray-900">Recent bookings</h2>
-          <div className="mt-4 space-y-3">
-            {bookings.slice(0, 5).map((booking) => (
-              <div key={booking.id} className="card p-5">
-                <p className="font-semibold text-gray-900">
-                  {booking.providerName} — {booking.service}
-                </p>
-                <p className="text-sm text-gray-500">
-                  {booking.date}
-                  {booking.time ? ` at ${booking.time}` : ""} · ${booking.estimatedCost} est. ·{" "}
-                  <span className={booking.status === "confirmed" ? "text-green-600" : "text-amber-500"}>
-                    {booking.status}
-                  </span>
-                </p>
-                <div className="mt-4">
-                  <ReviewForm providerId={booking.providerId} bookingId={booking.id} />
+          <h2 className="text-xl font-bold text-gray-900">Your bookings</h2>
+          <div className="mt-4 space-y-4">
+            {bookings.slice(0, 8).map((booking) => {
+              const hasReview = db?.reviews.some(
+                (r) => r.bookingId === booking.id
+              );
+              const canReview =
+                booking.status === "completed" && !hasReview;
+              const showChat =
+                booking.status === "confirmed" || booking.status === "completed";
+
+              return (
+                <div key={booking.id} className="card p-5 transition hover:shadow-md">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {booking.providerName} — {booking.service}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {booking.date}
+                        {booking.time ? ` at ${booking.time}` : ""} · ~{booking.hours}h · $
+                        {booking.estimatedCost} est.
+                      </p>
+                      <div className="mt-2">
+                        <BookingStatusBadge
+                          status={booking.status}
+                          paymentStatus={booking.paymentStatus}
+                          showPayment={
+                            booking.status === "confirmed" ||
+                            booking.status === "completed"
+                          }
+                        />
+                      </div>
+                      {booking.status === "pending" && (
+                        <p className="mt-2 text-xs text-amber-600">
+                          Waiting for provider response…
+                        </p>
+                      )}
+                      {booking.status === "declined" && (
+                        <p className="mt-2 text-xs text-red-600">
+                          This provider is no longer available at that time.
+                        </p>
+                      )}
+                    </div>
+                    {booking.status !== "declined" && (
+                      <Link
+                        href={`/provider/${booking.providerId}?service=${encodeURIComponent(booking.service)}&hire=1`}
+                        className="btn-secondary shrink-0 px-3 py-1.5 text-sm"
+                      >
+                        Hire again
+                      </Link>
+                    )}
+                  </div>
+
+                  {showChat && (
+                    <div className="mt-4">
+                      <BookingChat booking={booking} />
+                    </div>
+                  )}
+
+                  {canReview && (
+                    <div className="mt-4">
+                      <ReviewForm
+                        providerId={booking.providerId}
+                        bookingId={booking.id}
+                      />
+                    </div>
+                  )}
+                  {hasReview && booking.status === "completed" && (
+                    <p className="mt-4 text-sm text-green-600">
+                      ✓ You reviewed this job
+                    </p>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

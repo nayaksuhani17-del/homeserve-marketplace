@@ -1,4 +1,6 @@
 import type { BookingStatus, ServiceCategory, UserRole } from "./constants";
+import type { PricingType } from "./pricing";
+import type { ServicePackage } from "./quotes";
 
 export type User = {
   id: string;
@@ -14,7 +16,11 @@ export type Provider = {
   id: string;
   user_id: string;
   services: string[];
+  pricing_type: PricingType;
+  price: number;
+  base_price: number;
   hourly_rate: number;
+  service_packages?: ServicePackage[];
   location: string;
   description: string;
   availability: string;

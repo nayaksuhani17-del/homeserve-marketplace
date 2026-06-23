@@ -1,5 +1,8 @@
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import { demoId } from "./ids";
+import { getComparablePrice, pricingTypeForService } from "@/lib/pricing";
+import { enrichProviderQuoteFields } from "@/lib/quotes";
+import type { PricingType } from "@/lib/pricing";
 import type { ProviderWithUser } from "../types";
 
 export const CATALOG_SIZE = 350;
@@ -145,6 +148,38 @@ function avatar(email: string) {
   return `https://i.pravatar.cc/150?u=${encodeURIComponent(email)}`;
 }
 
+const FIXED_PRICE_RANGES: Record<string, [number, number]> = {
+  "House Cleaning": [85, 220],
+  "Carpet Cleaning": [99, 249],
+  "Lawn Mowing": [35, 75],
+};
+
+const ESTIMATE_PRICE_RANGES: Record<string, [number, number]> = {
+  Painting: [250, 850],
+  Cooking: [200, 500],
+  "Car Mechanic": [75, 350],
+  "House Shifting": [350, 950],
+};
+
+function priceForProvider(
+  primaryService: string,
+  pricingType: PricingType,
+  index: number
+): number {
+  const [minRate, maxRate] = RATE_RANGES[primaryService] ?? [30, 80];
+  const t = seeded(index, 8);
+
+  if (pricingType === "fixed") {
+    const [min, max] = FIXED_PRICE_RANGES[primaryService] ?? [minRate * 2.5, maxRate * 3];
+    return Math.round(min + t * (max - min));
+  }
+  if (pricingType === "estimate") {
+    const [min, max] = ESTIMATE_PRICE_RANGES[primaryService] ?? [minRate * 4, maxRate * 8];
+    return Math.round(min + t * (max - min));
+  }
+  return Math.round(minRate + t * (maxRate - minRate));
+}
+
 function buildCatalogProvider(index: number): ProviderWithUser {
   const first = pick(FIRST_NAMES, index, 1);
   const last = pick(LAST_NAMES, index, 2);
@@ -164,8 +199,8 @@ function buildCatalogProvider(index: number): ProviderWithUser {
   const city = pick(CITIES, index, 7);
   const location = `${neighborhood}, ${city}`;
 
-  const [minRate, maxRate] = RATE_RANGES[primaryService] ?? [30, 80];
-  const hourlyRate = Math.round(minRate + seeded(index, 8) * (maxRate - minRate));
+  const pricingType = pricingTypeForService(primaryService, index);
+  const price = priceForProvider(primaryService, pricingType, index);
 
   const rating = Math.round((3.2 + seeded(index, 9) * 1.8) * 10) / 10;
   const jobsCompleted = Math.floor(15 + seeded(index, 10) * 280);
@@ -183,7 +218,7 @@ function buildCatalogProvider(index: number): ProviderWithUser {
 
   const tags: string[] = [];
   if (rating >= 4.5) tags.push("Highly Rated");
-  if (hourlyRate <= 35) tags.push("Affordable");
+  if (getComparablePrice(pricingType, price) <= 35) tags.push("Affordable");
   if (availableToday) tags.push("Fast Responder");
   if (jobsCompleted >= 150) tags.push("Popular");
 
@@ -192,11 +227,23 @@ function buildCatalogProvider(index: number): ProviderWithUser {
     : Math.floor(45 + seeded(index, 18) * 180);
   const reviewCount = Math.floor(3 + seeded(index, 19) * 45);
 
+  const id = catalogProviderId(index);
+  const quote = enrichProviderQuoteFields({
+    id,
+    pricingType,
+    price,
+    services,
+  });
+
   return {
-    id: catalogProviderId(index),
+    id,
     user_id: catalogUserId(index),
     services,
-    hourly_rate: hourlyRate,
+    pricing_type: pricingType,
+    price,
+    base_price: quote.basePrice,
+    hourly_rate: quote.hourlyRate,
+    service_packages: quote.servicePackages,
     location,
     description,
     availability: pick(AVAILABILITY, index, 17),

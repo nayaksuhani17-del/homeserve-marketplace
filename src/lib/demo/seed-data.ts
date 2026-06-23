@@ -11,7 +11,11 @@ export type DemoUserSeed = {
 export type DemoProviderSeed = {
   userKey: string;
   services: string[];
-  hourlyRate: number;
+  pricingType: "hourly" | "fixed" | "estimate";
+  price: number;
+  basePrice?: number;
+  hourlyRate?: number;
+  servicePackages?: { label: string; price: number }[];
   location: string;
   description: string;
   availability: string;
@@ -176,7 +180,15 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-marcus",
     services: ["Plumber", "Electrician"],
+    pricingType: "hourly",
+    price: 45,
+    basePrice: 40,
     hourlyRate: 45,
+    servicePackages: [
+      { label: "Fix leaking sink", price: 80 },
+      { label: "Unclog drain", price: 65 },
+      { label: "Toilet repair", price: 75 },
+    ],
     location: "Brooklyn Heights, Brooklyn NY",
     description:
       "Licensed master plumber with 12 years of experience in residential repairs and installations. I specialize in leak detection, pipe replacement, and emergency call-outs. Clean work and honest quotes every time.",
@@ -192,7 +204,15 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-nina",
     services: ["House Cleaning", "Carpet Cleaning"],
-    hourlyRate: 35,
+    pricingType: "fixed",
+    price: 129,
+    basePrice: 129,
+    hourlyRate: 0,
+    servicePackages: [
+      { label: "Standard home clean", price: 129 },
+      { label: "Deep house cleaning", price: 150 },
+      { label: "Move-out cleaning", price: 185 },
+    ],
     location: "South Congress, Austin TX",
     description:
       "Detail-oriented cleaning professional serving Austin homes for over 8 years. Eco-friendly products available on request. Deep cleans, move-in/move-out, and recurring weekly service.",
@@ -208,7 +228,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-david",
     services: ["Painting"],
-    hourlyRate: 55,
+    pricingType: "estimate",
+    price: 350,
     location: "Capitol Hill, Denver CO",
     description:
       "Interior and exterior painting specialist with an eye for color and finish. I handle prep, patching, and full room makeovers. Fully insured and references available upon request.",
@@ -224,7 +245,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-elena",
     services: ["Cooking"],
-    hourlyRate: 65,
+    pricingType: "estimate",
+    price: 275,
     location: "Coral Gables, Miami FL",
     description:
       "Personal chef offering meal prep, dinner parties, and special occasion catering. Trained in Mediterranean and Latin cuisine. I bring fresh ingredients and leave your kitchen spotless.",
@@ -240,7 +262,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-tom",
     services: ["Computer Repair", "Electrician"],
-    hourlyRate: 50,
+    pricingType: "hourly",
+    price: 50,
     location: "Fremont, Seattle WA",
     description:
       "IT technician and licensed electrician for home office setups and smart home wiring. Virus removal, data recovery, network troubleshooting, and outlet upgrades. Same-day appointments often available.",
@@ -256,7 +279,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-rachel",
     services: ["Lawn Mowing"],
-    hourlyRate: 30,
+    pricingType: "fixed",
+    price: 45,
     location: "Pearl District, Portland OR",
     description:
       "Reliable lawn care for Portland neighborhoods including mowing, edging, and seasonal cleanup. I treat every yard like my own and offer flexible weekly or bi-weekly schedules.",
@@ -272,7 +296,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-carlos",
     services: ["Car Mechanic"],
-    hourlyRate: 75,
+    pricingType: "estimate",
+    price: 89,
     location: "Arcadia, Phoenix AZ",
     description:
       "Mobile mechanic with dealership training on domestic and import vehicles. Oil changes, brake work, diagnostics, and pre-purchase inspections at your home or office.",
@@ -288,7 +313,12 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-amanda",
     services: ["House Cleaning"],
-    hourlyRate: 28,
+    pricingType: "fixed",
+    price: 95,
+    servicePackages: [
+      { label: "Standard home clean", price: 95 },
+      { label: "Deep house cleaning", price: 140 },
+    ],
     location: "Lincoln Park, Chicago IL",
     description:
       "Affordable and thorough house cleaning for busy Chicago families. Kitchens, bathrooms, and whole-home refreshes. Pet-friendly and flexible scheduling with no long-term contracts required.",
@@ -304,7 +334,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-james",
     services: ["House Shifting"],
-    hourlyRate: 90,
+    pricingType: "estimate",
+    price: 450,
     location: "Midtown, Atlanta GA",
     description:
       "Full-service moving crew for local relocations and furniture delivery. Careful packing, loading, and unloading with dollies and blankets included. Free estimates for jobs over 3 hours.",
@@ -320,7 +351,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-sophie",
     services: ["Painting", "House Cleaning"],
-    hourlyRate: 42,
+    pricingType: "hourly",
+    price: 42,
     location: "East Nashville, Nashville TN",
     description:
       "Versatile home services pro combining painting and post-renovation cleaning. Perfect for landlords and homeowners refreshing a rental or listing. Fast turnaround and competitive rates.",
@@ -336,7 +368,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-derek",
     services: ["Plumber"],
-    hourlyRate: 95,
+    pricingType: "hourly",
+    price: 95,
     location: "Back Bay, Boston MA",
     description:
       "Emergency plumber available for burst pipes, water heater installs, and bathroom remodels. Premium service with 24-hour response for urgent jobs in the greater Boston area.",
@@ -352,7 +385,8 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
   {
     userKey: "provider-priya",
     services: ["Carpet Cleaning", "House Cleaning"],
-    hourlyRate: 38,
+    pricingType: "fixed",
+    price: 149,
     location: "La Jolla, San Diego CA",
     description:
       "Steam cleaning and stain removal specialist for carpets, rugs, and upholstery. Uses truck-mounted equipment for deep extraction. Great for allergy sufferers and pet owners.",

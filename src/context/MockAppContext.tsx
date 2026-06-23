@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -14,6 +15,7 @@ import {
   addReviewRecord,
   approveProviderRecord,
   banUserRecord,
+  completeBookingRecord,
   createBookingRecord,
   filterMockProviders,
   getTopRankedProviders,
@@ -21,8 +23,12 @@ import {
   getStats,
   mockProviderToLegacy,
   registerUserRecord,
+  resolveBookingRecord,
+  addChatMessageRecord,
+  removeReviewRecord,
   simulateDelay,
   updateProviderRecord,
+  validateReview,
 } from "@/lib/mock/operations";
 import type {
   MockDatabase,
@@ -30,6 +36,7 @@ import type {
   MockSession,
   MockUser,
   ProviderFilters,
+  SystemEvent,
 } from "@/lib/mock/types";
 import {
   MOCK_DB_KEY,
@@ -38,10 +45,29 @@ import {
 } from "@/lib/mock/types";
 import { DEMO_PASSWORD } from "@/lib/demo/constants";
 import { assignRecommendationLabels } from "@/lib/recommendations";
-import { toProviderCardData } from "@/lib/providers";
+import { toProviderCardData, rankProviders } from "@/lib/providers";
+import { detectUrgency } from "@/lib/smart";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
 import { parseAssistantContext } from "@/lib/ai/parse-intent";
 import { resolveIntentFast } from "@/lib/ai/intent-fast";
+import {
+  generateProviderChatReply,
+  getAvailableSlots as getAvailableSlotsForProvider,
+  getChatReplyDelayMs,
+  getResponseDelayMs,
+  getResponseSpeed,
+  shouldAcceptBooking,
+} from "@/lib/mock/simulation";
+import {
+  incrementProviderClick,
+  loadFavoriteIds,
+  loadRecentProviderIds,
+  saveFavoriteIds,
+  trackRecentProvider,
+} from "@/lib/smart";
+import type { RecommendationLabel } from "@/lib/recommendations";
+
+export const SYSTEM_EVENT = "homeserve-system-event";
 
 type MockAppContextValue = {
   ready: boolean;
@@ -65,6 +91,12 @@ type MockAppContextValue = {
     time?: string | null;
     hours: number;
   }) => Promise<{ error?: string; booking?: MockDatabase["bookings"][0] }>;
+  completeBooking: (bookingId: string) => Promise<{ error?: string }>;
+  getAvailableSlots: (providerId: string, date: string) => string[];
+  sendChatMessage: (bookingId: string, text: string) => Promise<{ error?: string }>;
+  getChatMessages: (bookingId: string) => MockDatabase["chatMessages"];
+  removeReview: (reviewId: string) => Promise<void>;
+  systemEvents: SystemEvent[];
   addReview: (input: {
     providerId: string;
     bookingId?: string;
@@ -73,7 +105,11 @@ type MockAppContextValue = {
   }) => Promise<{ error?: string }>;
   updateProvider: (patch: {
     services?: string[];
+    pricingType?: MockProvider["pricingType"];
+    price?: number;
+    basePrice?: number;
     hourlyRate?: number;
+    servicePackages?: MockProvider["servicePackages"];
     location?: string;
     description?: string;
     availability?: string;
@@ -85,8 +121,17 @@ type MockAppContextValue = {
   filterProviders: (filters: ProviderFilters) => ReturnType<typeof filterMockProviders> & {
     topRanked: MockProvider[];
     topRankMap: Record<string, number>;
+    recommendationMap: Record<string, RecommendationLabel>;
+    bestMatchId?: string;
+    urgent: boolean;
   };
   getProvider: (id: string) => MockProvider | undefined;
+  trackProviderView: (providerId: string) => void;
+  trackProviderClick: (providerId: string) => void;
+  isFavorite: (providerId: string) => boolean;
+  toggleFavorite: (providerId: string) => boolean;
+  getSavedProviders: () => MockProvider[];
+  getRecentlyViewedProviders: () => MockProvider[];
   getProviderReviews: (providerId: string) => ReturnType<typeof getReviewsForProvider>;
   getProviderForUser: (userId: string) => MockProvider | undefined;
   getBookingsForCustomer: (customerId: string) => MockDatabase["bookings"];
@@ -149,6 +194,66 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<MockDatabase | null>(null);
   const [session, setSession] = useState<MockSession | null>(null);
   const [loading, setLoading] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [systemEvents, setSystemEvents] = useState<SystemEvent[]>([]);
+  const responseTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const resumedPending = useRef(new Set<string>());
+
+  const emitSystemEvent = useCallback((event: Omit<SystemEvent, "id" | "at">) => {
+    const full: SystemEvent = {
+      ...event,
+      id: newId("event"),
+      at: new Date().toISOString(),
+    };
+    setSystemEvents((prev) => [full, ...prev].slice(0, 24));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(SYSTEM_EVENT, { detail: full }));
+    }
+  }, []);
+
+  const scheduleBookingResponse = useCallback(
+    (bookingId: string, sourceDb: MockDatabase) => {
+      const booking = sourceDb.bookings.find((b) => b.id === bookingId);
+      if (!booking || booking.status !== "pending") return;
+
+      const provider = sourceDb.providers.find((p) => p.id === booking.providerId);
+      if (!provider) return;
+
+      const existing = responseTimeouts.current.get(bookingId);
+      if (existing) clearTimeout(existing);
+
+      const delay = getResponseDelayMs(getResponseSpeed(provider));
+      const timeout = setTimeout(() => {
+        responseTimeouts.current.delete(bookingId);
+        setDb((prev) => {
+          if (!prev) return prev;
+          const current = prev.bookings.find((b) => b.id === bookingId);
+          if (!current || current.status !== "pending") return prev;
+
+          const accepted = shouldAcceptBooking(bookingId);
+          const next = resolveBookingRecord(prev, bookingId, accepted);
+          saveDb(next);
+
+          if (accepted) {
+            emitSystemEvent({
+              type: "booking_accepted",
+              message: `${current.providerName} just accepted a job`,
+            });
+          } else {
+            emitSystemEvent({
+              type: "booking_declined",
+              message: `${current.providerName} declined a booking request`,
+            });
+          }
+
+          return next;
+        });
+      }, delay);
+
+      responseTimeouts.current.set(bookingId, timeout);
+    },
+    [emitSystemEvent]
+  );
 
   useEffect(() => {
     let stored = loadDb();
@@ -158,7 +263,27 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     }
     setDb(stored);
     setSession(loadSession());
+    setFavoriteIds(loadFavoriteIds());
     setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !db) return;
+    db.bookings
+      .filter((b) => b.status === "pending")
+      .forEach((b) => {
+        if (!resumedPending.current.has(b.id)) {
+          resumedPending.current.add(b.id);
+          scheduleBookingResponse(b.id, db);
+        }
+      });
+  }, [ready, db, scheduleBookingResponse]);
+
+  useEffect(() => {
+    return () => {
+      responseTimeouts.current.forEach((t) => clearTimeout(t));
+      responseTimeouts.current.clear();
+    };
   }, []);
 
   const persist = useCallback((next: MockDatabase) => {
@@ -284,8 +409,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!input.service.trim() || !input.date.trim()) {
         return { error: "Please fill all fields." };
       }
+      if (!input.time) {
+        return { error: "Please select an available time slot." };
+      }
       setLoading(true);
-      await simulateDelay();
+      await simulateDelay(1000);
       const provider = db.providers.find((p) => p.id === input.providerId);
       if (!provider) {
         setLoading(false);
@@ -295,17 +423,139 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: "This provider is not approved yet." };
       }
+      const providerUser = db.users.find((u) => u.id === provider.userId);
+      if (providerUser?.banned) {
+        setLoading(false);
+        return { error: "This provider is no longer available." };
+      }
       const id = newId("booking");
-      const next = createBookingRecord(
+      const result = createBookingRecord(
         db,
         { ...input, customerId: user.id },
         id
       );
-      persist(next);
+      if (result.error) {
+        setLoading(false);
+        return { error: result.error };
+      }
+      persist(result.db);
+      resumedPending.current.add(id);
+      scheduleBookingResponse(id, result.db);
+      emitSystemEvent({
+        type: "booking_created",
+        message: "New booking in your area",
+      });
       setLoading(false);
-      return { booking: next.bookings.find((b) => b.id === id) };
+      return { booking: result.db.bookings.find((b) => b.id === id) };
+    },
+    [db, user, persist, scheduleBookingResponse, emitSystemEvent]
+  );
+
+  const completeBooking = useCallback(
+    async (bookingId: string) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      const booking = db.bookings.find((b) => b.id === bookingId);
+      if (!booking) return { error: "Booking not found." };
+      if (booking.status !== "confirmed") {
+        return { error: "Only confirmed jobs can be marked complete." };
+      }
+      setLoading(true);
+      await simulateDelay(500);
+      const next = completeBookingRecord(db, bookingId);
+      persist(next);
+      emitSystemEvent({
+        type: "job_completed",
+        message: `${booking.service} job marked complete`,
+      });
+      emitSystemEvent({
+        type: "payment",
+        message: `Payment released for ${booking.customerName}`,
+      });
+      setLoading(false);
+      return {};
+    },
+    [db, user, persist, emitSystemEvent]
+  );
+
+  const getAvailableSlots = useCallback(
+    (providerId: string, date: string) => {
+      if (!db) return [];
+      return getAvailableSlotsForProvider(db, providerId, date);
+    },
+    [db]
+  );
+
+  const getChatMessages = useCallback(
+    (bookingId: string) =>
+      db?.chatMessages
+        .filter((m) => m.bookingId === bookingId)
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        ) ?? [],
+    [db]
+  );
+
+  const sendChatMessage = useCallback(
+    async (bookingId: string, text: string) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      const booking = db.bookings.find((b) => b.id === bookingId);
+      if (!booking) return { error: "Booking not found." };
+      if (booking.status !== "confirmed" && booking.status !== "completed") {
+        return { error: "Chat is available after the provider confirms your booking." };
+      }
+
+      const providerRecord = db.providers.find((p) => p.userId === user.id);
+      const senderRole =
+        user.role === "provider" && providerRecord?.id === booking.providerId
+          ? "provider"
+          : user.role === "customer" && booking.customerId === user.id
+            ? "customer"
+            : null;
+      if (!senderRole) return { error: "You cannot message on this booking." };
+
+      let next = addChatMessageRecord(db, {
+        id: newId("chat"),
+        bookingId,
+        senderRole,
+        senderName: user.name,
+        text,
+      });
+      persist(next);
+
+      if (senderRole === "customer") {
+        const replyDelay = getChatReplyDelayMs();
+        setTimeout(() => {
+          setDb((prev) => {
+            if (!prev) return prev;
+            const reply = generateProviderChatReply(text);
+            const withReply = addChatMessageRecord(prev, {
+              id: newId("chat"),
+              bookingId,
+              senderRole: "provider",
+              senderName: booking.providerName,
+              text: reply,
+            });
+            saveDb(withReply);
+            return withReply;
+          });
+        }, replyDelay);
+      }
+
+      return {};
     },
     [db, user, persist]
+  );
+
+  const removeReview = useCallback(
+    async (reviewId: string) => {
+      if (!db) return;
+      setLoading(true);
+      await simulateDelay(400);
+      persist(removeReviewRecord(db, reviewId));
+      setLoading(false);
+    },
+    [db, persist]
   );
 
   const addReview = useCallback(
@@ -317,6 +567,13 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     }) => {
       if (!db || !user) return { error: "You must be logged in." };
       if (!input.rating) return { error: "Please select a rating." };
+      const validationError = validateReview(db, {
+        customerId: user.id,
+        bookingId: input.bookingId,
+      });
+      if (validationError) {
+        return { error: validationError };
+      }
       setLoading(true);
       await simulateDelay();
       const id = newId("review");
@@ -335,7 +592,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const updateProvider = useCallback(
     async (patch: {
       services?: string[];
+      pricingType?: MockProvider["pricingType"];
+      price?: number;
+      basePrice?: number;
       hourlyRate?: number;
+      servicePackages?: MockProvider["servicePackages"];
       location?: string;
       description?: string;
       availability?: string;
@@ -386,6 +647,9 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           totalPages: 1,
           topRanked: [],
           topRankMap: {},
+          recommendationMap: {},
+          bestMatchId: undefined,
+          urgent: false,
         };
       }
       const effectiveStatus =
@@ -398,14 +662,69 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         ...filters,
         status: "verified",
       });
+      const urgent = detectUrgency(filters.q ?? "");
+      const pageLegacy = result.list.map(mockProviderToLegacy);
+      const labels = assignRecommendationLabels(
+        rankProviders(pageLegacy, filters.service, urgent).slice(0, 3)
+      );
+      const recommendationMap = Object.fromEntries(labels.entries()) as Record<
+        string,
+        RecommendationLabel
+      >;
+      const bestMatchId = topRanked[0]?.id;
+
       return {
         ...result,
         topRanked,
         topRankMap: Object.fromEntries(topRanked.map((p, i) => [p.id, i + 1])),
+        recommendationMap,
+        bestMatchId,
+        urgent,
       };
     },
     [db]
   );
+
+  const trackProviderViewFn = useCallback(
+    (providerId: string) => {
+      trackRecentProvider(providerId);
+    },
+    []
+  );
+
+  const trackProviderClickFn = useCallback((providerId: string) => {
+    incrementProviderClick(providerId);
+  }, []);
+
+  const isFavorite = useCallback(
+    (providerId: string) => favoriteIds.includes(providerId),
+    [favoriteIds]
+  );
+
+  const toggleFavorite = useCallback((providerId: string) => {
+    const nowSaved = !favoriteIds.includes(providerId);
+    const next = nowSaved
+      ? [...favoriteIds, providerId]
+      : favoriteIds.filter((id) => id !== providerId);
+    saveFavoriteIds(next);
+    setFavoriteIds(next);
+    return nowSaved;
+  }, [favoriteIds]);
+
+  const getSavedProviders = useCallback(() => {
+    if (!db) return [];
+    return favoriteIds
+      .map((id) => db.providers.find((p) => p.id === id))
+      .filter((p): p is MockProvider => Boolean(p));
+  }, [db, favoriteIds]);
+
+  const getRecentlyViewedProviders = useCallback(() => {
+    if (!db) return [];
+    return loadRecentProviderIds()
+      .map((id) => db.providers.find((p) => p.id === id))
+      .filter((p): p is MockProvider => Boolean(p))
+      .slice(0, 6);
+  }, [db]);
 
   const getProvider = useCallback(
     (id: string) => db?.providers.find((p) => p.id === id),
@@ -524,12 +843,24 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     demoLogin,
     logout,
     createBooking,
+    completeBooking,
+    getAvailableSlots,
+    sendChatMessage,
+    getChatMessages,
+    removeReview,
+    systemEvents,
     addReview,
     updateProvider,
     approveProvider,
     banUser,
     filterProviders,
     getProvider,
+    trackProviderView: trackProviderViewFn,
+    trackProviderClick: trackProviderClickFn,
+    isFavorite,
+    toggleFavorite,
+    getSavedProviders,
+    getRecentlyViewedProviders,
     getProviderReviews,
     getProviderForUser,
     getBookingsForCustomer,

@@ -6,7 +6,10 @@ import type {
   MockUser,
   ProviderFilters,
 } from "./types";
+import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
 import { rankProviders } from "@/lib/providers";
+import { detectUrgency } from "@/lib/smart";
+import { isSlotTaken } from "./simulation";
 import type { ProviderWithUser } from "@/lib/types";
 
 export function simulateDelay(ms = 600): Promise<void> {
@@ -38,7 +41,11 @@ export function mockProviderToLegacy(p: MockProvider): ProviderWithUser {
     id: p.id,
     user_id: p.userId,
     services: p.services,
+    pricing_type: p.pricingType,
+    price: p.price,
+    base_price: p.basePrice,
     hourly_rate: p.hourlyRate,
+    service_packages: p.servicePackages,
     location: p.location,
     description: p.description,
     availability: p.availability,
@@ -67,6 +74,9 @@ export function applyProviderFilters(
 ): MockProvider[] {
   let list = [...(source ?? db.providers)];
 
+  const bannedUserIds = new Set(db.users.filter((u) => u.banned).map((u) => u.id));
+  list = list.filter((p) => !bannedUserIds.has(p.userId));
+
   if (filters.status === "pending") {
     list = list.filter((p) => !p.approved);
   } else if (filters.status === "verified") {
@@ -89,10 +99,14 @@ export function applyProviderFilters(
   }
 
   if (filters.minPrice) {
-    list = list.filter((p) => p.hourlyRate >= Number(filters.minPrice));
+    list = list.filter(
+      (p) => getComparablePrice(p.pricingType, p.price) >= Number(filters.minPrice)
+    );
   }
   if (filters.maxPrice && Number(filters.maxPrice) < 120) {
-    list = list.filter((p) => p.hourlyRate <= Number(filters.maxPrice));
+    list = list.filter(
+      (p) => getComparablePrice(p.pricingType, p.price) <= Number(filters.maxPrice)
+    );
   }
   if (filters.minRating) {
     list = list.filter((p) => p.ratingAvg >= Number(filters.minRating));
@@ -107,14 +121,23 @@ export function applyProviderFilters(
     list = list.filter((p) => p.availableTomorrow);
   }
 
+  const urgent = detectUrgency(filters.q ?? "");
+  if (urgent && !filters.availability) {
+    list = list.filter((p) => p.availableToday || p.availableTomorrow);
+  }
+
   const legacy = list.map(mockProviderToLegacy);
 
   if (filters.sort === "price") {
-    list.sort((a, b) => a.hourlyRate - b.hourlyRate);
+    list.sort(
+      (a, b) =>
+        getComparablePrice(a.pricingType, a.price) -
+        getComparablePrice(b.pricingType, b.price)
+    );
   } else if (filters.sort === "distance") {
     list.sort((a, b) => a.distanceMiles - b.distanceMiles);
   } else {
-    const ranked = rankProviders(legacy, filters.service);
+    const ranked = rankProviders(legacy, filters.service, urgent);
     const order = new Map(ranked.map((p, i) => [p.id, i]));
     list.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
   }
@@ -167,10 +190,17 @@ export function createBookingRecord(
     hours: number;
   },
   bookingId: string
-): MockDatabase {
+): { db: MockDatabase; error?: string } {
   const customer = db.users.find((u) => u.id === input.customerId);
   const provider = db.providers.find((p) => p.id === input.providerId);
-  if (!customer || !provider) return db;
+  if (!customer || !provider) return { db, error: "Provider not found." };
+
+  if (input.time && isSlotTaken(db, input.providerId, input.date, input.time)) {
+    return {
+      db,
+      error: "This provider is no longer available at that time. Please choose another slot.",
+    };
+  }
 
   const booking: MockBooking = {
     id: bookingId,
@@ -182,18 +212,133 @@ export function createBookingRecord(
     date: input.date,
     time: input.time,
     hours: input.hours,
-    estimatedCost: provider.hourlyRate * input.hours,
+    estimatedCost: estimateBookingCost(
+      provider.pricingType,
+      provider.pricingType === "hourly" ? provider.hourlyRate : provider.price,
+      input.hours
+    ),
     status: "pending",
+    paymentStatus: "none",
     createdAt: new Date().toISOString(),
   };
 
   return {
+    db: {
+      ...db,
+      bookings: [booking, ...db.bookings],
+    },
+  };
+}
+
+export function resolveBookingRecord(
+  db: MockDatabase,
+  bookingId: string,
+  accepted: boolean
+): MockDatabase {
+  const booking = db.bookings.find((b) => b.id === bookingId);
+  if (!booking || booking.status !== "pending") return db;
+
+  const now = new Date().toISOString();
+
+  if (!accepted) {
+    return {
+      ...db,
+      bookings: db.bookings.map((b) =>
+        b.id === bookingId
+          ? { ...b, status: "declined", respondedAt: now }
+          : b
+      ),
+    };
+  }
+
+  return {
     ...db,
-    bookings: [booking, ...db.bookings],
-    providers: db.providers.map((p) =>
-      p.id === provider.id ? { ...p, jobsCompleted: p.jobsCompleted + 1 } : p
+    bookings: db.bookings.map((b) =>
+      b.id === bookingId
+        ? {
+            ...b,
+            status: "confirmed",
+            paymentStatus: "authorized",
+            respondedAt: now,
+          }
+        : b
     ),
   };
+}
+
+export function completeBookingRecord(
+  db: MockDatabase,
+  bookingId: string
+): MockDatabase {
+  const booking = db.bookings.find((b) => b.id === bookingId);
+  if (!booking || booking.status !== "confirmed") return db;
+
+  const now = new Date().toISOString();
+
+  return {
+    ...db,
+    bookings: db.bookings.map((b) =>
+      b.id === bookingId
+        ? {
+            ...b,
+            status: "completed",
+            paymentStatus: "released",
+            completedAt: now,
+          }
+        : b
+    ),
+    providers: db.providers.map((p) =>
+      p.id === booking.providerId
+        ? { ...p, jobsCompleted: p.jobsCompleted + 1 }
+        : p
+    ),
+  };
+}
+
+export function addChatMessageRecord(
+  db: MockDatabase,
+  message: {
+    id: string;
+    bookingId: string;
+    senderRole: "customer" | "provider";
+    senderName: string;
+    text: string;
+  }
+): MockDatabase {
+  return {
+    ...db,
+    chatMessages: [
+      ...db.chatMessages,
+      { ...message, createdAt: new Date().toISOString() },
+    ],
+  };
+}
+
+export function removeReviewRecord(db: MockDatabase, reviewId: string): MockDatabase {
+  const review = db.reviews.find((r) => r.id === reviewId);
+  if (!review) return db;
+
+  const reviews = db.reviews.filter((r) => r.id !== reviewId);
+  const providers = recalculateProviderRating(review.providerId, db.providers, reviews);
+
+  return { ...db, reviews, providers };
+}
+
+export function validateReview(
+  db: MockDatabase,
+  input: { customerId: string; bookingId?: string }
+): string | undefined {
+  if (!input.bookingId) return undefined;
+  const booking = db.bookings.find((b) => b.id === input.bookingId);
+  if (!booking) return "Booking not found.";
+  if (booking.customerId !== input.customerId) return "This is not your booking.";
+  if (booking.status !== "completed") {
+    return "You can only review jobs after they are marked complete.";
+  }
+  if (db.reviews.some((r) => r.bookingId === input.bookingId)) {
+    return "You already reviewed this booking.";
+  }
+  return undefined;
 }
 
 export function addReviewRecord(
@@ -224,7 +369,14 @@ export function addReviewRecord(
   const reviews = [review, ...db.reviews];
   const providers = recalculateProviderRating(input.providerId, db.providers, reviews);
 
-  return { ...db, reviews, providers };
+  let bookings = db.bookings;
+  if (input.bookingId) {
+    bookings = bookings.map((b) =>
+      b.id === input.bookingId ? { ...b } : b
+    );
+  }
+
+  return { ...db, reviews, providers, bookings };
 }
 
 export function updateProviderRecord(
@@ -234,7 +386,11 @@ export function updateProviderRecord(
     Pick<
       MockProvider,
       | "services"
+      | "pricingType"
+      | "price"
+      | "basePrice"
       | "hourlyRate"
+      | "servicePackages"
       | "location"
       | "description"
       | "availability"

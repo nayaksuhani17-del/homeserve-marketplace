@@ -1,4 +1,5 @@
 import { rankProviders } from "./providers";
+import { getComparablePrice } from "./pricing";
 import type { ProviderWithUser } from "./types";
 
 export type RecommendationLabel = "best-match" | "top-rated" | "budget-option";
@@ -32,7 +33,9 @@ export function assignRecommendationLabels(
     (a, b) => Number(b.rating_avg) - Number(a.rating_avg)
   );
   const byPrice = [...providers].sort(
-    (a, b) => Number(a.hourly_rate) - Number(b.hourly_rate)
+    (a, b) =>
+      getComparablePrice(a.pricing_type, Number(a.price)) -
+      getComparablePrice(b.pricing_type, Number(b.price))
   );
 
   if (ranked[0]) map.set(ranked[0].id, "best-match");

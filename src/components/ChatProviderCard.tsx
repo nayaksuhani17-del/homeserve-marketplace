@@ -4,6 +4,7 @@ import Link from "next/link";
 import { StarRating } from "./StarRating";
 import { RecommendationBadge } from "./RecommendationBadge";
 import type { ProviderCardData } from "@/lib/providers";
+import { formatProviderPrice } from "@/lib/pricing";
 import { formatResponseTime } from "@/lib/recommendations";
 
 export function ChatProviderCard({ provider, compact }: { provider: ProviderCardData; compact?: boolean }) {
@@ -62,7 +63,9 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
             </div>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="font-bold text-green-700">${provider.hourlyRate}/hr</span>
+            <span className="font-bold text-green-700">
+              {formatProviderPrice(provider.pricingType, provider.price)}
+            </span>
             {provider.jobsCompleted != null && (
               <span className="text-[10px] text-gray-400">
                 {provider.jobsCompleted} hires

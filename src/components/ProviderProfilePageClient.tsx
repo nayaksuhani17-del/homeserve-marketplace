@@ -8,9 +8,13 @@ import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 
 export function ProviderProfilePageClient({ providerId }: { providerId: string }) {
-  const { getProvider, getProviderReviews, user, ready } = useMockApp();
+  const { getProvider, getProviderReviews, user, ready, trackProviderView } = useMockApp();
   const searchParams = useSearchParams();
   const [autoHire, setAutoHire] = useState(false);
+
+  useEffect(() => {
+    if (providerId && ready) trackProviderView(providerId);
+  }, [providerId, ready, trackProviderView]);
 
   useEffect(() => {
     if (searchParams.get("hire") === "1" && user) {

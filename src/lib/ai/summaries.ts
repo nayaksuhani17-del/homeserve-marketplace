@@ -1,10 +1,13 @@
 import { chatCompletion } from "./openai";
+import { formatProviderPrice, getComparablePrice } from "@/lib/pricing";
+import type { PricingType } from "@/lib/pricing";
 
 type ProviderForSummary = {
   name: string;
   services: string[];
   rating_avg: number;
-  hourly_rate: number;
+  pricing_type: PricingType;
+  price: number;
   years_experience?: number | null;
   jobs_completed?: number | null;
   description?: string;
@@ -24,8 +27,8 @@ export function generateProviderSummaryFallback(p: ProviderForSummary): string {
   if (Number(p.rating_avg) >= 4.5) {
     return `Top-rated ${service.toLowerCase()} professional with ${years}+ years of experience and ${jobs} completed jobs. Customers consistently praise reliability and quality (${rating}★ average).`;
   }
-  if (Number(p.hourly_rate) <= 35) {
-    return `Affordable ${service.toLowerCase()} specialist offering great value at $${Number(p.hourly_rate).toFixed(0)}/hr. ${years} years in the field with ${jobs} jobs completed and solid ${rating}★ feedback.`;
+  if (getComparablePrice(p.pricing_type, Number(p.price)) <= 35) {
+    return `Affordable ${service.toLowerCase()} specialist offering great value at ${formatProviderPrice(p.pricing_type, Number(p.price))}. ${years} years in the field with ${jobs} jobs completed and solid ${rating}★ feedback.`;
   }
   return `Experienced ${service.toLowerCase()} provider with ${years} years in the industry and ${jobs} completed jobs. Known for professional service with a ${rating}★ customer rating.`;
 }
@@ -39,7 +42,7 @@ export async function generateProviderSummary(
 
   const ai = await chatCompletion(
     "Write a single compelling 1-2 sentence summary for a home services marketplace provider profile. Be specific and professional. No quotes.",
-    `Name: ${provider.name}\nServices: ${provider.services.join(", ")}\nRating: ${provider.rating_avg}\nRate: $${provider.hourly_rate}/hr\nExperience: ${provider.years_experience} years\nJobs: ${provider.jobs_completed}\nBio: ${provider.description?.slice(0, 200)}`,
+    `Name: ${provider.name}\nServices: ${provider.services.join(", ")}\nRating: ${provider.rating_avg}\nPricing: ${formatProviderPrice(provider.pricing_type, Number(provider.price))}\nExperience: ${provider.years_experience} years\nJobs: ${provider.jobs_completed}\nBio: ${provider.description?.slice(0, 200)}`,
     80
   );
   return ai ?? generateProviderSummaryFallback(provider);

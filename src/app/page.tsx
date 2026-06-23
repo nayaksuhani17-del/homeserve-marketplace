@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import { SmartSearchBar } from "@/components/SmartSearchBar";
 import { HomeStats } from "@/components/HomeStats";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
+import { getServiceMeta } from "@/lib/services";
 
 const SmartAssistant = dynamic(
   () => import("@/components/SmartAssistant").then((m) => m.SmartAssistant),
@@ -61,15 +62,22 @@ export default function HomePage() {
       <section className="mt-12">
         <h2 className="text-2xl font-bold text-gray-900">Browse by category</h2>
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-          {SERVICE_CATEGORIES.map((category) => (
-            <Link
-              key={category}
-              href={`/customer/dashboard?service=${encodeURIComponent(category)}`}
-              className="card card-hover px-4 py-5 text-center text-sm font-medium text-gray-800"
-            >
-              {category}
-            </Link>
-          ))}
+          {SERVICE_CATEGORIES.map((category) => {
+            const meta = getServiceMeta(category);
+            return (
+              <Link
+                key={category}
+                href={`/customer/dashboard?service=${encodeURIComponent(category)}`}
+                className="card card-hover px-4 py-5 text-center transition-transform hover:-translate-y-0.5"
+              >
+                <span className="text-2xl" aria-hidden>
+                  {meta.icon}
+                </span>
+                <p className="mt-2 text-sm font-medium text-gray-800">{category}</p>
+                <p className="mt-1 text-xs text-gray-500">{meta.description}</p>
+              </Link>
+            );
+          })}
         </div>
       </section>
 

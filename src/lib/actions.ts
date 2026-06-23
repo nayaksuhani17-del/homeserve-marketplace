@@ -11,6 +11,7 @@ import {
 } from "@/lib/demo/session";
 import { getDemoProviderById } from "@/lib/demo/providers";
 import { getProviderUser } from "@/lib/providers";
+import { estimateBookingCost } from "@/lib/pricing";
 
 export async function getCurrentUser() {
   const appUser = await getAppUser();
@@ -51,7 +52,8 @@ export async function createBooking(formData: FormData) {
   if (appUser.source === "demo") {
     const provider = getDemoProviderById(providerId);
     const providerUser = provider ? getProviderUser(provider) : null;
-    const hourlyRate = Number(provider?.hourly_rate ?? 0);
+    const pricingType = provider?.pricing_type ?? "hourly";
+    const price = Number(provider?.price ?? 0);
 
     const booking = await appendDemoBooking({
       providerId,
@@ -75,8 +77,9 @@ export async function createBooking(formData: FormData) {
         date,
         time,
         providerName: booking.providerName,
-        hourlyRate,
-        estimatedCost: hourlyRate * hours,
+        pricingType,
+        price,
+        estimatedCost: estimateBookingCost(pricingType, price, hours),
         hours,
       },
     };
@@ -122,7 +125,7 @@ export async function createBooking(formData: FormData) {
   revalidatePath("/customer/dashboard");
   revalidatePath(`/provider/${providerId}`);
 
-  const hourlyRate = Number(provider?.hourly_rate ?? 0);
+  const price = Number(provider?.hourly_rate ?? 0);
   return {
     success: true,
     booking: {
@@ -131,8 +134,9 @@ export async function createBooking(formData: FormData) {
       date,
       time,
       providerName: name ?? "Provider",
-      hourlyRate,
-      estimatedCost: hourlyRate * hours,
+      pricingType: "hourly" as const,
+      price,
+      estimatedCost: estimateBookingCost("hourly", price, hours),
       hours,
     },
   };
@@ -201,7 +205,8 @@ export async function upsertProviderProfile(formData: FormData) {
   if (!user) return { error: "You must be logged in." };
 
   const services = formData.getAll("services") as string[];
-  const hourlyRate = Number(formData.get("hourly_rate"));
+  const pricingType = (formData.get("pricing_type") as "hourly" | "fixed" | "estimate") || "hourly";
+  const price = Number(formData.get("price") ?? formData.get("hourly_rate"));
   const location = formData.get("location") as string;
   const description = formData.get("description") as string;
   const availability = formData.get("availability") as string;
@@ -215,7 +220,7 @@ export async function upsertProviderProfile(formData: FormData) {
   const payload = {
     user_id: user.id,
     services,
-    hourly_rate: hourlyRate,
+    hourly_rate: price,
     location,
     description,
     availability,

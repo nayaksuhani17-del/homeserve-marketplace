@@ -12,6 +12,8 @@ import {
   getCatalogReviewsForProvider,
   getCatalogStats,
 } from "./catalog";
+import { getComparablePrice } from "@/lib/pricing";
+import { enrichProviderQuoteFields } from "@/lib/quotes";
 import { rankProviders, toProviderCardData, type ProviderCardData } from "../providers";
 import { assignRecommendationLabels } from "../recommendations";
 import type { ProviderWithUser } from "../types";
@@ -26,11 +28,26 @@ function ratingForSeedProvider(userKey: string): number {
 function buildSeedProviders(): ProviderWithUser[] {
   return DEMO_PROVIDERS.map((p, i) => {
     const user = getDemoUserByKey(p.userKey)!;
+    const id = providerId(p.userKey);
+    const quote = enrichProviderQuoteFields({
+      id,
+      pricingType: p.pricingType,
+      price: p.price,
+      services: p.services,
+      basePrice: p.basePrice,
+      hourlyRate: p.hourlyRate,
+      servicePackages: p.servicePackages,
+    });
+
     return {
-      id: providerId(p.userKey),
+      id,
       user_id: userId(p.userKey),
       services: p.services,
-      hourly_rate: p.hourlyRate,
+      pricing_type: p.pricingType,
+      price: p.price,
+      base_price: quote.basePrice,
+      hourly_rate: quote.hourlyRate,
+      service_packages: quote.servicePackages,
       location: p.location,
       description: p.description,
       availability: p.availability,
@@ -174,10 +191,14 @@ export function applyDemoFilters(filters: DemoProviderFilters): ProviderWithUser
     );
   }
   if (filters.minPrice) {
-    list = list.filter((p) => Number(p.hourly_rate) >= Number(filters.minPrice));
+    list = list.filter(
+      (p) => getComparablePrice(p.pricing_type, Number(p.price)) >= Number(filters.minPrice)
+    );
   }
   if (filters.maxPrice && Number(filters.maxPrice) < 120) {
-    list = list.filter((p) => Number(p.hourly_rate) <= Number(filters.maxPrice));
+    list = list.filter(
+      (p) => getComparablePrice(p.pricing_type, Number(p.price)) <= Number(filters.maxPrice)
+    );
   }
   if (filters.minRating) {
     list = list.filter((p) => Number(p.rating_avg) >= Number(filters.minRating));
@@ -195,7 +216,11 @@ export function applyDemoFilters(filters: DemoProviderFilters): ProviderWithUser
   }
 
   if (filters.sort === "price") {
-    list.sort((a, b) => Number(a.hourly_rate) - Number(b.hourly_rate));
+    list.sort(
+      (a, b) =>
+        getComparablePrice(a.pricing_type, Number(a.price)) -
+        getComparablePrice(b.pricing_type, Number(b.price))
+    );
   } else if (filters.sort === "distance") {
     list.sort(
       (a, b) =>
@@ -267,7 +292,8 @@ export function getDemoAdminProviders() {
     .map((p) => ({
       id: p.id,
       services: p.services,
-      hourly_rate: p.hourly_rate,
+      pricing_type: p.pricing_type,
+      price: p.price,
       location: p.location,
       approved: p.approved,
       rating_avg: p.rating_avg,

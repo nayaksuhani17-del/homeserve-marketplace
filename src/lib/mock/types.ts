@@ -1,4 +1,11 @@
+import type { PricingType } from "@/lib/pricing";
+import type { ServicePackage } from "@/lib/quotes";
+
 export type MockRole = "admin" | "customer" | "provider";
+
+export type BookingStatus = "pending" | "confirmed" | "declined" | "completed";
+export type PaymentStatus = "none" | "authorized" | "released";
+export type ResponseSpeed = "fast" | "medium" | "slow";
 
 export type MockUser = {
   id: string;
@@ -18,7 +25,11 @@ export type MockProvider = {
   email: string;
   avatarUrl?: string;
   services: string[];
+  pricingType: PricingType;
+  price: number;
+  basePrice: number;
   hourlyRate: number;
+  servicePackages: ServicePackage[];
   location: string;
   description: string;
   availability: string;
@@ -31,6 +42,7 @@ export type MockProvider = {
   availableToday: boolean;
   availableTomorrow: boolean;
   responseTimeMins: number;
+  responseSpeed: ResponseSpeed;
   reviewCount: number;
 };
 
@@ -45,8 +57,11 @@ export type MockBooking = {
   time?: string | null;
   hours: number;
   estimatedCost: number;
-  status: "pending" | "confirmed";
+  status: BookingStatus;
+  paymentStatus: PaymentStatus;
   createdAt: string;
+  respondedAt?: string;
+  completedAt?: string;
 };
 
 export type MockReview = {
@@ -60,12 +75,22 @@ export type MockReview = {
   createdAt: string;
 };
 
+export type MockChatMessage = {
+  id: string;
+  bookingId: string;
+  senderRole: "customer" | "provider";
+  senderName: string;
+  text: string;
+  createdAt: string;
+};
+
 export type MockDatabase = {
   version: number;
   users: MockUser[];
   providers: MockProvider[];
   bookings: MockBooking[];
   reviews: MockReview[];
+  chatMessages: MockChatMessage[];
 };
 
 export type MockSession = {
@@ -87,4 +112,11 @@ export type ProviderFilters = {
 
 export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
-export const MOCK_DB_VERSION = 1;
+export const MOCK_DB_VERSION = 4;
+
+export type SystemEvent = {
+  id: string;
+  type: "booking_accepted" | "booking_declined" | "booking_created" | "job_completed" | "payment";
+  message: string;
+  at: string;
+};

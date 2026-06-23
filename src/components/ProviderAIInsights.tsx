@@ -2,13 +2,16 @@
 
 import { useMemo } from "react";
 import { generateProviderSummaryFallback, generateReviewInsightsFallback } from "@/lib/ai/summaries";
+import { generateBehavioralInsights } from "@/lib/smart";
+import type { PricingType } from "@/lib/pricing";
 
 type ProviderAISummaryProps = {
   provider: {
     name: string;
     services: string[];
     rating_avg: number;
-    hourly_rate: number;
+    pricing_type: PricingType;
+    price: number;
     years_experience?: number | null;
     jobs_completed?: number | null;
     description?: string;
@@ -22,7 +25,8 @@ export function ProviderAISummary({ provider }: ProviderAISummaryProps) {
         name: provider.name,
         services: provider.services,
         rating_avg: provider.rating_avg,
-        hourly_rate: provider.hourly_rate,
+        pricing_type: provider.pricing_type,
+        price: provider.price,
         years_experience: provider.years_experience,
         jobs_completed: provider.jobs_completed,
         description: provider.description,
@@ -36,6 +40,47 @@ export function ProviderAISummary({ provider }: ProviderAISummaryProps) {
         <span>✨</span> AI Summary
       </div>
       <p className="mt-2 text-sm leading-relaxed text-gray-700">{summary}</p>
+    </div>
+  );
+}
+
+type BehavioralInsightsProps = {
+  provider: {
+    services: string[];
+    rating_avg: number;
+    jobs_completed?: number | null;
+    available_today?: boolean | null;
+    response_time_mins?: number | null;
+  };
+  reviews: Array<{ rating: number; comment: string }>;
+};
+
+export function BehavioralInsightsPanel({ provider, reviews }: BehavioralInsightsProps) {
+  const insights = useMemo(
+    () =>
+      generateBehavioralInsights({
+        services: provider.services,
+        rating_avg: provider.rating_avg,
+        jobs_completed: provider.jobs_completed,
+        available_today: provider.available_today,
+        response_time_mins: provider.response_time_mins,
+        reviews,
+      }),
+    [provider, reviews]
+  );
+
+  return (
+    <div className="card border-indigo-100 bg-indigo-50/50 p-5">
+      <div className="flex items-center gap-2 text-sm font-semibold text-indigo-800">
+        <span>🧠</span> Smart profile insights
+      </div>
+      <ul className="mt-3 space-y-2">
+        {insights.map((item) => (
+          <li key={item} className="flex gap-2 text-sm text-indigo-900">
+            <span className="text-indigo-500">•</span> {item}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

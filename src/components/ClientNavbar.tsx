@@ -40,6 +40,14 @@ export function ClientNavbar() {
           >
             Browse
           </Link>
+          {user?.role === "customer" && (
+            <Link
+              href="/customer/saved"
+              className="transition-colors duration-200 hover:text-green-600"
+            >
+              Saved
+            </Link>
+          )}
           {dashboardHref && dashboardHref !== "/customer/dashboard" && (
             <Link href={dashboardHref} className="transition-colors duration-200 hover:text-green-600">
               Dashboard

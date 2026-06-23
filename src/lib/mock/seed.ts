@@ -10,6 +10,8 @@ import {
   userId,
 } from "@/lib/demo/seed-data";
 import { demoId } from "@/lib/demo/ids";
+import { enrichProviderQuoteFields } from "@/lib/quotes";
+import { estimateBookingCost } from "@/lib/pricing";
 import type { MockBooking, MockDatabase, MockProvider, MockReview, MockUser } from "./types";
 import { MOCK_DB_VERSION } from "./types";
 
@@ -27,6 +29,16 @@ function toMockUser(u: (typeof DEMO_USERS)[0]): MockUser {
 }
 
 function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvider {
+  const quote = enrichProviderQuoteFields({
+    id: p.id,
+    pricingType: p.pricing_type,
+    price: Number(p.price),
+    services: p.services,
+    basePrice: p.base_price,
+    hourlyRate: p.hourly_rate,
+    servicePackages: p.service_packages,
+  });
+
   return {
     id: p.id,
     userId: p.user_id,
@@ -34,7 +46,11 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     email: p.users.email,
     avatarUrl: p.users.avatar_url ?? undefined,
     services: p.services,
-    hourlyRate: Number(p.hourly_rate),
+    pricingType: p.pricing_type,
+    price: Number(p.price),
+    basePrice: quote.basePrice,
+    hourlyRate: quote.hourlyRate,
+    servicePackages: quote.servicePackages,
     location: p.location,
     description: p.description,
     availability: p.availability,
@@ -47,8 +63,15 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     availableToday: Boolean(p.available_today),
     availableTomorrow: Boolean(p.available_tomorrow),
     responseTimeMins: Number(p.response_time_mins ?? 60),
+    responseSpeed: deriveResponseSpeed(Number(p.response_time_mins ?? 60)),
     reviewCount: Number(p.review_count ?? 0),
   };
+}
+
+function deriveResponseSpeed(mins: number): MockProvider["responseSpeed"] {
+  if (mins <= 20) return "fast";
+  if (mins <= 60) return "medium";
+  return "slow";
 }
 
 export function buildInitialDatabase(): MockDatabase {
@@ -72,8 +95,20 @@ export function buildInitialDatabase(): MockDatabase {
       date: b.date,
       time: "10:00",
       hours: 2,
-      estimatedCost: (provider?.hourlyRate ?? 40) * 2,
-      status: b.status,
+      estimatedCost: estimateBookingCost(
+        provider?.pricingType ?? "hourly",
+        provider?.pricingType === "hourly"
+          ? (provider?.hourlyRate ?? provider?.price ?? 40)
+          : (provider?.price ?? 40),
+        2
+      ),
+      status: b.status === "confirmed" ? "completed" : "confirmed",
+      paymentStatus: b.status === "confirmed" ? "released" : "authorized",
+      respondedAt: new Date(Date.now() - i * 86400000 * 3 - 3600000).toISOString(),
+      completedAt:
+        b.status === "confirmed"
+          ? new Date(Date.now() - i * 86400000 * 2).toISOString()
+          : undefined,
       createdAt: new Date(Date.now() - i * 86400000 * 3).toISOString(),
     };
   });
@@ -110,6 +145,7 @@ export function buildInitialDatabase(): MockDatabase {
     providers: syncedProviders,
     bookings,
     reviews,
+    chatMessages: [],
   };
 }
 
@@ -139,7 +175,14 @@ export function newGuestProvider(user: MockUser): MockProvider {
     email: user.email,
     avatarUrl: user.avatarUrl,
     services: ["House Cleaning"],
-    hourlyRate: 35,
+    pricingType: "fixed",
+    price: 95,
+    basePrice: 95,
+    hourlyRate: 0,
+    servicePackages: [
+      { label: "Standard home clean", price: 95 },
+      { label: "Deep house cleaning", price: 150 },
+    ],
     location: "Your City",
     description: "Tell customers about your experience and services.",
     availability: "Mon-Fri: 9am-5pm",
@@ -152,6 +195,7 @@ export function newGuestProvider(user: MockUser): MockProvider {
     availableToday: true,
     availableTomorrow: true,
     responseTimeMins: 30,
+    responseSpeed: "fast",
     reviewCount: 0,
   };
 }

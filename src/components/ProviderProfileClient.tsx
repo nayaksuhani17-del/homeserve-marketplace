@@ -5,16 +5,30 @@ import Link from "next/link";
 import { StarRating } from "./StarRating";
 import { TagBadge } from "./ChatProviderCard";
 import { HireModal } from "./HireModal";
-import { ProviderAISummary, ReviewInsightsPanel } from "./ProviderAIInsights";
+import { QuoteModal } from "./QuoteModal";
+import { ProviderAISummary, ReviewInsightsPanel, BehavioralInsightsPanel } from "./ProviderAIInsights";
+import { TrustBadges } from "./TrustBadges";
+import { FavoriteButton } from "./FavoriteButton";
+import { getViewerCount } from "@/lib/trust";
+import { getServiceMeta } from "@/lib/services";
 import { ReviewForm } from "./ReviewForm";
+import { useMockApp } from "@/context/MockAppContext";
 import { computeProviderTags } from "@/lib/providers";
+import { formatProviderPrice, PRICING_TYPE_LABELS } from "@/lib/pricing";
+import type { PricingType } from "@/lib/pricing";
+import type { ServicePackage } from "@/lib/quotes";
+import { toQuoteProfile } from "@/lib/quotes";
 import { formatResponseTime } from "@/lib/recommendations";
 
 type ProviderProfileClientProps = {
   provider: {
     id: string;
     services: string[];
-    hourly_rate: number;
+    pricing_type: PricingType;
+    price: number;
+    base_price?: number;
+    hourly_rate?: number;
+    service_packages?: ServicePackage[];
     location: string;
     description: string;
     availability: string;
@@ -49,6 +63,8 @@ export function ProviderProfileClient({
   autoOpenHire,
 }: ProviderProfileClientProps) {
   const [hireOpen, setHireOpen] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const { user: sessionUser, db, getBookingsForCustomer } = useMockApp();
 
   useEffect(() => {
     if (autoOpenHire && isLoggedIn && provider.approved) {
@@ -56,9 +72,22 @@ export function ProviderProfileClient({
     }
   }, [autoOpenHire, isLoggedIn, provider.approved]);
   const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
+
+  const reviewableBooking =
+    sessionUser?.role === "customer"
+      ? getBookingsForCustomer(sessionUser.id).find(
+          (b) =>
+            b.providerId === provider.id &&
+            b.status === "completed" &&
+            !db?.reviews.some((r) => r.bookingId === b.id)
+        )
+      : undefined;
   const tags = computeProviderTags(provider as Parameters<typeof computeProviderTags>[0]);
   const reviewCount = provider.review_count ?? reviews.length;
   const responseLabel = formatResponseTime(provider.response_time_mins);
+  const priceDisplay = formatProviderPrice(provider.pricing_type, Number(provider.price));
+  const viewers = getViewerCount(provider.id);
+  const legacyProvider = provider as Parameters<typeof computeProviderTags>[0];
 
   return (
     <>
@@ -80,13 +109,18 @@ export function ProviderProfileClient({
                 {(user?.name ?? "P").charAt(0)}
               </div>
             )}
-            <div className="flex flex-wrap gap-2 sm:mb-2">
+            <div className="flex flex-wrap items-center gap-2 sm:mb-2">
+              <FavoriteButton
+                providerId={provider.id}
+                providerName={user?.name ?? "Provider"}
+                className="!p-2"
+              />
               {provider.approved ? (
                 <span className="badge-verified px-3 py-1 text-sm">✓ Verified</span>
               ) : (
                 <span className="badge-pending px-3 py-1 text-sm">Pending review</span>
               )}
-              {tags.includes("Highly Rated") && (
+              {tags.includes("Top Rated") && (
                 <span className="tag-pill bg-amber-500 font-semibold text-white">Top Rated</span>
               )}
               {tags.includes("Fast Responder") && (
@@ -94,6 +128,12 @@ export function ProviderProfileClient({
               )}
             </div>
           </div>
+
+          <TrustBadges provider={legacyProvider} />
+
+          <p className="mt-2 text-xs text-amber-700">
+            {viewers} {viewers === 1 ? "person is" : "people are"} viewing this profile now
+          </p>
 
           <div className="mt-4">
             <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">{user?.name ?? "Provider"}</h1>
@@ -121,8 +161,10 @@ export function ProviderProfileClient({
 
           <div className="mt-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-2xl bg-gray-50 p-4 text-center ring-1 ring-gray-100">
-              <p className="text-2xl font-bold text-gray-900">${Number(provider.hourly_rate).toFixed(0)}</p>
-              <p className="text-xs text-gray-500">per hour</p>
+              <p className="text-2xl font-bold text-gray-900">{priceDisplay}</p>
+              <p className="text-xs text-gray-500">
+                {PRICING_TYPE_LABELS[provider.pricing_type]}
+              </p>
             </div>
             <div className="rounded-2xl bg-gray-50 p-4 text-center ring-1 ring-gray-100">
               <p className="text-2xl font-bold text-gray-900">{provider.jobs_completed ?? "—"}</p>
@@ -143,12 +185,26 @@ export function ProviderProfileClient({
           </div>
 
         <div className="mt-6">
+          <BehavioralInsightsPanel
+            provider={{
+              services: provider.services,
+              rating_avg: Number(provider.rating_avg),
+              jobs_completed: provider.jobs_completed,
+              available_today: provider.available_today,
+              response_time_mins: provider.response_time_mins,
+            }}
+            reviews={reviews.map((r) => ({ rating: r.rating, comment: r.comment }))}
+          />
+        </div>
+
+        <div className="mt-6">
           <ProviderAISummary
             provider={{
               name: user?.name ?? "Provider",
               services: provider.services,
               rating_avg: Number(provider.rating_avg),
-              hourly_rate: Number(provider.hourly_rate),
+              pricing_type: provider.pricing_type,
+              price: Number(provider.price),
               years_experience: provider.years_experience,
               jobs_completed: provider.jobs_completed,
               description: provider.description,
@@ -160,7 +216,8 @@ export function ProviderProfileClient({
             <h2 className="font-semibold text-gray-900">Services</h2>
             <div className="mt-2 flex flex-wrap gap-2">
               {provider.services.map((service) => (
-                <span key={service} className="badge-tag">
+                <span key={service} className="badge-tag inline-flex items-center gap-1">
+                  <span aria-hidden>{getServiceMeta(service).icon}</span>
                   {service}
                 </span>
               ))}
@@ -172,22 +229,33 @@ export function ProviderProfileClient({
             <p className="mt-2 leading-relaxed text-gray-600">{provider.description}</p>
           </div>
 
-          {provider.approved && isLoggedIn ? (
-            <button type="button" onClick={() => setHireOpen(true)} className="btn-primary mt-8 px-8 py-3 text-base">
-              Hire Now
-            </button>
+          {provider.approved ? (
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setQuoteOpen(true)}
+                className="btn-secondary px-8 py-3 text-base"
+              >
+                Get Instant Quote
+              </button>
+              {isLoggedIn ? (
+                <button type="button" onClick={() => setHireOpen(true)} className="btn-primary px-8 py-3 text-base">
+                  Hire Now
+                </button>
+              ) : (
+                <Link
+                  href={`/login?redirect=/provider/${provider.id}?service=${encodeURIComponent(defaultService)}&hire=1`}
+                  className="btn-primary px-8 py-3 text-base"
+                >
+                  Log in to Hire
+                </Link>
+              )}
+            </div>
           ) : !provider.approved ? (
             <p className="mt-8 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
               This provider is not yet approved and cannot be booked.
             </p>
-          ) : (
-            <Link
-              href={`/login?redirect=/provider/${provider.id}?service=${encodeURIComponent(defaultService)}&hire=1`}
-              className="btn-primary mt-8 inline-block px-8 py-3 text-base"
-            >
-              Log in to Hire
-            </Link>
-          )}
+          ) : null}
         </div>
       </article>
 
@@ -220,18 +288,41 @@ export function ProviderProfileClient({
         </>
       )}
 
-      {isLoggedIn && provider.approved && (
+      {isLoggedIn && provider.approved && reviewableBooking && (
         <div className="mt-8">
-          <ReviewForm providerId={provider.id} />
+          <ReviewForm
+            providerId={provider.id}
+            bookingId={reviewableBooking.id}
+          />
         </div>
       )}
+
+      <QuoteModal
+        open={quoteOpen}
+        onClose={() => setQuoteOpen(false)}
+        providerName={user?.name ?? "Provider"}
+        profile={toQuoteProfile({
+          id: provider.id,
+          pricing_type: provider.pricing_type,
+          price: Number(provider.price),
+          base_price: provider.base_price,
+          hourly_rate: provider.hourly_rate,
+          services: provider.services,
+          service_packages: provider.service_packages,
+        })}
+        defaultService={defaultService}
+      />
 
       <HireModal
         open={hireOpen}
         onClose={() => setHireOpen(false)}
         providerId={provider.id}
         providerName={user?.name ?? "Provider"}
-        hourlyRate={Number(provider.hourly_rate)}
+        pricingType={provider.pricing_type}
+        price={Number(provider.price)}
+        basePrice={Number(provider.base_price ?? 0)}
+        hourlyRate={Number(provider.hourly_rate ?? provider.price)}
+        availableToday={Boolean(provider.available_today)}
         defaultService={defaultService}
       />
     </>
