@@ -26,21 +26,31 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold text-gray-900">{provider.name}</p>
-            {provider.approved && (
-              <span className="badge-verified shrink-0">Verified</span>
+            <p className="min-w-0 truncate font-semibold text-gray-900">{provider.name}</p>
+            {provider.approved ? (
+              <span className="badge-verified">Verified</span>
+            ) : (
+              <span className="badge-pending">Pending</span>
             )}
           </div>
           <StarRating rating={provider.rating} size="sm" />
-          {!compact && (
-            <p className="mt-1 line-clamp-1 text-xs text-gray-500">{provider.location}</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {provider.services[0]}
+            {provider.distanceMiles != null && ` · ${provider.distanceMiles.toFixed(1)} mi`}
+          </p>
+          {provider.tags.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {provider.tags.slice(0, 2).map((tag) => (
+                <span key={tag} className="badge-tag text-[10px]">
+                  {tag}
+                </span>
+              ))}
+            </div>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="font-bold text-green-700">${provider.hourlyRate}/hr</span>
-            {provider.distanceMiles != null && (
-              <span className="text-xs text-gray-400">
-                {provider.distanceMiles.toFixed(1)} mi
-              </span>
+            {!compact && (
+              <span className="text-xs text-gray-400 line-clamp-1">{provider.location}</span>
             )}
           </div>
         </div>

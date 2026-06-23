@@ -53,12 +53,28 @@ body {
     @apply w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 transition-all duration-200 focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-100;
   }
 
+  .input-with-icon {
+    @apply relative w-full;
+  }
+
+  .input-with-icon .input-field {
+    @apply pl-12;
+  }
+
+  .input-icon-slot {
+    @apply pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-green-600;
+  }
+
   .tag-pill {
     @apply rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
 
   .badge-verified {
-    @apply rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-medium text-white;
+    @apply shrink-0 rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-medium text-white;
+  }
+
+  .badge-pending {
+    @apply shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800;
   }
 
   .badge-tag {

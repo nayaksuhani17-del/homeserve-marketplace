@@ -11,6 +11,7 @@ type AdvancedFiltersProps = {
   minRating?: string;
   maxDistance?: string;
   availability?: string;
+  status?: string;
 };
 
 export function AdvancedFilters(props: AdvancedFiltersProps) {
@@ -77,6 +78,17 @@ export function AdvancedFilters(props: AdvancedFiltersProps) {
             <option value="3">Within 3 mi</option>
             <option value="5">Within 5 mi</option>
             <option value="10">Within 10 mi</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="status" className="mb-1 block text-sm font-medium text-gray-700">
+            Verification
+          </label>
+          <select id="status" name="status" defaultValue={props.status ?? ""} className="input-field">
+            <option value="">All providers</option>
+            <option value="verified">Verified only</option>
+            <option value="pending">Pending review</option>
           </select>
         </div>
 

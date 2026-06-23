@@ -37,8 +37,8 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
   return (
     <div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
-        <div className="relative flex-1">
-          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-green-500">
+        <div className="input-with-icon flex-1">
+          <span className="input-icon-slot text-base" aria-hidden>
             ✨
           </span>
           <input
@@ -46,7 +46,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={placeholder ?? 'Try "cheap electrician near me available today"'}
-            className="input-field pl-10"
+            className="input-field"
           />
         </div>
         <button type="submit" disabled={loading} className="btn-primary shrink-0 disabled:opacity-60">

@@ -57,19 +57,21 @@ export function ProviderCard({
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">
+              <div className="min-w-0">
+                <h3 className="truncate text-lg font-semibold text-gray-900">
                   {user?.name ?? "Provider"}
                 </h3>
-                <p className="text-sm text-gray-500">{provider.location || "Local area"}</p>
+                <p className="truncate text-sm text-gray-500">{provider.location || "Local area"}</p>
                 {provider.distance_miles != null && (
                   <p className="text-xs font-medium text-green-600">
                     {Number(provider.distance_miles).toFixed(1)} miles away
                   </p>
                 )}
               </div>
-              {provider.approved && (
-                <span className="badge-verified shrink-0">Verified</span>
+              {provider.approved ? (
+                <span className="badge-verified">Verified</span>
+              ) : (
+                <span className="badge-pending">Pending</span>
               )}
             </div>
           </div>
@@ -109,7 +111,7 @@ export function ProviderCard({
             <Link href={`/provider/${provider.id}`} className="btn-secondary px-3 py-1.5">
               View
             </Link>
-            {showHire && (
+            {showHire && provider.approved && (
               <button type="button" onClick={() => setHireOpen(true)} className="btn-primary px-3 py-1.5">
                 Hire
               </button>

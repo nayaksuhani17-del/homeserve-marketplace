@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { approveProvider, toggleUserBan } from "@/lib/actions";
 import { StatCard } from "@/components/StatCard";
 import { createClient } from "@/lib/supabase/server";
+import { buildDemoProviders, getDemoAdminProviders } from "@/lib/demo/providers";
 
 export default async function AdminPanelPage() {
   const supabase = await createClient();
@@ -26,6 +27,18 @@ export default async function AdminPanelPage() {
     .select("id, services, hourly_rate, location, approved, rating_avg, users(name, email)")
     .order("created_at", { ascending: false });
 
+  const isDemoData = !providers?.length;
+  const providerList = isDemoData
+    ? getDemoAdminProviders().slice(0, 60)
+    : providers ?? [];
+
+  const demoAll = buildDemoProviders();
+  const demoStats = {
+    total: demoAll.length,
+    active: demoAll.filter((p) => p.approved).length,
+    pending: demoAll.filter((p) => !p.approved).length,
+  };
+
   const { data: users } = await supabase
     .from("users")
     .select("id, name, email, role, banned")
@@ -35,10 +48,11 @@ export default async function AdminPanelPage() {
     .from("bookings")
     .select("*", { count: "exact", head: true });
 
-  const totalUsers = users?.length ?? 0;
-  const totalProviders = providers?.length ?? 0;
-  const pendingApprovals = providers?.filter((p) => !p.approved).length ?? 0;
-  const activeProviders = providers?.filter((p) => p.approved).length ?? 0;
+  const totalUsers = isDemoData ? 2847 : (users?.length ?? 0);
+  const totalProviders = isDemoData ? demoStats.total : (providers?.length ?? 0);
+  const pendingApprovals = isDemoData ? demoStats.pending : (providers?.filter((p) => !p.approved).length ?? 0);
+  const activeProviders = isDemoData ? demoStats.active : (providers?.filter((p) => p.approved).length ?? 0);
+  const displayBookings = isDemoData ? 12403 : (bookingCount ?? 0);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -49,8 +63,15 @@ export default async function AdminPanelPage() {
         <StatCard label="Total users" value={totalUsers} accent="primary" />
         <StatCard label="Total providers" value={totalProviders} sub={`${activeProviders} active`} accent="medium" />
         <StatCard label="Pending approvals" value={pendingApprovals} accent="dark" />
-        <StatCard label="Total bookings" value={bookingCount ?? 0} accent="light" />
+        <StatCard label="Total bookings" value={displayBookings} accent="light" />
       </div>
+
+      {isDemoData && (
+        <p className="mt-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-800">
+          Demo mode — showing {providerList.length} of {demoStats.total.toLocaleString()} generated
+          providers ({demoStats.pending} pending verification). Approve/reject actions require a live database.
+        </p>
+      )}
 
       <section className="mt-10">
         <h2 className="text-xl font-bold text-gray-900">Providers</h2>
@@ -67,7 +88,7 @@ export default async function AdminPanelPage() {
               </tr>
             </thead>
             <tbody>
-              {providers?.map((p) => {
+              {providerList.map((p) => {
                 const u = Array.isArray(p.users) ? p.users[0] : p.users;
                 return (
                   <tr key={p.id} className="border-b border-gray-100 transition hover:bg-gray-50">
@@ -85,35 +106,39 @@ export default async function AdminPanelPage() {
                         className={`tag-pill ${
                         p.approved
                           ? "badge-verified"
-                          : "tag-pill bg-amber-100 text-amber-700"
+                          : "badge-pending"
                         }`}
                       >
-                        {p.approved ? "Approved" : "Pending"}
+                        {p.approved ? "Verified" : "Pending"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <form
-                        action={async () => {
-                          "use server";
-                          await approveProvider(p.id, !p.approved);
-                        }}
-                      >
-                        <button
-                          type="submit"
-                          className={`rounded-lg px-3 py-1 text-xs font-medium transition ${
-                          p.approved
-                            ? "bg-red-100 text-red-500 hover:bg-red-200"
-                            : "bg-green-600 text-white hover:bg-green-800"
-                          }`}
+                      {isDemoData ? (
+                        <span className="text-xs text-gray-400">Demo</span>
+                      ) : (
+                        <form
+                          action={async () => {
+                            "use server";
+                            await approveProvider(p.id, !p.approved);
+                          }}
                         >
-                          {p.approved ? "Reject" : "Approve"}
-                        </button>
-                      </form>
+                          <button
+                            type="submit"
+                            className={`rounded-lg px-3 py-1 text-xs font-medium transition ${
+                            p.approved
+                              ? "bg-red-100 text-red-500 hover:bg-red-200"
+                              : "bg-green-600 text-white hover:bg-green-800"
+                            }`}
+                          >
+                            {p.approved ? "Reject" : "Approve"}
+                          </button>
+                        </form>
+                      )}
                     </td>
                   </tr>
                 );
               })}
-              {!providers?.length && (
+              {!providerList.length && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                     No providers yet.

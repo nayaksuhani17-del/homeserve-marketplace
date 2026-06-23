@@ -3,8 +3,10 @@ import { ProviderCard } from "@/components/ProviderCard";
 import { ReviewForm } from "@/components/ReviewForm";
 import { AdvancedFilters } from "@/components/AdvancedFilters";
 import { SmartSearchBar } from "@/components/SmartSearchBar";
+import { ProviderPagination } from "@/components/ProviderPagination";
 import { EmptyState } from "@/components/EmptyState";
 import { createClient } from "@/lib/supabase/server";
+import { filterDemoProviders, applyDemoFilters } from "@/lib/demo/providers";
 import { rankProviders } from "@/lib/providers";
 import type { ProviderWithUser } from "@/lib/types";
 
@@ -17,6 +19,8 @@ type SearchParams = {
   minRating?: string;
   maxDistance?: string;
   availability?: string;
+  status?: string;
+  page?: string;
 };
 
 type CustomerDashboardProps = {
@@ -74,8 +78,20 @@ export default async function CustomerDashboard({
   }
 
   const { data: providers } = await query;
-  const providerList = (providers ?? []) as ProviderWithUser[];
-  const topRanked = rankProviders(providerList).slice(0, 3);
+  let providerList = (providers ?? []) as ProviderWithUser[];
+  let demoResult = null;
+
+  if (providerList.length === 0) {
+    demoResult = filterDemoProviders(params);
+    providerList = demoResult.providers;
+  }
+
+  const stats = demoResult?.stats;
+  const totalCount = demoResult?.total ?? providerList.length;
+  const topRanked = rankProviders(
+    demoResult ? applyDemoFilters(params) : providerList,
+    params.service
+  ).slice(0, 3);
   const topRankMap = new Map(topRanked.map((p, i) => [p.id, i + 1]));
 
   const { data: bookings } = user
@@ -88,11 +104,25 @@ export default async function CustomerDashboard({
 
   const activeFilters = [
     params.service && `Service: ${params.service}`,
+    params.status === "verified" && "Verified only",
+    params.status === "pending" && "Pending review",
     params.minRating && `${params.minRating}+ stars`,
     params.maxPrice && Number(params.maxPrice) < 120 && `Under $${params.maxPrice}/hr`,
     params.availability && `Available ${params.availability}`,
     params.maxDistance && `Within ${params.maxDistance} mi`,
   ].filter((f): f is string => Boolean(f));
+
+  const paginationParams = {
+    service: params.service,
+    sort: params.sort,
+    q: params.q,
+    minPrice: params.minPrice,
+    maxPrice: params.maxPrice,
+    minRating: params.minRating,
+    maxDistance: params.maxDistance,
+    availability: params.availability,
+    status: params.status,
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -101,9 +131,19 @@ export default async function CustomerDashboard({
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">
             Find a provider
           </h1>
-          <p className="mt-1 text-gray-600">
-            {providerList.length} verified pros ready to help near you.
-          </p>
+          {stats ? (
+            <p className="mt-1 text-gray-600">
+              {totalCount.toLocaleString()} matching · {stats.total.toLocaleString()} total on
+              platform ·{" "}
+              <span className="font-medium text-green-700">{stats.verified.toLocaleString()} verified</span>
+              {" · "}
+              <span className="font-medium text-amber-700">{stats.pending.toLocaleString()} pending review</span>
+            </p>
+          ) : (
+            <p className="mt-1 text-gray-600">
+              {providerList.length} verified pros ready to help near you.
+            </p>
+          )}
         </div>
         {!user && (
           <Link href="/login" className="btn-primary">
@@ -136,6 +176,7 @@ export default async function CustomerDashboard({
           minRating={params.minRating}
           maxDistance={params.maxDistance}
           availability={params.availability}
+          status={params.status}
         />
       </div>
 
@@ -162,6 +203,14 @@ export default async function CustomerDashboard({
               );
             })}
           </div>
+          {demoResult && (
+            <ProviderPagination
+              page={demoResult.page}
+              totalPages={demoResult.totalPages}
+              total={demoResult.total}
+              searchParams={paginationParams}
+            />
+          )}
         </>
       ) : (
         <div className="mt-12">

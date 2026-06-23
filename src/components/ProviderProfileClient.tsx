@@ -73,8 +73,10 @@ export function ProviderProfileClient({
                   </p>
                 )}
               </div>
-              {provider.approved && (
+              {provider.approved ? (
                 <span className="badge-verified px-3 py-1 text-sm">✓ Verified</span>
+              ) : (
+                <span className="badge-pending px-3 py-1 text-sm">Pending review</span>
               )}
             </div>
             <div className="mt-3">

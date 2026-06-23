@@ -130,13 +130,18 @@ export function SmartAssistant() {
 
         <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4">
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder='e.g. "My sink is leaking badly"'
-              className="input-field flex-1"
-            />
+            <div className="input-with-icon min-w-0 flex-1">
+              <span className="input-icon-slot text-sm" aria-hidden>
+                💬
+              </span>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder='e.g. "My sink is leaking badly"'
+                className="input-field"
+              />
+            </div>
             <button type="submit" disabled={loading} className="btn-primary shrink-0 disabled:opacity-60">
               Send
             </button>

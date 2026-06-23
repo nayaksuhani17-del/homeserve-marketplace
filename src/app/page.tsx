@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SmartAssistant } from "@/components/SmartAssistant";
 import { SmartSearchBar } from "@/components/SmartSearchBar";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
+import { buildDemoProviders } from "@/lib/demo/providers";
 
 const FEATURES = [
   {
@@ -22,6 +23,10 @@ const FEATURES = [
 ];
 
 export default function HomePage() {
+  const allProviders = buildDemoProviders();
+  const verified = allProviders.filter((p) => p.approved).length;
+  const pending = allProviders.length - verified;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-green-100 to-white px-6 py-16 shadow-sm sm:px-12">
@@ -39,6 +44,25 @@ export default function HomePage() {
           <div className="mt-8 max-w-2xl">
             <SmartSearchBar placeholder="Try: cheap plumber near me available today" />
           </div>
+        </div>
+      </section>
+
+      <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-green-700">{allProviders.length.toLocaleString()}+</p>
+          <p className="text-xs text-gray-500">Providers on platform</p>
+        </div>
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-green-700">{verified.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">Verified pros</p>
+        </div>
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-amber-600">{pending.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">Awaiting review</p>
+        </div>
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-green-700">12.4k</p>
+          <p className="text-xs text-gray-500">Bookings this month</p>
         </div>
       </section>
 

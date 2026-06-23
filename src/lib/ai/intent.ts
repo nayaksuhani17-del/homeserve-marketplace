@@ -3,7 +3,7 @@ import { chatCompletion } from "./openai";
 import { parseSearchFallback } from "./parse-search";
 
 const KEYWORDS: Record<string, string[]> = {
-  Plumber: ["leak", "pipe", "sink", "toilet", "plumb", "drain", "faucet", "water", "clog"],
+  Plumber: ["leak", "pipe", "sink", "toilet", "plumb", "drain", "faucet", "water", "clog", "explod", "burst", "overflow"],
   Electrician: ["electric", "wire", "outlet", "light", "power", "circuit", "breaker", "flicker"],
   "House Cleaning": ["clean", "maid", "dust", "sanitize", "housekeeping", "messy"],
   "Carpet Cleaning": ["carpet", "rug", "stain"],
