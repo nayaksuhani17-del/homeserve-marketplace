@@ -91,6 +91,42 @@ export const FAVORITES_KEY = "homeserve-favorites";
 export const RECENT_KEY = "homeserve-recent-providers";
 export const CLICKS_KEY = "homeserve-provider-clicks";
 
+export function purgeProvidersFromLocalCaches(providerIds: string[]) {
+  if (typeof window === "undefined" || providerIds.length === 0) return;
+  const idSet = new Set(providerIds);
+
+  try {
+    const favorites = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]") as string[];
+    localStorage.setItem(
+      FAVORITES_KEY,
+      JSON.stringify(favorites.filter((id) => !idSet.has(id)))
+    );
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const recent = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as string[];
+    localStorage.setItem(
+      RECENT_KEY,
+      JSON.stringify(recent.filter((id) => !idSet.has(id)))
+    );
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const clicks = JSON.parse(localStorage.getItem(CLICKS_KEY) ?? "{}") as Record<
+      string,
+      number
+    >;
+    for (const id of providerIds) delete clicks[id];
+    localStorage.setItem(CLICKS_KEY, JSON.stringify(clicks));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function loadFavoriteIds(): string[] {
   if (typeof window === "undefined") return [];
   try {

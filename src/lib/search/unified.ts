@@ -96,9 +96,12 @@ export function advancedSearch(
   const verifiedOnly = opts?.verifiedOnly ?? true;
   const tokens = tokenize(q);
   const serviceHint = detectServiceInQuery(q);
+  const activeUserIds = new Set(db.users.map((u) => u.id));
   const bannedUserIds = new Set(db.users.filter((u) => u.banned).map((u) => u.id));
 
-  let providers = db.providers.filter((p) => !bannedUserIds.has(p.userId));
+  let providers = db.providers.filter(
+    (p) => activeUserIds.has(p.userId) && !bannedUserIds.has(p.userId)
+  );
   if (verifiedOnly) providers = providers.filter((p) => p.approved && !p.rejected);
 
   const results: UnifiedSearchResult[] = [];

@@ -2,6 +2,7 @@ import { isDemoAccount } from "@/lib/accounts";
 import { buildAdminDemoReports } from "./admin-demo-reports";
 import type { MockBooking, MockDatabase, MockProvider, MockUser } from "./types";
 import { MOCK_DB_VERSION } from "./types";
+import { scrubDatabaseIntegrity } from "./operations";
 
 function deriveResponseSpeed(mins: number): MockProvider["responseSpeed"] {
   if (mins <= 20) return "fast";
@@ -72,7 +73,13 @@ export function needsNormalization(raw: MockDatabase): boolean {
       p.weekAvailability.length !== 7 ||
       !Array.isArray(p.blockedSlots) ||
       typeof p.rejected !== "boolean"
-  ) || !raw.reports?.length || hasDuplicateUserEmails(raw.users ?? []);
+  ) || !raw.reports?.length || hasDuplicateUserEmails(raw.users ?? []) ||
+    hasOrphanProviders(raw);
+}
+
+function hasOrphanProviders(raw: MockDatabase): boolean {
+  const userIds = new Set((raw.users ?? []).map((u) => u.id));
+  return (raw.providers ?? []).some((p) => !userIds.has(p.userId));
 }
 
 /** Patch localStorage DBs to the current schema. */
@@ -103,10 +110,12 @@ function hasDuplicateUserEmails(users: MockUser[]): boolean {
 
 export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
   const users = dedupeUsers(raw.users ?? []);
-  return {
+  const normalized: MockDatabase = {
     version: MOCK_DB_VERSION,
     users,
-    providers: (raw.providers ?? []).map((p) => normalizeProvider(p, users)),
+    providers: (raw.providers ?? [])
+      .filter((p) => users.some((u) => u.id === p.userId))
+      .map((p) => normalizeProvider(p, users)),
     bookings: (raw.bookings ?? []).map(normalizeBooking),
     reviews: raw.reviews ?? [],
     chatMessages: raw.chatMessages ?? [],
@@ -114,4 +123,5 @@ export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
     notifications: raw.notifications ?? [],
     reports: raw.reports?.length ? raw.reports : buildAdminDemoReports(),
   };
+  return scrubDatabaseIntegrity(normalized);
 }

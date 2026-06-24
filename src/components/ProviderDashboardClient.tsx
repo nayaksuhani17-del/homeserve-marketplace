@@ -185,6 +185,7 @@ export function ProviderDashboardClient() {
   const [earningsPulse, setEarningsPulse] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
+  const profileSectionRef = useRef<HTMLElement>(null);
   const prevPending = useRef(0);
 
   useEffect(() => {
@@ -235,6 +236,26 @@ export function ProviderDashboardClient() {
     if (grouped.pending.length > prevPending.current) setBookingTab("requests");
     prevPending.current = grouped.pending.length;
   }, [grouped.pending.length]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    const timer = window.setTimeout(() => {
+      profileSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [profileOpen]);
+
+  function toggleProfileEditor() {
+    setProfileOpen((open) => {
+      const next = !open;
+      if (next) {
+        window.setTimeout(() => {
+          profileSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 80);
+      }
+      return next;
+    });
+  }
 
   if (!ready) {
     return (
@@ -339,8 +360,10 @@ export function ProviderDashboardClient() {
           )}
           <button
             type="button"
-            onClick={() => setProfileOpen((v) => !v)}
+            onClick={toggleProfileEditor}
             className="btn-primary text-sm"
+            aria-expanded={profileOpen}
+            aria-controls="profile-editor"
           >
             ✏️ {profileOpen ? "Close editor" : "Edit profile"}
           </button>
@@ -359,6 +382,46 @@ export function ProviderDashboardClient() {
             ? "✓ Verified provider — you're live and accepting bookings."
             : "⏳ Profile pending approval — keep your listing up to date."}
         </div>
+      )}
+
+      {profileOpen && (
+        <section
+          id="profile-editor"
+          ref={profileSectionRef}
+          className="animate-slide-up mt-6 scroll-mt-24 rounded-2xl border-2 border-green-300 bg-white p-6 shadow-md ring-4 ring-green-100"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Profile management</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Update services, pricing, description, and availability.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setProfileOpen(false)}
+              className="rounded-lg px-3 py-1 text-sm text-gray-500 hover:bg-gray-100"
+            >
+              ✕ Close
+            </button>
+          </div>
+          <div className="mt-6">
+            <ProviderProfileForm
+              defaultValues={{
+                services: provider.services,
+                pricing_type: provider.pricingType,
+                price: provider.price,
+                base_price: provider.basePrice,
+                hourly_rate: provider.hourlyRate,
+                location: provider.location,
+                description: provider.description,
+                availability: provider.availability,
+                availableToday: provider.availableToday,
+                availableTomorrow: provider.availableTomorrow,
+              }}
+            />
+          </div>
+        </section>
       )}
 
       {/* 1. Summary cards */}
@@ -644,32 +707,6 @@ export function ProviderDashboardClient() {
                   ))}
                 </ul>
               )}
-            </section>
-          )}
-
-          {/* 6. Profile management */}
-          {profileOpen && provider && (
-            <section className="animate-slide-up rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-bold text-gray-900">Profile management</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Update services, pricing, description, and availability.
-              </p>
-              <div className="mt-6">
-                <ProviderProfileForm
-                  defaultValues={{
-                    services: provider.services,
-                    pricing_type: provider.pricingType,
-                    price: provider.price,
-                    base_price: provider.basePrice,
-                    hourly_rate: provider.hourlyRate,
-                    location: provider.location,
-                    description: provider.description,
-                    availability: provider.availability,
-                    availableToday: provider.availableToday,
-                    availableTomorrow: provider.availableTomorrow,
-                  }}
-                />
-              </div>
             </section>
           )}
         </div>

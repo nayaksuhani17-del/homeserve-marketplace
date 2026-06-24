@@ -508,6 +508,43 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     !deleted.db.users.some((u) => u.id === guestUser.id),
     "Deleted user removed from users list"
   );
+  assert(
+    advancedSearch(deleted.db, "Guest Delete").length === 0,
+    "Deleted user name absent from search"
+  );
+  assert(
+    advancedSearch(deleted.db, "guest.delete").length === 0,
+    "Deleted user email absent from search"
+  );
+  assert(
+    deleted.db.directMessages.every(
+      (m) => m.senderId !== guestUser.id && m.receiverId !== guestUser.id
+    ),
+    "Deleted user direct messages removed"
+  );
+
+  const guestProviderUser = newGuestUser({
+    name: "Zoe WipeTest",
+    email: "zoe.wipe@test.com",
+    password: "test123",
+    role: "provider",
+  });
+  const guestProvider = newGuestProvider(guestProviderUser);
+  const withProvider = registerUserRecord(deleted.db, guestProviderUser, guestProvider).db;
+  assert(
+    advancedSearch(withProvider, "Zoe").some((r) => r.name.includes("Zoe")),
+    "Provider appears in search before deletion"
+  );
+  const wipedProvider = deleteUserRecord(withProvider, guestProviderUser.id);
+  assert(!wipedProvider.error, "Delete provider account succeeds");
+  assert(
+    advancedSearch(wipedProvider.db, "Zoe").length === 0,
+    "Deleted provider name absent from search"
+  );
+  assert(
+    !wipedProvider.db.providers.some((p) => p.userId === guestProviderUser.id),
+    "Deleted provider profile removed from system"
+  );
 
   const lastAdminBlock = deleteUserRecord(
     deleted.db,

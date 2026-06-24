@@ -51,7 +51,7 @@ export function ProviderCard({
   recommendationLabel,
   isBestMatch,
 }: ProviderCardProps) {
-  const { trackProviderClick, user: sessionUser } = useMockApp();
+  const { trackProviderClick, user: sessionUser, db } = useMockApp();
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
@@ -191,7 +191,10 @@ export function ProviderCard({
             >
               View Profile
             </Link>
-            {sessionUser && provider.user_id && sessionUser.id !== provider.user_id && (
+            {sessionUser &&
+              provider.user_id &&
+              sessionUser.id !== provider.user_id &&
+              db?.users.some((u) => u.id === provider.user_id) && (
               <button
                 type="button"
                 onClick={() => setMessageOpen(true)}

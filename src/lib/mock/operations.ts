@@ -76,6 +76,9 @@ export function applyProviderFilters(
 ): MockProvider[] {
   let list = [...(source ?? db.providers)];
 
+  const activeUserIds = new Set(db.users.map((u) => u.id));
+  list = list.filter((p) => activeUserIds.has(p.userId));
+
   const bannedUserIds = new Set(db.users.filter((u) => u.banned).map((u) => u.id));
   list = list.filter((p) => !bannedUserIds.has(p.userId));
 
@@ -766,11 +769,46 @@ export function addDirectMessageRecord(
   };
 }
 
+/** Remove records that reference deleted or missing users/providers. */
+export function scrubDatabaseIntegrity(db: MockDatabase): MockDatabase {
+  const users = db.users ?? [];
+  const userIds = new Set(users.map((u) => u.id));
+  const providers = (db.providers ?? []).filter((p) => userIds.has(p.userId));
+  const providerIds = new Set(providers.map((p) => p.id));
+  const bookings = (db.bookings ?? []).filter(
+    (b) => userIds.has(b.customerId) && providerIds.has(b.providerId)
+  );
+  const bookingIds = new Set(bookings.map((b) => b.id));
+  const reviews = (db.reviews ?? []).filter(
+    (r) => userIds.has(r.customerId) && providerIds.has(r.providerId)
+  );
+  const directMessages = (db.directMessages ?? []).filter(
+    (m) => userIds.has(m.senderId) && userIds.has(m.receiverId)
+  );
+  const notifications = (db.notifications ?? []).filter((n) => userIds.has(n.userId));
+  const chatMessages = (db.chatMessages ?? []).filter((m) => bookingIds.has(m.bookingId));
+  const reports = (db.reports ?? []).filter(
+    (r) => userIds.has(r.reporterId) && providerIds.has(r.providerId)
+  );
+
+  return {
+    ...db,
+    users,
+    providers,
+    bookings,
+    reviews,
+    directMessages,
+    notifications,
+    chatMessages,
+    reports,
+  };
+}
+
 export function deleteUserRecord(
   db: MockDatabase,
   userId: string,
   opts?: { forbidSelf?: boolean; actorId?: string }
-): { db: MockDatabase; error?: string } {
+): { db: MockDatabase; error?: string; purgedProviderIds?: string[] } {
   const target = db.users.find((u) => u.id === userId);
   if (!target) return { db, error: "User not found." };
   if (opts?.forbidSelf && opts.actorId === userId) {
@@ -790,29 +828,51 @@ export function deleteUserRecord(
     )
     .map((b) => b.id);
 
+  const deletedName = target.name.toLowerCase();
+  const deletedEmail = target.email.toLowerCase();
+  const nameTokens = deletedName.split(/\s+/).filter((t) => t.length >= 2);
+
+  function referencesDeletedUser(text: string): boolean {
+    const hay = text.toLowerCase();
+    if (hay.includes(deletedEmail)) return true;
+    if (hay.includes(deletedName)) return true;
+    if (nameTokens.some((t) => hay.includes(t))) return true;
+    if (providerIds.some((pid) => hay.includes(pid))) return true;
+    if (hay.includes(userId)) return true;
+    return false;
+  }
+
   const users = db.users.filter((u) => u.id !== userId);
   const providers = db.providers.filter((p) => p.userId !== userId);
   const bookings = db.bookings.filter((b) => !bookingIds.includes(b.id));
   const reviews = db.reviews.filter(
     (r) =>
       r.customerId !== userId &&
-      !providerIds.includes(r.providerId)
+      !providerIds.includes(r.providerId) &&
+      !referencesDeletedUser(`${r.customerName} ${r.comment}`)
   );
-  const notifications = (db.notifications ?? []).filter((n) => n.userId !== userId);
+  const notifications = (db.notifications ?? []).filter((n) => {
+    if (n.userId === userId) return false;
+    return !referencesDeletedUser(`${n.title} ${n.message} ${n.href ?? ""}`);
+  });
   const directMessages = (db.directMessages ?? []).filter(
     (m) => m.senderId !== userId && m.receiverId !== userId
   );
   const chatMessages = (db.chatMessages ?? []).filter(
-    (m) => !bookingIds.includes(m.bookingId)
+    (m) =>
+      !bookingIds.includes(m.bookingId) &&
+      !referencesDeletedUser(m.senderName) &&
+      !referencesDeletedUser(m.text)
   );
   const reports = (db.reports ?? []).filter(
     (r) =>
       r.reporterId !== userId &&
-      !providerIds.includes(r.providerId)
+      !providerIds.includes(r.providerId) &&
+      !referencesDeletedUser(`${r.reporterName} ${r.providerName} ${r.details}`)
   );
 
   return {
-    db: {
+    db: scrubDatabaseIntegrity({
       ...db,
       users,
       providers,
@@ -822,6 +882,7 @@ export function deleteUserRecord(
       directMessages,
       chatMessages,
       reports,
-    },
+    }),
+    purgedProviderIds: providerIds,
   };
 }

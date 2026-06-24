@@ -91,6 +91,7 @@ import {
   loadFavoriteIds,
   loadRecentProviderIds,
   saveFavoriteIds,
+  purgeProvidersFromLocalCaches,
   trackRecentProvider,
 } from "@/lib/smart";
 import type { RecommendationLabel } from "@/lib/recommendations";
@@ -903,6 +904,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const getDirectMessages = useCallback(
     (otherUserId: string) => {
       if (!db || !user) return [];
+      const other = db.users.find((u) => u.id === otherUserId);
+      if (!other || other.banned) return [];
       return (db.directMessages ?? [])
         .filter(
           (m) =>
@@ -922,7 +925,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!db || !user) return { error: "You must be logged in." };
       if (user.id === receiverId) return { error: "You cannot message yourself." };
       const receiver = db.users.find((u) => u.id === receiverId);
-      if (!receiver) return { error: "User not found." };
+      if (!receiver) return { error: "This user is no longer available." };
       if (receiver.banned) return { error: "This user is not available." };
 
       let next = addDirectMessageRecord(db, {
@@ -979,6 +982,26 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     [db]
   );
 
+  const finalizeAccountDeletion = useCallback(
+    (result: { db: MockDatabase; purgedProviderIds?: string[] }) => {
+      persistImmediate(result.db);
+      const validProviderIds = new Set(result.db.providers.map((p) => p.id));
+      const staleFavorites = loadFavoriteIds().filter((id) => !validProviderIds.has(id));
+      const staleRecent = loadRecentProviderIds().filter((id) => !validProviderIds.has(id));
+      const toPurge = [
+        ...new Set([
+          ...(result.purgedProviderIds ?? []),
+          ...staleFavorites,
+          ...staleRecent,
+        ]),
+      ];
+      if (toPurge.length) purgeProvidersFromLocalCaches(toPurge);
+      setFavoriteIds(loadFavoriteIds().filter((id) => validProviderIds.has(id)));
+      filterCacheRef.current = null;
+    },
+    [persistImmediate]
+  );
+
   const deleteUser = useCallback(
     async (userId: string) => {
       if (!db || !user) return { error: "You must be logged in." };
@@ -994,12 +1017,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: result.error };
       }
-      persistImmediate(result.db);
+      finalizeAccountDeletion(result);
       emitSystemEvent({ type: "report", message: "Account deleted permanently" });
       setLoading(false);
       return {};
     },
-    [db, user, persistImmediate, emitSystemEvent]
+    [db, user, finalizeAccountDeletion, emitSystemEvent]
   );
 
   const deleteMyAccount = useCallback(async () => {
@@ -1015,13 +1038,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { error: result.error };
     }
-    persistImmediate(result.db);
+    finalizeAccountDeletion(result);
     saveSession(null);
     setSession(null);
-    setDb(result.db);
     setLoading(false);
     return {};
-  }, [db, user, persistImmediate]);
+  }, [db, user, finalizeAccountDeletion]);
 
   const removeReview = useCallback(
     async (reviewId: string) => {
@@ -1646,21 +1668,34 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const getSavedProviders = useCallback(() => {
     if (!db) return [];
+    const activeUserIds = new Set(db.users.map((u) => u.id));
     return favoriteIds
       .map((id) => db.providers.find((p) => p.id === id))
-      .filter((p): p is MockProvider => Boolean(p));
+      .filter(
+        (p): p is MockProvider =>
+          Boolean(p && activeUserIds.has(p.userId))
+      );
   }, [db, favoriteIds]);
 
   const getRecentlyViewedProviders = useCallback(() => {
     if (!db) return [];
+    const activeUserIds = new Set(db.users.map((u) => u.id));
     return loadRecentProviderIds()
       .map((id) => db.providers.find((p) => p.id === id))
-      .filter((p): p is MockProvider => Boolean(p))
+      .filter(
+        (p): p is MockProvider =>
+          Boolean(p && activeUserIds.has(p.userId))
+      )
       .slice(0, 6);
   }, [db]);
 
   const getProvider = useCallback(
-    (id: string) => db?.providers.find((p) => p.id === id),
+    (id: string) => {
+      const provider = db?.providers.find((p) => p.id === id);
+      if (!provider) return undefined;
+      if (!db?.users.some((u) => u.id === provider.userId)) return undefined;
+      return provider;
+    },
     [db]
   );
 

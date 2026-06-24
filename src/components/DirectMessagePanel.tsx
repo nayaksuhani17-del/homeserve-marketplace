@@ -18,7 +18,7 @@ export function DirectMessagePanel({
   onClose,
   embedded,
 }: DirectMessagePanelProps) {
-  const { user, getDirectMessages, sendDirectMessage } = useMockApp();
+  const { user, db, getDirectMessages, sendDirectMessage } = useMockApp();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -27,6 +27,7 @@ export function DirectMessagePanel({
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messages = getDirectMessages(otherUserId);
+  const otherUser = db?.users.find((u) => u.id === otherUserId);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -42,6 +43,14 @@ export function DirectMessagePanel({
     return (
       <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
         Log in to send messages.
+      </div>
+    );
+  }
+
+  if (!otherUser || otherUser.banned) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+        This user is no longer available. Their account has been removed from HomeServe.
       </div>
     );
   }
