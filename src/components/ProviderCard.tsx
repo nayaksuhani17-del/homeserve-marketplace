@@ -9,7 +9,7 @@ import { RecommendationBadge } from "./RecommendationBadge";
 import { TrustBadges } from "./TrustBadges";
 import { FavoriteButton } from "./FavoriteButton";
 import { getProviderUser } from "@/lib/providers";
-import { formatProviderPriceAmount } from "@/lib/pricing";
+import * as pricing from "@/lib/pricing";
 import { formatResponseTime, type RecommendationLabel } from "@/lib/recommendations";
 import { getViewerCount } from "@/lib/trust";
 import { getServiceMeta } from "@/lib/services";
@@ -60,7 +60,7 @@ export function ProviderCard({
   const providerUser = getProviderUser(provider);
   const responseLabel = formatResponseTime(provider.response_time_mins);
   const reviewCount = provider.review_count ?? Math.floor((provider.jobs_completed ?? 20) / 8);
-  const priceDisplay = formatProviderPriceAmount(
+  const priceDisplay = pricing.formatProviderPriceAmount(
     provider.pricing_type,
     Number(provider.price)
   );
