@@ -110,6 +110,7 @@ export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
     bookings: (raw.bookings ?? []).map(normalizeBooking),
     reviews: raw.reviews ?? [],
     chatMessages: raw.chatMessages ?? [],
+    directMessages: raw.directMessages ?? [],
     notifications: raw.notifications ?? [],
     reports: raw.reports?.length ? raw.reports : buildAdminDemoReports(),
   };

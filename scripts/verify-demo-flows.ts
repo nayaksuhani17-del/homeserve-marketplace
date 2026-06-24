@@ -18,7 +18,10 @@ import {
   countAdmins,
   addNotificationRecord,
   toggleProviderBlockedSlotRecord,
+  addDirectMessageRecord,
+  deleteUserRecord,
 } from "../src/lib/mock/operations";
+import { advancedSearch } from "../src/lib/search/unified";
 import { normalizeMockDatabase } from "../src/lib/mock/normalize";
 import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
 import { getMarketplaceAnalytics } from "../src/lib/mock/analytics";
@@ -461,6 +464,58 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   assert(
     normalized.users.filter((u) => u.email === "sarah.mitchell@demo.com").length === 1,
     "Normalize dedupes duplicate emails"
+  );
+
+  const marcusNameResults = advancedSearch(guardDb, "Marcus");
+  assert(
+    marcusNameResults.some((r) => r.name.toLowerCase().includes("marcus")),
+    "People search finds provider by partial name"
+  );
+
+  const plumberResults = advancedSearch(guardDb, "plumber");
+  assert(
+    plumberResults.some((r) => r.services.includes("Plumber")),
+    "Service search finds plumbers"
+  );
+
+  let dmDb = addDirectMessageRecord(guardDb, {
+    id: demoId("dm-test"),
+    senderId: sarah!.id,
+    receiverId: marcusUser!.id,
+    senderName: sarah!.name,
+    text: "Hello Marcus",
+  });
+  assert(
+    dmDb.directMessages.some(
+      (m) => m.senderId === sarah!.id && m.receiverId === marcusUser!.id
+    ),
+    "Direct messages persist sender and receiver"
+  );
+
+  const guestUser = newGuestUser({
+    name: "Guest Delete",
+    email: "guest.delete@test.com",
+    password: "test123",
+    role: "customer",
+  });
+  dmDb = {
+    ...dmDb,
+    users: [...dmDb.users, guestUser],
+  };
+  const deleted = deleteUserRecord(dmDb, guestUser.id);
+  assert(!deleted.error, "Delete user succeeds for non-admin");
+  assert(
+    !deleted.db.users.some((u) => u.id === guestUser.id),
+    "Deleted user removed from users list"
+  );
+
+  const lastAdminBlock = deleteUserRecord(
+    deleted.db,
+    deleted.db.users.find((u) => u.email === "admin@test.com")!.id
+  );
+  assert(
+    Boolean(lastAdminBlock.error?.includes("last admin")),
+    "Cannot delete last admin account"
   );
 }
 

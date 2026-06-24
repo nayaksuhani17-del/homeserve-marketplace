@@ -9,10 +9,14 @@ import type { UserRole } from "@/lib/constants";
 
 export function AccountSwitcher() {
   const router = useRouter();
-  const { user, ready, loading, listAccounts, switchAccount, register } = useMockApp();
+  const { user, ready, loading, listAccounts, switchAccount, register, deleteMyAccount } =
+    useMockApp();
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
@@ -69,6 +73,22 @@ export function AccountSwitcher() {
       router.push(result.redirect);
       router.refresh();
     }
+  }
+
+  async function handleDeleteAccount() {
+    if (!ready || deleting) return;
+    setDeleteError(null);
+    setDeleting(true);
+    const result = await deleteMyAccount();
+    setDeleting(false);
+    if (result.error) {
+      setDeleteError(result.error);
+      return;
+    }
+    setDeleteConfirm(false);
+    setOpen(false);
+    router.push("/");
+    router.refresh();
   }
 
   return (
@@ -207,6 +227,48 @@ export function AccountSwitcher() {
                 >
                   Or open full sign-up page
                 </Link>
+                {user && (
+                  <div className="mt-3 border-t border-gray-200 pt-3">
+                    {!deleteConfirm ? (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirm(true)}
+                        className="w-full rounded-lg px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        Delete My Account
+                      </button>
+                    ) : (
+                      <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                        <p className="text-xs text-red-800">
+                          Are you sure you want to delete this account? This cannot be undone.
+                        </p>
+                        {deleteError && (
+                          <p className="text-xs text-red-700">{deleteError}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={handleDeleteAccount}
+                            className="flex-1 rounded-lg bg-red-600 px-2 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                          >
+                            {deleting ? "Deleting…" : "Yes, delete"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteConfirm(false);
+                              setDeleteError(null);
+                            }}
+                            className="rounded-lg px-2 py-1.5 text-xs text-gray-600 hover:bg-white"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

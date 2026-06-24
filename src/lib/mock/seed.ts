@@ -210,6 +210,7 @@ export function buildInitialDatabase(): MockDatabase {
     bookings: allBookings,
     reviews,
     chatMessages: [],
+    directMessages: [],
     notifications: seedNotifications,
     reports: buildAdminDemoReports(),
   };

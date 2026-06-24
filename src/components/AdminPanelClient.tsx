@@ -49,6 +49,7 @@ export function AdminPanelClient() {
     approveProvider,
     rejectProvider,
     banUser,
+    deleteUser,
     setUserRole,
     removeReview,
     dismissReport,
@@ -513,6 +514,14 @@ export function AdminPanelClient() {
                           u.banned ? `${u.name} unbanned` : `${u.name} banned`
                         )
                       }
+                      onDelete={() =>
+                        requestConfirm({
+                          title: "Delete account",
+                          message: `Are you sure you want to delete ${u.name}'s account? This permanently removes their profile, bookings, reviews, and messages.`,
+                          action: () => deleteUser(u.id),
+                          success: `${u.name}'s account deleted`,
+                        })
+                      }
                     />
                   ))
                 )}
@@ -724,6 +733,7 @@ function UserAdminRow({
   onPromote,
   onDemote,
   onBan,
+  onDelete,
 }: {
   user: MockUser;
   isSelf: boolean;
@@ -732,6 +742,7 @@ function UserAdminRow({
   onPromote: () => void;
   onDemote: () => void;
   onBan: () => void;
+  onDelete: () => void;
 }) {
   const demo = isDemoAccount(user);
 
@@ -807,6 +818,21 @@ function UserAdminRow({
             }`}
           >
             {user.banned ? "Unban" : "🚫 Ban"}
+          </button>
+          <button
+            type="button"
+            disabled={loading || isSelf || (user.role === "admin" && !canDemote)}
+            onClick={onDelete}
+            className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            title={
+              isSelf
+                ? "Cannot delete your own account while logged in"
+                : user.role === "admin" && !canDemote
+                  ? "Cannot delete the last admin"
+                  : undefined
+            }
+          >
+            Delete Account
           </button>
         </div>
       </td>

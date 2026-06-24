@@ -91,13 +91,20 @@ export function applyProviderFilters(
 
   if (filters.q) {
     const q = filters.q.toLowerCase();
-    list = list.filter(
-      (p) =>
-        p.location.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
-        p.name.toLowerCase().includes(q) ||
-        p.services.some((s) => s.toLowerCase().includes(q))
-    );
+    const tokens = q.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean);
+    const matchesProvider = (p: (typeof list)[0]) =>
+      p.location.toLowerCase().includes(q) ||
+      p.description.toLowerCase().includes(q) ||
+      p.name.toLowerCase().includes(q) ||
+      p.services.some((s) => s.toLowerCase().includes(q)) ||
+      tokens.some(
+        (t) =>
+          t.length >= 2 &&
+          (p.name.toLowerCase().includes(t) ||
+            p.services.some((s) => s.toLowerCase().includes(t)))
+      );
+
+    list = list.filter(matchesProvider);
   }
 
   if (filters.minPrice) {
@@ -736,6 +743,85 @@ export function toggleProviderBlockedSlotRecord(
       providers: db.providers.map((p) =>
         p.userId === userId ? { ...p, blockedSlots: nextBlocked } : p
       ),
+    },
+  };
+}
+
+export function addDirectMessageRecord(
+  db: MockDatabase,
+  message: {
+    id: string;
+    senderId: string;
+    receiverId: string;
+    senderName: string;
+    text: string;
+  }
+): MockDatabase {
+  return {
+    ...db,
+    directMessages: [
+      ...(db.directMessages ?? []),
+      { ...message, createdAt: new Date().toISOString() },
+    ],
+  };
+}
+
+export function deleteUserRecord(
+  db: MockDatabase,
+  userId: string,
+  opts?: { forbidSelf?: boolean; actorId?: string }
+): { db: MockDatabase; error?: string } {
+  const target = db.users.find((u) => u.id === userId);
+  if (!target) return { db, error: "User not found." };
+  if (opts?.forbidSelf && opts.actorId === userId) {
+    return { db, error: "You cannot delete your own account while logged in as admin." };
+  }
+  if (target.role === "admin" && countAdmins(db) <= 1) {
+    return { db, error: "Cannot delete the last admin account." };
+  }
+
+  const providerIds = db.providers
+    .filter((p) => p.userId === userId)
+    .map((p) => p.id);
+  const bookingIds = db.bookings
+    .filter(
+      (b) =>
+        b.customerId === userId || providerIds.includes(b.providerId)
+    )
+    .map((b) => b.id);
+
+  const users = db.users.filter((u) => u.id !== userId);
+  const providers = db.providers.filter((p) => p.userId !== userId);
+  const bookings = db.bookings.filter((b) => !bookingIds.includes(b.id));
+  const reviews = db.reviews.filter(
+    (r) =>
+      r.customerId !== userId &&
+      !providerIds.includes(r.providerId)
+  );
+  const notifications = (db.notifications ?? []).filter((n) => n.userId !== userId);
+  const directMessages = (db.directMessages ?? []).filter(
+    (m) => m.senderId !== userId && m.receiverId !== userId
+  );
+  const chatMessages = (db.chatMessages ?? []).filter(
+    (m) => !bookingIds.includes(m.bookingId)
+  );
+  const reports = (db.reports ?? []).filter(
+    (r) =>
+      r.reporterId !== userId &&
+      !providerIds.includes(r.providerId)
+  );
+
+  return {
+    db: {
+      ...db,
+      users,
+      providers,
+      bookings,
+      reviews,
+      notifications,
+      directMessages,
+      chatMessages,
+      reports,
     },
   };
 }

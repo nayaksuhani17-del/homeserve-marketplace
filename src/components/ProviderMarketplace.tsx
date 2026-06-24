@@ -175,14 +175,14 @@ export function ProviderMarketplace() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder='Try "cheap cleaner near me today" or "plumber 4+ stars"'
+            placeholder='Search by name (e.g. "Marcus") or service (e.g. "plumber")'
             className="input-field"
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
           {pending
             ? "Updating results…"
-            : `${result.total} provider${result.total === 1 ? "" : "s"} · natural language search supported`}
+            : `${result.total} provider${result.total === 1 ? "" : "s"} · search by name or service`}
         </p>
       </div>
 
@@ -277,8 +277,12 @@ export function ProviderMarketplace() {
           ) : (
             <div className="mt-8">
               <EmptyState
-                title="No providers found — try another search"
-                description="We couldn't find a match. Broaden your filters or browse a popular category."
+                title={query.trim() ? "No users found" : "No providers found — try another search"}
+                description={
+                  query.trim()
+                    ? `No providers or people matched "${query}". Try a partial name or service keyword.`
+                    : "We couldn't find a match. Broaden your filters or browse a popular category."
+                }
                 icon="🔍"
                 suggestions={similarServices(filters.service).map(
                   (s) => `${getServiceMeta(s).icon} Browse ${s}`

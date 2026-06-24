@@ -35,7 +35,9 @@ import {
   resolveBookingRecord,
   resolveReportRecord,
   addChatMessageRecord,
+  addDirectMessageRecord,
   removeReviewRecord,
+  deleteUserRecord,
   simulateDelay,
   submitReportRecord,
   toggleProviderBlockedSlotRecord,
@@ -47,6 +49,7 @@ import type {
   MarketplaceAnalytics,
   MockBooking,
   MockDatabase,
+  MockDirectMessage,
   MockNotification,
   MockProvider,
   MockSession,
@@ -97,6 +100,7 @@ import {
   roleLabel,
   type AccountSummary,
 } from "@/lib/accounts";
+import { advancedSearch, type UnifiedSearchResult } from "@/lib/search/unified";
 
 export const SYSTEM_EVENT = "homeserve-system-event";
 
@@ -135,6 +139,9 @@ type MockAppContextValue = {
   getAvailableSlots: (providerId: string, date: string) => string[];
   sendChatMessage: (bookingId: string, text: string) => Promise<{ error?: string }>;
   getChatMessages: (bookingId: string) => MockDatabase["chatMessages"];
+  getDirectMessages: (otherUserId: string) => MockDirectMessage[];
+  sendDirectMessage: (receiverId: string, text: string) => Promise<{ error?: string }>;
+  advancedSearch: (query: string) => UnifiedSearchResult[];
   removeReview: (reviewId: string) => Promise<void>;
   cancelBooking: (bookingId: string) => Promise<{ error?: string }>;
   respondToBooking: (
@@ -181,6 +188,8 @@ type MockAppContextValue = {
   approveProvider: (providerId: string, approved: boolean) => Promise<void>;
   rejectProvider: (providerId: string) => Promise<void>;
   banUser: (userId: string, banned: boolean) => Promise<{ error?: string }>;
+  deleteUser: (userId: string) => Promise<{ error?: string }>;
+  deleteMyAccount: () => Promise<{ error?: string }>;
   setUserRole: (
     userId: string,
     role: MockUser["role"]
@@ -863,6 +872,129 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     },
     [db, user, persist]
   );
+
+  const getDirectMessages = useCallback(
+    (otherUserId: string) => {
+      if (!db || !user) return [];
+      return (db.directMessages ?? [])
+        .filter(
+          (m) =>
+            (m.senderId === user.id && m.receiverId === otherUserId) ||
+            (m.senderId === otherUserId && m.receiverId === user.id)
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+    },
+    [db, user]
+  );
+
+  const sendDirectMessage = useCallback(
+    async (receiverId: string, text: string) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      if (user.id === receiverId) return { error: "You cannot message yourself." };
+      const receiver = db.users.find((u) => u.id === receiverId);
+      if (!receiver) return { error: "User not found." };
+      if (receiver.banned) return { error: "This user is not available." };
+
+      let next = addDirectMessageRecord(db, {
+        id: newId("dm"),
+        senderId: user.id,
+        receiverId,
+        senderName: user.name,
+        text,
+      });
+      next = appendNotification(next, receiverId, {
+        type: "message",
+        title: "New message",
+        message: `${user.name}: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`,
+        href: user.role === "provider" ? "/provider/dashboard" : "/customer/dashboard",
+      });
+      persistImmediate(next);
+
+      const receiverProvider = db.providers.find((p) => p.userId === receiverId);
+      if (receiverProvider && user.role === "customer") {
+        const replyDelay = getChatReplyDelayMs();
+        setTimeout(() => {
+          setDb((prev) => {
+            if (!prev) return prev;
+            const reply = generateProviderChatReply(text);
+            let withReply = addDirectMessageRecord(prev, {
+              id: newId("dm"),
+              senderId: receiverId,
+              receiverId: user.id,
+              senderName: receiver.name,
+              text: reply,
+            });
+            withReply = appendNotification(withReply, user.id, {
+              type: "message",
+              title: "Reply from " + receiver.name,
+              message: reply.slice(0, 100),
+              href: "/customer/dashboard",
+            });
+            saveDb(withReply);
+            return withReply;
+          });
+        }, replyDelay);
+      }
+
+      return {};
+    },
+    [db, user, persistImmediate, appendNotification]
+  );
+
+  const advancedSearchFn = useCallback(
+    (query: string) => {
+      if (!db) return [];
+      return advancedSearch(db, query);
+    },
+    [db]
+  );
+
+  const deleteUser = useCallback(
+    async (userId: string) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      if (user.role !== "admin") return { error: "Admin access required." };
+      if (userId === user.id) {
+        return { error: "You cannot delete your own account while logged in. Use Delete My Account or switch accounts first." };
+      }
+
+      setLoading(true);
+      await simulateDelay(400);
+      const result = deleteUserRecord(db, userId, { forbidSelf: true, actorId: user.id });
+      if (result.error) {
+        setLoading(false);
+        return { error: result.error };
+      }
+      persistImmediate(result.db);
+      emitSystemEvent({ type: "report", message: "Account deleted permanently" });
+      setLoading(false);
+      return {};
+    },
+    [db, user, persistImmediate, emitSystemEvent]
+  );
+
+  const deleteMyAccount = useCallback(async () => {
+    if (!db || !user) return { error: "You must be logged in." };
+    if (user.role === "admin" && db.users.filter((u) => u.role === "admin" && !u.banned).length <= 1) {
+      return { error: "You are the last admin — promote another admin before deleting your account." };
+    }
+
+    setLoading(true);
+    await simulateDelay(400);
+    const result = deleteUserRecord(db, user.id);
+    if (result.error) {
+      setLoading(false);
+      return { error: result.error };
+    }
+    persistImmediate(result.db);
+    saveSession(null);
+    setSession(null);
+    setDb(result.db);
+    setLoading(false);
+    return {};
+  }, [db, user, persistImmediate]);
 
   const removeReview = useCallback(
     async (reviewId: string) => {
@@ -1603,6 +1735,9 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     getAvailableSlots,
     sendChatMessage,
     getChatMessages,
+    getDirectMessages,
+    sendDirectMessage,
+    advancedSearch: advancedSearchFn,
     removeReview,
     cancelBooking,
     respondToBooking,
@@ -1623,6 +1758,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     approveProvider,
     rejectProvider,
     banUser,
+    deleteUser,
+    deleteMyAccount,
     setUserRole,
     filterProviders,
     getProvider,

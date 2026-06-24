@@ -2,21 +2,32 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChatProviderCard } from "./ChatProviderCard";
+import dynamic from "next/dynamic";
+import { SearchResultCard } from "./SearchResultCard";
 import { useMockApp } from "@/context/MockAppContext";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { toProviderCardData } from "@/lib/providers";
-import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { matchSearchSuggestions } from "@/lib/services";
 import { detectUrgency } from "@/lib/smart";
-import { assignRecommendationLabels } from "@/lib/recommendations";
+import type { UnifiedSearchResult } from "@/lib/search/unified";
+
+const DirectMessageModal = dynamic(
+  () => import("./DirectMessagePanel").then((m) => m.DirectMessageModal),
+  { ssr: false }
+);
+const HireModal = dynamic(
+  () => import("./HireModal").then((m) => m.HireModal),
+  { ssr: false }
+);
 
 export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
-  const { parseSearch, filterProviders, ready } = useMockApp();
+  const { parseSearch, advancedSearch, ready, getProvider } = useMockApp();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
-  const [preview, setPreview] = useState<ReturnType<typeof toProviderCardData>[]>([]);
+  const [preview, setPreview] = useState<UnifiedSearchResult[]>([]);
+  const [messageTarget, setMessageTarget] = useState<{ id: string; name: string } | null>(null);
+  const [hireTarget, setHireTarget] = useState<UnifiedSearchResult | null>(null);
   const suggestions = useMemo(() => matchSearchSuggestions(query), [query]);
   const [showDropdown, setShowDropdown] = useState(false);
   const router = useRouter();
@@ -35,36 +46,25 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
   }, []);
 
   useEffect(() => {
-    if (!query.trim() || query.trim().length < 2 || !ready) return;
+    if (!query.trim() || query.trim().length < 2 || !ready) {
+      setPreview([]);
+      setPreviewLoading(false);
+      return;
+    }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    setPreviewLoading(true);
     debounceRef.current = setTimeout(() => {
-      const parsed = parseSearch(query);
-      const urgent = detectUrgency(query);
-      const result = filterProviders({
-        q: parsed.q,
-        service: parsed.service,
-        sort: parsed.sort,
-        maxPrice: parsed.maxPrice ? String(parsed.maxPrice) : undefined,
-        minRating: parsed.minRating ? String(parsed.minRating) : undefined,
-        maxDistance: parsed.maxDistance ? String(parsed.maxDistance) : undefined,
-        availability: urgent ? "today" : parsed.availability,
-        status: "verified",
-      });
-      const legacy = result.list.slice(0, 3).map(mockProviderToLegacy);
-      const labels = assignRecommendationLabels(legacy);
-      setPreview(
-        legacy.map((p) =>
-          toProviderCardData(p, { recommendationLabel: labels.get(p.id) })
-        )
-      );
+      const results = advancedSearch(query).slice(0, 5);
+      setPreview(results);
+      setPreviewLoading(false);
       setShowDropdown(true);
     }, 400);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, ready, parseSearch, filterProviders]);
+  }, [query, ready, advancedSearch]);
 
   async function runSearch(q: string) {
     if (!q.trim() || !ready) return;
@@ -109,7 +109,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
               if (!e.target.value.trim()) setShowDropdown(false);
             }}
             onFocus={() => setShowDropdown(true)}
-            placeholder={placeholder ?? 'Try "cheap electrician near me available today"'}
+            placeholder={placeholder ?? 'Try "John", "Mike electrician", or "plumber near me"'}
             className="input-field"
             disabled={!ready}
             autoComplete="off"
@@ -127,7 +127,7 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
         </button>
       </form>
 
-      {showDropdown && (suggestions.length > 0 || (query.trim() && preview.length > 0)) && (
+      {showDropdown && (suggestions.length > 0 || (query.trim() && (preview.length > 0 || previewLoading || query.trim().length >= 2))) && (
         <div className="animate-slide-up absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
           {suggestions.length > 0 && !query.trim() && (
             <div className="border-b border-gray-100 p-2">
@@ -158,14 +158,56 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
               ))}
             </div>
           )}
-          {query.trim() && preview.length > 0 && (
+          {query.trim() && previewLoading && (
+            <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 text-sm text-gray-500">
+              <LoadingSpinner size="sm" />
+              Searching people and services…
+            </div>
+          )}
+          {query.trim() && !previewLoading && preview.length === 0 && query.trim().length >= 2 && (
+            <p className="border-b border-gray-100 px-4 py-3 text-sm text-gray-500">
+              No users found for &quot;{query}&quot;
+            </p>
+          )}
+          {query.trim() && !previewLoading && preview.length > 0 && (
             <>
               <p className="border-b border-gray-100 px-4 py-2 text-xs font-medium text-gray-500">
-                Top matches as you type
+                People &amp; services matching your search
               </p>
-              <div className="max-h-80 space-y-1 overflow-y-auto p-2">
-                {preview.map((p) => (
-                  <ChatProviderCard key={p.id} provider={p} compact />
+              <div className="max-h-96 space-y-1 overflow-y-auto p-2">
+                {preview.map((item) => (
+                  <SearchResultCard
+                    key={item.resultId}
+                    compact
+                    name={item.name}
+                    role={item.role}
+                    services={item.services}
+                    ratingAvg={item.ratingAvg}
+                    reviewCount={item.reviewCount}
+                    location={item.location}
+                    matchedTerms={item.matchedTerms}
+                    approved={item.approved}
+                    onViewProfile={
+                      item.providerId
+                        ? () => {
+                            setShowDropdown(false);
+                            router.push(`/provider/${item.providerId}`);
+                          }
+                        : undefined
+                    }
+                    onMessage={() => {
+                      setShowDropdown(false);
+                      setMessageTarget({ id: item.userId, name: item.name });
+                    }}
+                    onHire={
+                      item.providerId
+                        ? () => {
+                            setShowDropdown(false);
+                            setHireTarget(item);
+                          }
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
             </>
@@ -189,6 +231,32 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
       )}
 
       {hint && <p className="mt-2 text-xs text-green-600">{hint}</p>}
+
+      {messageTarget && (
+        <DirectMessageModal
+          open
+          otherUserId={messageTarget.id}
+          otherUserName={messageTarget.name}
+          onClose={() => setMessageTarget(null)}
+        />
+      )}
+
+      {hireTarget?.providerId && (
+        <HireModal
+          open
+          onClose={() => setHireTarget(null)}
+          providerId={hireTarget.providerId}
+          providerName={hireTarget.name}
+          pricingType={
+            getProvider(hireTarget.providerId)?.pricingType ?? "hourly"
+          }
+          price={Number(getProvider(hireTarget.providerId)?.price ?? 50)}
+          basePrice={Number(getProvider(hireTarget.providerId)?.basePrice ?? 0)}
+          hourlyRate={Number(getProvider(hireTarget.providerId)?.hourlyRate ?? 50)}
+          availableToday={Boolean(getProvider(hireTarget.providerId)?.availableToday)}
+          defaultService={hireTarget.services[0] ?? "General"}
+        />
+      )}
     </div>
   );
 }

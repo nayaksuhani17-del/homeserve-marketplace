@@ -14,6 +14,7 @@ import { getViewerCount } from "@/lib/trust";
 import { getServiceMeta } from "@/lib/services";
 import { ReviewForm } from "./ReviewForm";
 import { ReportProviderModal } from "./ReportProviderModal";
+import { DirectMessageModal } from "./DirectMessagePanel";
 import { useMockApp } from "@/context/MockAppContext";
 import { computeProviderTags } from "@/lib/providers";
 import { formatProviderPrice, PRICING_TYPE_LABELS } from "@/lib/pricing";
@@ -69,6 +70,7 @@ export function ProviderProfileClient({
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
   const autoHireOpened = useRef(false);
   const {
     user: sessionUser,
@@ -258,6 +260,17 @@ export function ProviderProfileClient({
           {provider.approved ? (
             <div className="mt-8">
               <div className="flex flex-wrap gap-3">
+                {isLoggedIn &&
+                  liveProvider?.userId &&
+                  sessionUser?.id !== liveProvider.userId && (
+                    <button
+                      type="button"
+                      onClick={() => setMessageOpen(true)}
+                      className="btn-secondary px-8 py-3 text-base"
+                    >
+                      Message
+                    </button>
+                  )}
                 <button
                   type="button"
                   onClick={() => setQuoteOpen(true)}
@@ -378,6 +391,15 @@ export function ProviderProfileClient({
         providerId={provider.id}
         providerName={user?.name ?? "Provider"}
       />
+
+      {liveProvider?.userId && (
+        <DirectMessageModal
+          open={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          otherUserId={liveProvider.userId}
+          otherUserName={user?.name ?? "Provider"}
+        />
+      )}
     </>
   );
 }

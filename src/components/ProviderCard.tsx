@@ -22,6 +22,11 @@ const HireModal = dynamic(
   { ssr: false }
 );
 
+const DirectMessageModal = dynamic(
+  () => import("./DirectMessagePanel").then((m) => m.DirectMessageModal),
+  { ssr: false }
+);
+
 const QuoteModal = dynamic(
   () => import("./QuoteModal").then((m) => m.QuoteModal),
   { ssr: false }
@@ -46,13 +51,14 @@ export function ProviderCard({
   recommendationLabel,
   isBestMatch,
 }: ProviderCardProps) {
-  const { trackProviderClick } = useMockApp();
+  const { trackProviderClick, user: sessionUser } = useMockApp();
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
   const [viewers] = useState(() => getViewerCount(provider.id));
 
   const defaultService = selectedService || provider.services[0] || "General";
-  const user = getProviderUser(provider);
+  const providerUser = getProviderUser(provider);
   const tags = computeProviderTags(provider);
   const responseLabel = formatResponseTime(provider.response_time_mins);
   const reviewCount = provider.review_count ?? Math.floor((provider.jobs_completed ?? 20) / 8);
@@ -81,15 +87,15 @@ export function ProviderCard({
             {serviceIcon}
           </span>
           <div className="absolute right-3 top-3 z-10">
-            <FavoriteButton providerId={provider.id} providerName={user?.name ?? "Provider"} />
+            <FavoriteButton providerId={provider.id} providerName={providerUser?.name ?? "Provider"} />
           </div>
         </div>
 
         <div className="relative flex flex-1 flex-col p-5 pt-0">
           <div className="-mt-8 mb-3 flex items-end gap-3">
-            {user?.avatar_url ? (
+            {providerUser?.avatar_url ? (
               <Image
-                src={user.avatar_url}
+                src={providerUser.avatar_url}
                 alt=""
                 width={64}
                 height={64}
@@ -97,12 +103,12 @@ export function ProviderCard({
               />
             ) : (
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-4 border-white bg-green-100 text-xl font-semibold text-green-700 shadow-md">
-                {(user?.name ?? "P").charAt(0)}
+                {(providerUser?.name ?? "P").charAt(0)}
               </div>
             )}
             <div className="min-w-0 flex-1 pb-1">
               <h3 className="truncate text-lg font-semibold text-gray-900 transition-colors group-hover:text-green-700">
-                {user?.name ?? "Provider"}
+                {providerUser?.name ?? "Provider"}
               </h3>
               {provider.distance_miles != null && (
                 <p className="text-xs font-medium text-green-600">
@@ -183,8 +189,17 @@ export function ProviderCard({
               onClick={() => trackProviderClick(provider.id)}
               className="btn-secondary px-3 py-1.5"
             >
-              View
+              View Profile
             </Link>
+            {sessionUser && provider.user_id && sessionUser.id !== provider.user_id && (
+              <button
+                type="button"
+                onClick={() => setMessageOpen(true)}
+                className="btn-secondary px-3 py-1.5"
+              >
+                Message
+              </button>
+            )}
             {showHire && provider.approved && (
               <>
                 <button
@@ -199,7 +214,7 @@ export function ProviderCard({
                   onClick={() => setHireOpen(true)}
                   className="btn-primary px-3 py-1.5"
                 >
-                  Hire Now
+                  Hire
                 </button>
               </>
             )}
@@ -211,7 +226,7 @@ export function ProviderCard({
       <QuoteModal
         open={quoteOpen}
         onClose={() => setQuoteOpen(false)}
-        providerName={user?.name ?? "Provider"}
+        providerName={providerUser?.name ?? "Provider"}
         profile={{
           pricingType: provider.pricing_type,
           price: Number(provider.price),
@@ -227,7 +242,7 @@ export function ProviderCard({
         open={hireOpen}
         onClose={() => setHireOpen(false)}
         providerId={provider.id}
-        providerName={user?.name ?? "Provider"}
+        providerName={providerUser?.name ?? "Provider"}
         pricingType={provider.pricing_type}
         price={Number(provider.price)}
         basePrice={Number(provider.base_price ?? 0)}
@@ -235,6 +250,15 @@ export function ProviderCard({
         availableToday={Boolean(provider.available_today)}
         defaultService={defaultService}
       />
+
+      {provider.user_id && (
+        <DirectMessageModal
+          open={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          otherUserId={provider.user_id}
+          otherUserName={providerUser?.name ?? "Provider"}
+        />
+      )}
     </>
   );
 }

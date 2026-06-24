@@ -90,6 +90,15 @@ export type MockReview = {
   createdAt: string;
 };
 
+export type MockDirectMessage = {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  senderName: string;
+  text: string;
+  createdAt: string;
+};
+
 export type MockChatMessage = {
   id: string;
   bookingId: string;
@@ -130,6 +139,7 @@ export type MockDatabase = {
   bookings: MockBooking[];
   reviews: MockReview[];
   chatMessages: MockChatMessage[];
+  directMessages: MockDirectMessage[];
   notifications: MockNotification[];
   reports: MockReport[];
 };
@@ -155,7 +165,7 @@ export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
 /** Cookie flag so middleware allows mock-authenticated demo routes. */
 export const MOCK_SESSION_COOKIE = "homeserve-mock-auth";
-export const MOCK_DB_VERSION = 11;
+export const MOCK_DB_VERSION = 12;
 
 export type SystemEvent = {
   id: string;
