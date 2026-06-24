@@ -40,7 +40,7 @@ export function newGuestProvider(user: MockUser): MockProvider {
     description: "Tell customers about your experience and services.",
     availability: "Mon-Fri: 9am-5pm",
     ratingAvg: 4.5,
-    approved: false,
+    approved: true,
     distanceMiles: 3,
     jobsCompleted: 0,
     yearsExperience: 1,

@@ -13,7 +13,9 @@ import {
   resolveBookingRecord,
   dismissReportRecord,
   getStats,
+  registerUserRecord,
 } from "../src/lib/mock/operations";
+import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
 import { getMarketplaceAnalytics } from "../src/lib/mock/analytics";
 import { demoId } from "../src/lib/demo/ids";
 
@@ -192,6 +194,131 @@ console.log("\n🛡️ ADMIN FLOW");
     db.reports.find((r) => r.id === openReport!.id)?.status === "dismissed",
     "Dismiss report works"
   );
+}
+
+// ─── 🔄 CROSS-ACCOUNT SYNC (shared mock DB) ───
+console.log("\n🔄 ACCOUNT SWITCH SYNC");
+{
+  let syncDb = buildInitialDatabase();
+  const sarah = syncDb.users.find((u) => u.email === "sarah.mitchell@demo.com");
+  const marcus = syncDb.providers.find((p) => p.email === "marcus.reed@demo.com");
+  assert(!!sarah && !!marcus, "Customer and provider demo accounts exist");
+
+  const syncDate = new Date();
+  syncDate.setDate(syncDate.getDate() + 5);
+  const date = syncDate.toISOString().split("T")[0]!;
+  const syncBookingId = demoId("sync-booking");
+
+  const created = createBookingRecord(
+    syncDb,
+    {
+      customerId: sarah!.id,
+      providerId: marcus!.id,
+      service: "Electrician",
+      date,
+      time: "10:00",
+      hours: 2,
+    },
+    syncBookingId
+  );
+  syncDb = created.db;
+  const pending = syncDb.bookings.find((b) => b.id === syncBookingId);
+  assert(pending?.status === "pending", "Customer booking saved as pending");
+  assert(
+    pending?.customerId === sarah!.id && pending?.providerId === marcus!.id,
+    "Booking linked to customer_id and provider_id"
+  );
+
+  const providerSees = syncDb.bookings.filter(
+    (b) => b.providerId === marcus!.id && b.status === "pending"
+  );
+  assert(
+    providerSees.some((b) => b.id === syncBookingId),
+    "Provider New Requests sees customer booking"
+  );
+
+  syncDb = resolveBookingRecord(syncDb, syncBookingId, true);
+  const customerView = syncDb.bookings.find(
+    (b) => b.id === syncBookingId && b.customerId === sarah!.id
+  );
+  assert(customerView?.status === "confirmed", "Customer sees confirmed after provider accept");
+
+  syncDb = completeBookingRecord(syncDb, syncBookingId);
+  assert(
+    syncDb.bookings.find((b) => b.id === syncBookingId)?.status === "completed",
+    "Customer sees completed after provider marks done"
+  );
+
+  syncDb = addReviewRecord(
+    syncDb,
+    {
+      customerId: sarah!.id,
+      providerId: marcus!.id,
+      bookingId: syncBookingId,
+      rating: 5,
+      comment: "Synced review test",
+    },
+    demoId("sync-review")
+  );
+  const marcusRated = syncDb.providers.find((p) => p.id === marcus!.id);
+  assert(
+    syncDb.reviews.some((r) => r.bookingId === syncBookingId),
+    "Review saved and linked to booking"
+  );
+  assert(
+    (marcusRated?.reviewCount ?? 0) >= (marcus!.reviewCount ?? 0),
+    "Provider rating updated from shared reviews"
+  );
+}
+
+// ─── 👥 MULTI-ACCOUNT (unlimited real accounts) ───
+console.log("\n👥 MULTI-ACCOUNT SYSTEM");
+{
+  let multiDb = buildInitialDatabase();
+
+  const customer1 = newGuestUser({
+    name: "Alex Customer",
+    email: "alex.test@example.com",
+    password: "test1234",
+    role: "customer",
+  });
+  multiDb = registerUserRecord(multiDb, customer1);
+
+  const provider1 = newGuestUser({
+    name: "Jamie Provider",
+    email: "jamie.test@example.com",
+    password: "test1234",
+    role: "provider",
+  });
+  const jamieProfile = newGuestProvider(provider1);
+  multiDb = registerUserRecord(multiDb, provider1, jamieProfile);
+
+  assert(
+    multiDb.users.some((u) => u.email === "alex.test@example.com"),
+    "Real customer account saved in shared users list"
+  );
+  assert(
+    multiDb.users.some((u) => u.email === "jamie.test@example.com"),
+    "Real provider account saved in shared users list"
+  );
+  assert(
+    multiDb.users.some((u) => u.email === "sarah.mitchell@demo.com"),
+    "Demo accounts remain in same users list"
+  );
+  assert(
+    multiDb.providers.some((p) => p.userId === provider1.id && p.approved),
+    "New provider auto-approved like demo providers"
+  );
+
+  const totalBefore = multiDb.users.length;
+  const customer2 = newGuestUser({
+    name: "Alex Customer Two",
+    email: "alex2.test@example.com",
+    password: "test1234",
+    role: "customer",
+  });
+  multiDb = registerUserRecord(multiDb, customer2);
+  assert(multiDb.users.length === totalBefore + 1, "Unlimited accounts — second customer added");
 }
 
 // ─── Summary ───

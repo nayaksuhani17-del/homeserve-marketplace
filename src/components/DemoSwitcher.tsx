@@ -152,9 +152,9 @@ export function DemoLoginButtons({ redirectTo }: { redirectTo?: string }) {
   return (
     <div className="card mx-auto mt-8 max-w-md border-green-200 bg-green-50 p-6">
       <h2 className="text-center font-semibold text-green-900">Quick demo login</h2>
-      <p className="mt-1 text-center text-sm text-green-800">
-        One-click access — explore the full marketplace instantly.
-      </p>
+        <p className="mt-1 text-center text-sm text-green-800">
+          One-click demo access — or create your own account above.
+        </p>
       {error && (
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700">
           {error}

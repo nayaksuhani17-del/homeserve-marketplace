@@ -1,6 +1,12 @@
 /** Executive demo optimizations — tuned for live presentations. */
 export const DEMO_MODE = true;
 
+/**
+ * When true, bookings stay pending until the provider accepts or rejects manually.
+ * Shared localStorage is the single source of truth across account switches.
+ */
+export const MANUAL_BOOKING_FLOW = true;
+
 /** Generated catalog size in demo (full prod-style build uses 350). */
 export const DEMO_CATALOG_SIZE = 60;
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
-import { DemoSwitcher } from "@/components/DemoSwitcher";
+import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
 
 export function ClientNavbar() {
@@ -31,8 +31,8 @@ export function ClientNavbar() {
         <Link href="/" className="text-xl font-bold text-green-600">
           HomeServe
         </Link>
-        <nav className="flex items-center gap-3 text-sm font-medium text-gray-700">
-          <Link href="/" className="transition-colors duration-200 hover:text-green-600">
+        <nav className="flex items-center gap-2 text-sm font-medium text-gray-700 sm:gap-3">
+          <Link href="/" className="hidden transition-colors duration-200 hover:text-green-600 sm:inline">
             Home
           </Link>
           <Link
@@ -44,29 +44,36 @@ export function ClientNavbar() {
           {user?.role === "customer" && (
             <Link
               href="/customer/saved"
-              className="transition-colors duration-200 hover:text-green-600"
+              className="hidden transition-colors duration-200 hover:text-green-600 sm:inline"
             >
               Saved
             </Link>
           )}
           {dashboardHref && dashboardHref !== "/customer/dashboard" && (
-            <Link href={dashboardHref} className="transition-colors duration-200 hover:text-green-600">
+            <Link
+              href={dashboardHref}
+              className="hidden transition-colors duration-200 hover:text-green-600 sm:inline"
+            >
               Dashboard
             </Link>
           )}
-          <DemoSwitcher />
+          <AccountSwitcher />
           <NotificationBell />
           {ready && user ? (
             <button
               type="button"
               onClick={handleSignOut}
-              className="rounded-lg bg-gray-100 px-3 py-1.5 transition-colors duration-200 hover:bg-gray-200"
+              className="hidden rounded-lg px-2 py-1.5 text-xs text-gray-500 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-700 sm:inline"
+              title="Clear session — use Switch Account to change profiles instead"
             >
-              Sign out ({user.name.split(" ")[0]})
+              Exit
             </button>
           ) : (
-            <Link href="/login" className="btn-primary px-4 py-2">
-              Login
+            <Link
+              href="/login"
+              className="hidden rounded-lg px-3 py-1.5 text-gray-700 transition hover:bg-gray-100 sm:inline"
+            >
+              Log in
             </Link>
           )}
         </nav>

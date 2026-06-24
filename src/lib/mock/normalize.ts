@@ -1,4 +1,5 @@
-import type { MockBooking, MockDatabase, MockProvider } from "./types";
+import { isDemoAccount } from "@/lib/accounts";
+import type { MockBooking, MockDatabase, MockProvider, MockUser } from "./types";
 import { MOCK_DB_VERSION } from "./types";
 
 function deriveResponseSpeed(mins: number): MockProvider["responseSpeed"] {
@@ -36,8 +37,9 @@ function normalizeWeekAvailability(
   });
 }
 
-function normalizeProvider(provider: MockProvider): MockProvider {
-  return {
+function normalizeProvider(provider: MockProvider, users: MockUser[]): MockProvider {
+  const user = users.find((u) => u.id === provider.userId);
+  const base = {
     ...provider,
     services: provider.services ?? [],
     tags: provider.tags ?? [],
@@ -51,6 +53,10 @@ function normalizeProvider(provider: MockProvider): MockProvider {
     reviewCount: provider.reviewCount ?? 0,
     jobsCompleted: provider.jobsCompleted ?? 0,
   };
+  if (user && !isDemoAccount(user) && !base.rejected) {
+    return { ...base, approved: true };
+  }
+  return base;
 }
 
 /** Skip full re-normalize on refresh when localStorage already matches schema. */
@@ -73,7 +79,7 @@ export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
   return {
     version: MOCK_DB_VERSION,
     users: raw.users ?? [],
-    providers: (raw.providers ?? []).map(normalizeProvider),
+    providers: (raw.providers ?? []).map((p) => normalizeProvider(p, raw.users ?? [])),
     bookings: (raw.bookings ?? []).map(normalizeBooking),
     reviews: raw.reviews ?? [],
     chatMessages: raw.chatMessages ?? [],

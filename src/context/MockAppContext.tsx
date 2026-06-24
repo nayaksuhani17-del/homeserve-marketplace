@@ -55,11 +55,17 @@ import type {
 } from "@/lib/mock/types";
 import {
   MOCK_DB_KEY,
+  MOCK_DB_VERSION,
   MOCK_SESSION_COOKIE,
   MOCK_SESSION_KEY,
 } from "@/lib/mock/types";
 import { DEMO_PASSWORD } from "@/lib/demo/constants";
-import { DEMO_MODE, DEMO_PROVIDER_PAGE_SIZE, DEMO_ROLE_REDIRECT } from "@/lib/demo/mode";
+import {
+  DEMO_MODE,
+  DEMO_PROVIDER_PAGE_SIZE,
+  DEMO_ROLE_REDIRECT,
+  MANUAL_BOOKING_FLOW,
+} from "@/lib/demo/mode";
 import { assignRecommendationLabels } from "@/lib/recommendations";
 import { toProviderCardData, rankProviders } from "@/lib/providers";
 import { detectUrgency } from "@/lib/smart";
@@ -84,6 +90,11 @@ import {
   trackRecentProvider,
 } from "@/lib/smart";
 import type { RecommendationLabel } from "@/lib/recommendations";
+import {
+  dashboardPathForRole,
+  isDemoAccount,
+  type AccountSummary,
+} from "@/lib/accounts";
 
 export const SYSTEM_EVENT = "homeserve-system-event";
 
@@ -108,6 +119,8 @@ type MockAppContextValue = {
     role: "customer" | "provider" | "admin",
     redirectTo?: string
   ) => Promise<{ error?: string; redirect?: string }>;
+  listAccounts: () => import("@/lib/accounts").AccountSummary[];
+  switchAccount: (userId: string) => Promise<{ error?: string; redirect?: string }>;
   logout: () => void;
   createBooking: (input: {
     providerId: string;
@@ -438,7 +451,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!ready || !db) return;
+    if (!ready || !db || MANUAL_BOOKING_FLOW) return;
     db.bookings
       .filter((b) => b.status === "pending")
       .forEach((b) => {
@@ -458,15 +471,46 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const flushPendingSave = useCallback(() => {
+    if (saveDbTimerRef.current) {
+      clearTimeout(saveDbTimerRef.current);
+      saveDbTimerRef.current = null;
+    }
+  }, []);
+
+  const persistImmediate = useCallback((next: MockDatabase) => {
+    const normalized = normalizeMockDatabase(next);
+    filterCacheRef.current = null;
+    flushPendingSave();
+    setDb(normalized);
+    saveDb(normalized);
+  }, [flushPendingSave]);
+
   const persist = useCallback((next: MockDatabase) => {
     const normalized = normalizeMockDatabase(next);
     filterCacheRef.current = null;
     setDb(normalized);
-    if (saveDbTimerRef.current) clearTimeout(saveDbTimerRef.current);
+    flushPendingSave();
     saveDbTimerRef.current = setTimeout(() => {
-      localStorage.setItem(MOCK_DB_KEY, JSON.stringify(normalized));
+      saveDb(normalized);
       saveDbTimerRef.current = null;
     }, 400);
+  }, [flushPendingSave]);
+
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== MOCK_DB_KEY || !e.newValue) return;
+      try {
+        const parsed = JSON.parse(e.newValue) as MockDatabase;
+        if (parsed.version !== MOCK_DB_VERSION) return;
+        filterCacheRef.current = null;
+        setDb(normalizeMockDatabase(parsed));
+      } catch {
+        /* ignore corrupt storage */
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const user = useMemo(() => {
@@ -476,10 +520,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string, redirectTo?: string) => {
-      if (!db) return { error: "App not ready" };
+      flushPendingSave();
+      const source = loadDb() ?? db;
+      if (!source) return { error: "App not ready" };
       setLoading(true);
       await simulateDelay();
-      const found = db.users.find(
+      const found = source.users.find(
         (u) => u.email.toLowerCase() === email.toLowerCase()
       );
       if (!found) {
@@ -494,20 +540,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: "Incorrect password." };
       }
+      setDb(source);
       const sess = { userId: found.id };
       setSession(sess);
       saveSession(sess);
       setLoading(false);
       if (redirectTo) return { redirect: redirectTo };
-      const redirect =
-        found.role === "admin"
-          ? "/admin"
-          : found.role === "provider"
-            ? "/provider/dashboard"
-            : "/customer/dashboard";
-      return { redirect };
+      return { redirect: dashboardPathForRole(found.role) };
     },
-    [db]
+    [db, flushPendingSave]
   );
 
   const register = useCallback(
@@ -532,37 +573,84 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       }
       const guest = newGuestUser({ name, email, password, role });
       const provider = role === "provider" ? newGuestProvider(guest) : undefined;
-      const next = registerUserRecord(db, guest, provider);
-      persist(next);
+      let next = registerUserRecord(db, guest, provider);
+      next = appendNotification(next, guest.id, {
+        type: "system",
+        title: role === "provider" ? "Welcome to HomeServe Pro" : "Welcome to HomeServe",
+        message:
+          role === "provider"
+            ? "Your profile is live and verified. Update services and availability to start receiving job requests."
+            : "Your account is ready. Search for a service and book a verified professional in minutes.",
+        href: role === "provider" ? "/provider/dashboard" : "/customer/dashboard",
+      });
+      persistImmediate(next);
       const sess = { userId: guest.id };
       setSession(sess);
       saveSession(sess);
       setLoading(false);
-      const redirect =
-        role === "provider" ? "/provider/dashboard" : "/customer/dashboard";
-      return { redirect };
+      return { redirect: dashboardPathForRole(role) };
     },
-    [db, persist]
+    [db, persistImmediate, appendNotification]
+  );
+
+  const listAccounts = useCallback((): AccountSummary[] => {
+    if (!db) return [];
+    return [...db.users]
+      .filter((u) => !u.banned)
+      .sort((a, b) => {
+        const aDemo = isDemoAccount(a);
+        const bDemo = isDemoAccount(b);
+        if (aDemo !== bDemo) return aDemo ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      })
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        isDemo: isDemoAccount(u),
+        isActive: session?.userId === u.id,
+      }));
+  }, [db, session]);
+
+  const switchAccount = useCallback(
+    async (userId: string) => {
+      flushPendingSave();
+      const fresh = loadDb();
+      const source = fresh ?? db;
+      if (!source) return { error: "App not ready" };
+      const found = source.users.find((u) => u.id === userId);
+      if (!found || found.banned) return { error: "Account not found." };
+      setLoading(true);
+      await simulateDelay(DEMO_MODE ? 80 : 200);
+      setDb(source);
+      const sess = { userId: found.id };
+      setSession(sess);
+      saveSession(sess);
+      setLoading(false);
+      return { redirect: dashboardPathForRole(found.role) };
+    },
+    [db, flushPendingSave]
   );
 
   const demoLogin = useCallback(
     async (role: "customer" | "provider" | "admin", redirectTo?: string) => {
-      if (!db) return { error: "App not ready" };
+      flushPendingSave();
+      const source = loadDb() ?? db;
+      if (!source) return { error: "App not ready" };
+      const email = DEMO_ROLE_EMAIL[role];
+      const found = source.users.find((u) => u.email === email);
+      if (!found) return { error: "Demo user not found." };
       setLoading(true);
       await simulateDelay(DEMO_MODE ? 200 : 400);
-      const email = DEMO_ROLE_EMAIL[role];
-      const found = db.users.find((u) => u.email === email);
-      if (!found) {
-        setLoading(false);
-        return { error: "Demo user not found." };
-      }
+      setDb(source);
       const sess = { userId: found.id };
       setSession(sess);
       saveSession(sess);
       setLoading(false);
       return { redirect: redirectTo ?? DEMO_ROLE_REDIRECT[role] };
     },
-    [db]
+    [db, flushPendingSave]
   );
 
   const logout = useCallback(() => {
@@ -606,8 +694,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (result.error) {
         return { error: result.error };
       }
-      resumedPending.current.add(id);
-      scheduleBookingResponse(id, result.db);
+      if (!MANUAL_BOOKING_FLOW) {
+        resumedPending.current.add(id);
+        scheduleBookingResponse(id, result.db);
+      }
 
       const providerAccount = result.db.users.find((u) => u.id === provider.userId);
       let next = appendNotification(result.db, user.id, {
@@ -619,12 +709,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (providerAccount) {
         next = appendNotification(next, providerAccount.id, {
           type: "booking",
-          title: "New job request",
-          message: `${user.name} requested ${input.service} on ${input.date}.`,
+          title: "New job request received",
+          message: `${user.name} requested ${input.service} on ${input.date}${input.time ? ` at ${input.time}` : ""}.`,
           href: "/provider/dashboard",
         });
       }
-      persist(next);
+      persistImmediate(next);
 
       emitSystemEvent({
         type: "booking_created",
@@ -632,7 +722,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       });
       return { booking: result.db.bookings.find((b) => b.id === id) };
     },
-    [db, user, persist, scheduleBookingResponse, emitSystemEvent, appendNotification]
+    [db, user, persistImmediate, scheduleBookingResponse, emitSystemEvent, appendNotification]
   );
 
   const completeBooking = useCallback(
@@ -652,7 +742,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         message: `${booking.providerName} marked your ${booking.service} job complete. Payment released.`,
         href: "/customer/dashboard",
       });
-      persist(next);
+      persistImmediate(next);
       emitSystemEvent({
         type: "job_completed",
         message: `${booking.service} job marked complete`,
@@ -664,7 +754,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return {};
     },
-    [db, user, persist, emitSystemEvent, appendNotification]
+    [db, user, persistImmediate, emitSystemEvent, appendNotification]
   );
 
   const getAvailableSlots = useCallback(
@@ -795,7 +885,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      persist(next);
+      persistImmediate(next);
       emitSystemEvent({
         type: "booking_cancelled",
         message: `${booking.service} booking cancelled`,
@@ -803,7 +893,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return {};
     },
-    [db, user, persist, clearScheduledResponse, appendNotification, emitSystemEvent]
+    [db, user, persistImmediate, clearScheduledResponse, appendNotification, emitSystemEvent]
   );
 
   const respondToBooking = useCallback(
@@ -831,15 +921,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           { ...booking, status: "confirmed", paymentStatus: "authorized" },
           {
             type: "booking",
-            title: "Booking confirmed",
-            message: `${provider.name} accepted your ${booking.service} request.`,
+            title: "Provider accepted your booking",
+            message: `${provider.name} confirmed your ${booking.service} request for ${booking.date}.`,
             href: "/customer/dashboard",
           },
           user.id,
           {
             type: "booking",
-            title: "You accepted a job",
-            message: `${booking.customerName}'s ${booking.service} booking is confirmed.`,
+            title: "Job confirmed",
+            message: `You accepted ${booking.customerName}'s ${booking.service} booking.`,
             href: "/provider/dashboard",
           }
         );
@@ -860,14 +950,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      persist(next);
+      persistImmediate(next);
       setLoading(false);
       return {};
     },
     [
       db,
       user,
-      persist,
+      persistImmediate,
       clearScheduledResponse,
       notifyBookingParties,
       appendNotification,
@@ -1083,15 +1173,27 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       }
       await simulateDelay(DEMO_MODE ? 250 : 600);
       const id = newId("review");
-      const next = addReviewRecord(
+      let next = addReviewRecord(
         db,
         { ...input, customerId: user.id },
         id
       );
-      persist(next);
+      const provider = db.providers.find((p) => p.id === input.providerId);
+      const providerUser = provider
+        ? db.users.find((u) => u.id === provider.userId)
+        : undefined;
+      if (providerUser) {
+        next = appendNotification(next, providerUser.id, {
+          type: "booking",
+          title: "New review received",
+          message: `${user.name} left a ${input.rating}-star review${provider ? ` for ${provider.name}` : ""}.`,
+          href: "/provider/dashboard",
+        });
+      }
+      persistImmediate(next);
       return {};
     },
-    [db, user, persist]
+    [db, user, persistImmediate, appendNotification]
   );
 
   const updateProvider = useCallback(
@@ -1389,6 +1491,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     login,
     register,
     demoLogin,
+    listAccounts,
+    switchAccount,
     logout,
     createBooking,
     completeBooking,
