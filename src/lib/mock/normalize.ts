@@ -1,4 +1,5 @@
 import { isDemoAccount } from "@/lib/accounts";
+import { buildAdminDemoReports } from "./admin-demo-reports";
 import type { MockBooking, MockDatabase, MockProvider, MockUser } from "./types";
 import { MOCK_DB_VERSION } from "./types";
 
@@ -71,7 +72,7 @@ export function needsNormalization(raw: MockDatabase): boolean {
       p.weekAvailability.length !== 7 ||
       !Array.isArray(p.blockedSlots) ||
       typeof p.rejected !== "boolean"
-  );
+  ) || !raw.reports?.length;
 }
 
 /** Patch localStorage DBs to the current schema. */
@@ -84,6 +85,6 @@ export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
     reviews: raw.reviews ?? [],
     chatMessages: raw.chatMessages ?? [],
     notifications: raw.notifications ?? [],
-    reports: raw.reports ?? [],
+    reports: raw.reports?.length ? raw.reports : buildAdminDemoReports(),
   };
 }

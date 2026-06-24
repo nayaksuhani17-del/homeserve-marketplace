@@ -483,10 +483,45 @@ export function banUserRecord(
   db: MockDatabase,
   userId: string,
   banned: boolean
-): MockDatabase {
+): { db: MockDatabase; error?: string } {
+  const target = db.users.find((u) => u.id === userId);
+  if (!target) return { db, error: "User not found." };
+  if (banned && target.role === "admin") {
+    const activeAdmins = db.users.filter((u) => u.role === "admin" && !u.banned);
+    if (activeAdmins.length <= 1 && activeAdmins[0]?.id === userId) {
+      return { db, error: "Cannot ban the last active admin." };
+    }
+  }
   return {
-    ...db,
-    users: db.users.map((u) => (u.id === userId ? { ...u, banned } : u)),
+    db: {
+      ...db,
+      users: db.users.map((u) => (u.id === userId ? { ...u, banned } : u)),
+    },
+  };
+}
+
+export function countAdmins(db: MockDatabase): number {
+  return db.users.filter((u) => u.role === "admin").length;
+}
+
+export function updateUserRoleRecord(
+  db: MockDatabase,
+  userId: string,
+  role: MockUser["role"]
+): { db: MockDatabase; error?: string } {
+  const target = db.users.find((u) => u.id === userId);
+  if (!target) return { db, error: "User not found." };
+  if (target.role === role) return { db };
+
+  if (target.role === "admin" && role !== "admin" && countAdmins(db) <= 1) {
+    return { db, error: "At least one admin must remain on the platform." };
+  }
+
+  return {
+    db: {
+      ...db,
+      users: db.users.map((u) => (u.id === userId ? { ...u, role } : u)),
+    },
   };
 }
 
@@ -522,6 +557,7 @@ export function getStats(db: MockDatabase) {
     ).length,
     jobsCompleted,
     avgRating: Math.round(avgRating * 10) / 10,
+    adminCount: db.users.filter((u) => u.role === "admin").length,
   };
 }
 

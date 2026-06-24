@@ -59,8 +59,7 @@ export function CustomerBookingsPanel({ bookings, onReport }: CustomerBookingsPa
         <div>
           <h2 className="text-xl font-bold text-gray-900">Your bookings</h2>
           <p className="mt-1 text-sm text-gray-500">
-            {upcoming.length} upcoming · {past.filter((b) => b.status === "completed").length}{" "}
-            completed
+            {upcoming.length} upcoming · {past.length} past
           </p>
         </div>
         <div className="flex gap-1 rounded-xl bg-gray-100 p-1">

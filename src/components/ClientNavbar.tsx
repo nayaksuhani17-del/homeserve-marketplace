@@ -49,12 +49,12 @@ export function ClientNavbar() {
               Saved
             </Link>
           )}
-          {dashboardHref && dashboardHref !== "/customer/dashboard" && (
+          {dashboardHref && (
             <Link
               href={dashboardHref}
-              className="hidden transition-colors duration-200 hover:text-green-600 sm:inline"
+              className="transition-colors duration-200 hover:text-green-600"
             >
-              Dashboard
+              {user?.role === "admin" ? "Admin" : "Dashboard"}
             </Link>
           )}
           <AccountSwitcher />

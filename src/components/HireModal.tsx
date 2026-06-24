@@ -109,6 +109,8 @@ function HireModalSession({
       toast("Booking confirmed successfully", "success");
     } else if (resolvedWhileWaiting.status === "declined") {
       toast("Provider declined request", "error");
+    } else if (resolvedWhileWaiting.status === "cancelled") {
+      toast("Booking was cancelled", "info");
     }
   }, [resolvedWhileWaiting, toast]);
 
@@ -179,7 +181,9 @@ function HireModalSession({
       ? "✅ Booking Confirmed"
       : doneBooking?.status === "declined"
         ? "Booking Declined"
-        : "Request Submitted"
+        : doneBooking?.status === "cancelled"
+          ? "Booking Cancelled"
+          : "Request Submitted"
     : showWaiting
       ? "Waiting for provider"
       : step === "processing"
@@ -201,7 +205,8 @@ function HireModalSession({
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-amber-200 border-t-amber-500" />
           <p className="mt-4 font-medium text-gray-900">Provider is responding…</p>
           <p className="mt-1 text-sm text-gray-500">
-            {providerName} typically replies based on their response time profile.
+            {providerName} will accept or decline in their dashboard. You can close this and
+            check your bookings anytime.
           </p>
           <div className="mt-6 rounded-xl bg-gray-50 p-4 text-left text-sm">
             <p>
@@ -226,7 +231,7 @@ function HireModalSession({
                   : "bg-amber-100 text-amber-600"
             }`}
           >
-            {isBookingSuccess ? "✅" : doneBooking.status === "declined" ? "✕" : "…"}
+            {isBookingSuccess ? "✅" : doneBooking.status === "declined" ? "✕" : doneBooking.status === "cancelled" ? "⊘" : "…"}
           </div>
           <p className="mt-5 text-xl font-bold text-gray-900">
             {isBookingSuccess ? "✅ Booking Confirmed" : bookingStatusLabel(doneBooking.status)}
@@ -241,6 +246,8 @@ function HireModalSession({
               </>
             ) : doneBooking.status === "declined" ? (
               `${providerName} couldn't take this slot. Try another time or pro.`
+            ) : doneBooking.status === "cancelled" ? (
+              `This ${service} booking was cancelled. You can book again anytime.`
             ) : (
               `Your request was sent to ${providerName}.`
             )}

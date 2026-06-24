@@ -9,11 +9,14 @@ import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { StarRating } from "@/components/StarRating";
 import { useMockApp } from "@/context/MockAppContext";
 import { useToast } from "@/components/Toast";
+import { isDemoAccount, roleBadgeClass, roleLabel } from "@/lib/accounts";
+import { countAdmins } from "@/lib/mock/operations";
 import {
   getAdminActivitySeed,
   getProviderAdminStatus,
   PROVIDER_STATUS_STYLES,
 } from "@/lib/admin/dashboard";
+import type { MockUser } from "@/lib/mock/types";
 
 type AdminTab = "overview" | "providers" | "users" | "bookings" | "reports" | "reviews";
 type BookingFilter = "active" | "completed";
@@ -46,6 +49,7 @@ export function AdminPanelClient() {
     approveProvider,
     rejectProvider,
     banUser,
+    setUserRole,
     removeReview,
     dismissReport,
     banProviderFromReport,
@@ -58,6 +62,12 @@ export function AdminPanelClient() {
   const [, startTransition] = useTransition();
   const [tab, setTab] = useState<AdminTab>("overview");
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>("active");
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    action: () => Promise<{ error?: string } | void>;
+    success: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -73,7 +83,17 @@ export function AdminPanelClient() {
   );
 
   const providers = db?.providers ?? [];
-  const users = db?.users.filter((u) => u.role !== "admin") ?? [];
+  const allUsers = useMemo(() => {
+    if (!db) return [];
+    return [...db.users].sort((a, b) => {
+      const roleOrder = { admin: 0, provider: 1, customer: 2 };
+      const ra = roleOrder[a.role];
+      const rb = roleOrder[b.role];
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name);
+    });
+  }, [db]);
+  const adminCount = db ? countAdmins(db) : 0;
   const bookings = db?.bookings ?? [];
   const reviews = db?.reviews ?? [];
   const reports = db?.reports ?? [];
@@ -104,28 +124,74 @@ export function AdminPanelClient() {
 
   if (!user || user.role !== "admin") {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-20 text-center text-gray-500">Loading…</div>
+      <div className="mx-auto max-w-7xl px-4 py-20 text-center text-gray-500">Redirecting…</div>
     );
   }
 
-  function run(action: () => Promise<void>, success: string) {
+  function run(action: () => Promise<{ error?: string } | void>, success: string) {
     startTransition(async () => {
-      await action();
+      const result = await action();
+      if (result && "error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
       toast(success, "success");
     });
   }
 
+  function requestConfirm(opts: {
+    title: string;
+    message: string;
+    action: () => Promise<{ error?: string } | void>;
+    success: string;
+  }) {
+    setConfirmAction(opts);
+  }
+
+  async function executeConfirm() {
+    if (!confirmAction) return;
+    const { action, success } = confirmAction;
+    setConfirmAction(null);
+    run(action, success);
+  }
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 animate-page-enter">
+    <div className="mx-auto max-w-7xl px-4 py-10 page-enter">
       <header className="border-b border-gray-100 pb-6">
         <p className="text-sm font-semibold uppercase tracking-wide text-green-700">
           Platform control center
         </p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">Admin Panel</h1>
         <p className="mt-1 text-gray-600">
-          Full visibility and moderation — changes apply instantly across the marketplace.
+          Full visibility and moderation — {adminCount} admin{adminCount === 1 ? "" : "s"} with
+          platform access.
         </p>
       </header>
+
+      {confirmAction && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-gray-900">{confirmAction.title}</h2>
+            <p className="mt-2 text-sm text-gray-600">{confirmAction.message}</p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeConfirm}
+                className="btn-primary px-4 py-2 text-sm"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Alerts */}
       {(stats.pendingProviders > 0 || analytics.openReports > 0) && (
@@ -172,6 +238,12 @@ export function AdminPanelClient() {
       {/* Summary stats */}
       <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <AdminSummaryCard icon="👥" label="Total users" value={stats.totalUsers} sub="All accounts" />
+        <AdminSummaryCard
+          icon="🛡️"
+          label="Admins"
+          value={stats.adminCount ?? adminCount}
+          sub="Platform operators"
+        />
         <AdminSummaryCard
           icon="🔧"
           label="Total providers"
@@ -389,7 +461,13 @@ export function AdminPanelClient() {
 
         {tab === "users" && (
           <section className="card overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <div className="border-b border-gray-100 px-4 py-3">
+              <p className="text-sm text-gray-600">
+                {allUsers.length} accounts — demo and real users. Promote trusted users to admin
+                without removing existing admins.
+              </p>
+            </div>
+            <table className="w-full min-w-[800px] text-left text-sm">
               <thead className="border-b border-gray-200 bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 font-medium">Name</th>
@@ -400,43 +478,42 @@ export function AdminPanelClient() {
                 </tr>
               </thead>
               <tbody>
-                {users.length === 0 ? (
+                {allUsers.length === 0 ? (
                   <EmptyRow colSpan={5} message="No users available" />
                 ) : (
-                  users.map((u) => (
-                    <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{u.name}</td>
-                      <td className="px-4 py-3 text-gray-600">{u.email}</td>
-                      <td className="px-4 py-3 capitalize">{u.role}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`tag-pill ${
-                            u.banned ? "bg-gray-800 text-white" : "badge-verified"
-                          }`}
-                        >
-                          {u.banned ? "Banned" : "Active"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() =>
-                            run(
-                              () => banUser(u.id, !u.banned),
-                              u.banned ? `${u.name} unbanned` : `${u.name} banned`
-                            )
-                          }
-                          className={`rounded-lg px-3 py-1 text-xs font-medium disabled:opacity-60 ${
-                            u.banned
-                              ? "bg-green-600 text-white"
-                              : "bg-red-100 text-red-600"
-                          }`}
-                        >
-                          {u.banned ? "Unban" : "🚫 Ban"}
-                        </button>
-                      </td>
-                    </tr>
+                  allUsers.map((u) => (
+                    <UserAdminRow
+                      key={u.id}
+                      user={u}
+                      isSelf={u.id === user.id}
+                      canDemote={u.role === "admin" && adminCount > 1}
+                      loading={loading}
+                      onPromote={() =>
+                        requestConfirm({
+                          title: "Promote to admin",
+                          message: `Are you sure you want to promote ${u.name} to admin? They will get full platform access immediately.`,
+                          action: () => setUserRole(u.id, "admin"),
+                          success: `${u.name} promoted to admin`,
+                        })
+                      }
+                      onDemote={() => {
+                        const restoreRole = db?.providers.some((p) => p.userId === u.id)
+                          ? "provider"
+                          : "customer";
+                        requestConfirm({
+                          title: "Remove admin access",
+                          message: `Remove admin access from ${u.name}? Their role will become ${roleLabel(restoreRole)}.`,
+                          action: () => setUserRole(u.id, restoreRole),
+                          success: `${u.name} is no longer an admin`,
+                        });
+                      }}
+                      onBan={() =>
+                        run(
+                          () => banUser(u.id, !u.banned),
+                          u.banned ? `${u.name} unbanned` : `${u.name} banned`
+                        )
+                      }
+                    />
                   ))
                 )}
               </tbody>
@@ -636,5 +713,103 @@ export function AdminPanelClient() {
         )}
       </div>
     </div>
+  );
+}
+
+function UserAdminRow({
+  user,
+  isSelf,
+  canDemote,
+  loading,
+  onPromote,
+  onDemote,
+  onBan,
+}: {
+  user: MockUser;
+  isSelf: boolean;
+  canDemote: boolean;
+  loading: boolean;
+  onPromote: () => void;
+  onDemote: () => void;
+  onBan: () => void;
+}) {
+  const demo = isDemoAccount(user);
+
+  return (
+    <tr
+      className={`border-b border-gray-100 hover:bg-gray-50 ${
+        user.role === "admin" ? "bg-violet-50/40" : ""
+      }`}
+    >
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-gray-900">{user.name}</span>
+          {isSelf && (
+            <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-green-800">
+              You
+            </span>
+          )}
+          {demo && (
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-500">
+              Demo
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-gray-600">{user.email}</td>
+      <td className="px-4 py-3">
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleBadgeClass(user.role)}`}
+        >
+          {roleLabel(user.role)}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <span
+          className={`tag-pill ${
+            user.banned ? "bg-gray-800 text-white" : "badge-verified"
+          }`}
+        >
+          {user.banned ? "Banned" : "Active"}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap gap-2">
+          {user.role !== "admin" && (
+            <button
+              type="button"
+              disabled={loading || user.banned}
+              onClick={onPromote}
+              className="rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-60"
+            >
+              Promote to Admin
+            </button>
+          )}
+          {user.role === "admin" && canDemote && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onDemote}
+              className="rounded-lg bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 hover:bg-violet-200 disabled:opacity-60"
+            >
+              Remove Admin
+            </button>
+          )}
+          {user.role === "admin" && !canDemote && (
+            <span className="text-xs text-gray-400">Last admin</span>
+          )}
+          <button
+            type="button"
+            disabled={loading || (user.role === "admin" && !canDemote && !user.banned)}
+            onClick={onBan}
+            className={`rounded-lg px-3 py-1 text-xs font-medium disabled:opacity-60 ${
+              user.banned ? "bg-green-600 text-white" : "bg-red-100 text-red-600"
+            }`}
+          >
+            {user.banned ? "Unban" : "🚫 Ban"}
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }

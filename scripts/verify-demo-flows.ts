@@ -14,6 +14,8 @@ import {
   dismissReportRecord,
   getStats,
   registerUserRecord,
+  updateUserRoleRecord,
+  countAdmins,
 } from "../src/lib/mock/operations";
 import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
 import { getMarketplaceAnalytics } from "../src/lib/mock/analytics";
@@ -319,6 +321,32 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
   });
   multiDb = registerUserRecord(multiDb, customer2);
   assert(multiDb.users.length === totalBefore + 1, "Unlimited accounts — second customer added");
+}
+
+// ─── 🛡️ MULTI-ADMIN SYSTEM ───
+console.log("\n🛡️ MULTI-ADMIN SYSTEM");
+{
+  let adminDb = buildInitialDatabase();
+  assert(countAdmins(adminDb) >= 1, "Seed includes at least one admin");
+
+  const sarah = adminDb.users.find((u) => u.email === "sarah.mitchell@demo.com");
+  assert(!!sarah && sarah.role === "customer", "Sarah starts as customer");
+
+  const promoted = updateUserRoleRecord(adminDb, sarah!.id, "admin");
+  assert(!promoted.error, "Promote customer to admin");
+  adminDb = promoted.db;
+  assert(countAdmins(adminDb) >= 2, "Multiple admins can coexist");
+
+  const originalAdmin = adminDb.users.find((u) => u.email === "admin@test.com");
+  assert(originalAdmin?.role === "admin", "Original admin retains admin role");
+
+  const demoteSarah = updateUserRoleRecord(adminDb, sarah!.id, "customer");
+  assert(!demoteSarah.error, "Can demote admin when another admin exists");
+  adminDb = demoteSarah.db;
+
+  const blocked = updateUserRoleRecord(adminDb, originalAdmin!.id, "customer");
+  assert(!!blocked.error, "Cannot demote the last remaining admin");
+  assert(countAdmins(adminDb) >= 1, "At least one admin always remains");
 }
 
 // ─── Summary ───

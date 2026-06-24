@@ -9,7 +9,7 @@ export function buildAdminDemoReports(): MockReport[] {
     {
       id: demoId("report:1"),
       reporterId: userId("customer-james"),
-      reporterName: "James Carter",
+      reporterName: "James Rodriguez",
       providerId: providerId("provider-derek"),
       providerName: "Derek Walsh",
       reason: "No-show",
@@ -20,7 +20,7 @@ export function buildAdminDemoReports(): MockReport[] {
     {
       id: demoId("report:2"),
       reporterId: userId("customer-emily"),
-      reporterName: "Emily Nguyen",
+      reporterName: "Emily Chen",
       providerId: providerId("provider-priya"),
       providerName: "Priya Sharma",
       reason: "Poor quality",
@@ -31,7 +31,7 @@ export function buildAdminDemoReports(): MockReport[] {
     {
       id: demoId("report:3"),
       reporterId: userId("customer-michael"),
-      reporterName: "Michael Brooks",
+      reporterName: "Michael Thompson",
       providerId: providerId("provider-tom"),
       providerName: "Tom Rivera",
       reason: "Overcharged",

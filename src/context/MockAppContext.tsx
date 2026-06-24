@@ -18,6 +18,7 @@ import {
   addReviewRecord,
   addNotificationRecord,
   approveProviderRecord,
+  updateUserRoleRecord,
   banUserRecord,
   cancelBookingRecord,
   completeBookingRecord,
@@ -93,6 +94,7 @@ import type { RecommendationLabel } from "@/lib/recommendations";
 import {
   dashboardPathForRole,
   isDemoAccount,
+  roleLabel,
   type AccountSummary,
 } from "@/lib/accounts";
 
@@ -178,7 +180,11 @@ type MockAppContextValue = {
   }) => Promise<{ error?: string }>;
   approveProvider: (providerId: string, approved: boolean) => Promise<void>;
   rejectProvider: (providerId: string) => Promise<void>;
-  banUser: (userId: string, banned: boolean) => Promise<void>;
+  banUser: (userId: string, banned: boolean) => Promise<{ error?: string }>;
+  setUserRole: (
+    userId: string,
+    role: MockUser["role"]
+  ) => Promise<{ error?: string }>;
   filterProviders: (filters: ProviderFilters) => ReturnType<typeof filterMockProviders> & {
     topRanked: MockProvider[];
     topRankMap: Record<string, number>;
@@ -255,6 +261,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const responseTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const resumedPending = useRef(new Set<string>());
   const saveDbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDbRef = useRef<MockDatabase | null>(null);
   const filterCacheRef = useRef<{
     db: MockDatabase;
     key: string;
@@ -476,6 +483,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       clearTimeout(saveDbTimerRef.current);
       saveDbTimerRef.current = null;
     }
+    if (pendingDbRef.current) {
+      saveDb(pendingDbRef.current);
+      pendingDbRef.current = null;
+    }
   }, []);
 
   const persistImmediate = useCallback((next: MockDatabase) => {
@@ -490,12 +501,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     const normalized = normalizeMockDatabase(next);
     filterCacheRef.current = null;
     setDb(normalized);
-    flushPendingSave();
+    pendingDbRef.current = normalized;
+    if (saveDbTimerRef.current) clearTimeout(saveDbTimerRef.current);
     saveDbTimerRef.current = setTimeout(() => {
       saveDb(normalized);
+      pendingDbRef.current = null;
       saveDbTimerRef.current = null;
     }, 400);
-  }, [flushPendingSave]);
+  }, []);
 
   useEffect(() => {
     function onStorage(e: StorageEvent) {
@@ -667,6 +680,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       hours: number;
     }) => {
       if (!db || !user) return { error: "You must be logged in to book." };
+      if (user.role !== "customer") {
+        return {
+          error: "Only customer accounts can book services. Switch to a customer account.",
+        };
+      }
+      if (user.banned) {
+        return { error: "Your account has been suspended." };
+      }
       if (!input.service.trim() || !input.date.trim()) {
         return { error: "Please fill all fields." };
       }
@@ -732,6 +753,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!booking) return { error: "Booking not found." };
       if (booking.status !== "confirmed") {
         return { error: "Only confirmed jobs can be marked complete." };
+      }
+      const provider = db.providers.find((p) => p.id === booking.providerId);
+      if (!provider || provider.userId !== user.id) {
+        return { error: "Only the assigned provider can complete this job." };
       }
       setLoading(true);
       await simulateDelay(500);
@@ -990,8 +1015,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
       const provider = db.providers.find((p) => p.id === input.providerId);
       let next = result.db;
-      const admin = db.users.find((u) => u.role === "admin");
-      if (admin) {
+      for (const admin of db.users.filter((u) => u.role === "admin" && !u.banned)) {
         next = appendNotification(next, admin.id, {
           type: "report",
           title: "New safety report",
@@ -1041,9 +1065,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!provider) return;
       setLoading(true);
       await simulateDelay(400);
-      let next = banUserRecord(db, provider.userId, true);
-      next = resolveReportRecord(next, reportId);
-      persist(next);
+      const banResult = banUserRecord(db, provider.userId, true);
+      if (banResult.error) {
+        setLoading(false);
+        return;
+      }
+      persist(resolveReportRecord(banResult.db, reportId));
       emitSystemEvent({
         type: "report",
         message: `${provider.name} banned after report review`,
@@ -1211,6 +1238,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       availableTomorrow?: boolean;
     }) => {
       if (!db || !user) return { error: "You must be logged in." };
+      if (user.role !== "provider") {
+        return { error: "Only provider accounts can update a service profile." };
+      }
+      const existing = db.providers.find((p) => p.userId === user.id);
+      if (!existing) {
+        setLoading(false);
+        return { error: "Provider profile not found for this account." };
+      }
       setLoading(true);
       await simulateDelay();
       const next = updateProviderRecord(db, user.id, patch);
@@ -1259,11 +1294,22 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const banUser = useCallback(
     async (userId: string, banned: boolean) => {
-      if (!db) return;
+      if (!db || !user || user.role !== "admin") {
+        return { error: "Only admins can ban users." };
+      }
       const account = db.users.find((u) => u.id === userId);
       setLoading(true);
       await simulateDelay(400);
-      persist(banUserRecord(db, userId, banned));
+      const result = banUserRecord(db, userId, banned);
+      if (result.error) {
+        setLoading(false);
+        return { error: result.error };
+      }
+      persistImmediate(result.db);
+      if (banned && session?.userId === userId) {
+        setSession(null);
+        saveSession(null);
+      }
       if (account && banned) {
         emitSystemEvent({
           type: "report",
@@ -1271,8 +1317,53 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         });
       }
       setLoading(false);
+      return {};
     },
-    [db, persist, emitSystemEvent]
+    [db, user, persistImmediate, emitSystemEvent, session]
+  );
+
+  const setUserRole = useCallback(
+    async (userId: string, role: MockUser["role"]) => {
+      if (!db || !user || user.role !== "admin") {
+        return { error: "Only admins can change user roles." };
+      }
+      const target = db.users.find((u) => u.id === userId);
+      if (!target) return { error: "User not found." };
+
+      setLoading(true);
+      await simulateDelay(DEMO_MODE ? 200 : 400);
+      const result = updateUserRoleRecord(db, userId, role);
+      if (result.error) {
+        setLoading(false);
+        return { error: result.error };
+      }
+
+      let next = result.db;
+      if (role === "admin") {
+        next = appendNotification(next, userId, {
+          type: "system",
+          title: "You're now an admin",
+          message: "You have full platform admin access. Open the Admin panel from the header.",
+          href: "/admin",
+        });
+      } else if (target.role === "admin") {
+        next = appendNotification(next, userId, {
+          type: "system",
+          title: "Admin access removed",
+          message: `Your role is now ${roleLabel(role)}.`,
+          href: dashboardPathForRole(role),
+        });
+      }
+
+      persistImmediate(next);
+      emitSystemEvent({
+        type: "report",
+        message: `${target.name} is now ${roleLabel(role)}`,
+      });
+      setLoading(false);
+      return {};
+    },
+    [db, user, persistImmediate, appendNotification, emitSystemEvent]
   );
 
   const filterProviders = useCallback(
@@ -1411,6 +1502,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         activeJobs: 0,
         jobsCompleted: 0,
         avgRating: 0,
+        adminCount: 0,
       };
     }
     return getStats(db);
@@ -1519,6 +1611,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     approveProvider,
     rejectProvider,
     banUser,
+    setUserRole,
     filterProviders,
     getProvider,
     trackProviderView: trackProviderViewFn,

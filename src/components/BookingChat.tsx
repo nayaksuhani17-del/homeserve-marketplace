@@ -60,11 +60,14 @@ export function BookingChat({ booking }: BookingChatProps) {
     });
   }
 
+  const chatPartner =
+    user?.role === "provider" ? booking.customerName : booking.providerName;
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white">
       <div className="border-b border-gray-100 px-4 py-2">
         <p className="text-sm font-medium text-gray-900">Messages</p>
-        <p className="text-xs text-gray-500">Chat with {booking.providerName}</p>
+        <p className="text-xs text-gray-500">Chat with {chatPartner}</p>
       </div>
 
       <div className="max-h-56 space-y-2 overflow-y-auto px-4 py-3">

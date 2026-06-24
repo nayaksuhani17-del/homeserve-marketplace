@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { ProviderCard } from "@/components/ProviderCard";
 import { ProviderMarketplace } from "@/components/ProviderMarketplace";
 import { CustomerBookingsPanel } from "@/components/customer/CustomerBookingsPanel";
@@ -12,7 +11,6 @@ import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
 
 export function CustomerDashboardClient() {
-  const router = useRouter();
   const {
     user,
     ready,
@@ -28,14 +26,9 @@ export function CustomerDashboardClient() {
     bookingId?: string;
   } | null>(null);
 
-  useEffect(() => {
-    if (!ready || !user) return;
-    if (user.role === "provider") router.replace("/provider/dashboard");
-    else if (user.role === "admin") router.replace("/admin");
-  }, [ready, user, router]);
-
+  const isCustomer = user?.role === "customer";
   const stats = getStats();
-  const bookings = user?.role === "customer" ? getBookingsForCustomer(user.id) : [];
+  const bookings = isCustomer && user ? getBookingsForCustomer(user.id) : [];
   const verifiedFeed = useMemo(
     () => filterProviders({ status: "verified", sort: "rating" }),
     [filterProviders]
@@ -51,7 +44,9 @@ export function CustomerDashboardClient() {
   const recent = user ? getRecentlyViewedProviders() : [];
   const savedCount = user ? getSavedProviders().length : 0;
   const greeting = user
-    ? `Welcome back, ${user.name.split(" ")[0]} 👋`
+    ? user.role === "customer"
+      ? `Welcome back, ${user.name.split(" ")[0]} 👋`
+      : `Browse services, ${user.name.split(" ")[0]}`
     : "Find your perfect pro";
 
   const recLabels = assignRecommendationLabels(
@@ -70,16 +65,10 @@ export function CustomerDashboardClient() {
     );
   }
 
-  if (user && user.role !== "customer") {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-20 text-center text-gray-500">
-        Redirecting…
-      </div>
-    );
-  }
+  const canBook = isCustomer;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 animate-page-enter">
+    <div className="mx-auto max-w-6xl px-4 py-10 page-enter">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-green-700">Trusted local marketplace</p>
@@ -100,10 +89,23 @@ export function CustomerDashboardClient() {
               Log in to book
             </Link>
           )}
+          {user && !canBook && (
+            <p className="text-sm text-gray-500">
+              Switch to a customer account to book services
+            </p>
+          )}
         </div>
       </div>
 
-      {user && recommended.length > 0 && (
+      {user && !canBook && (
+        <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          You&apos;re browsing as a {user.role}. Use{" "}
+          <strong>Switch Account</strong> in the header to book as a customer or manage your{" "}
+          {user.role === "provider" ? "provider" : "admin"} dashboard.
+        </div>
+      )}
+
+      {canBook && recommended.length > 0 && (
         <section className="mt-8">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Recommended for you</h2>
@@ -114,7 +116,7 @@ export function CustomerDashboardClient() {
               <ProviderCard
                 key={p.id}
                 provider={mockProviderToLegacy(p)}
-                showHire
+                showHire={canBook}
                 isBestMatch={i === 0}
                 recommendationLabel={recLabels.get(p.id)}
               />
@@ -132,7 +134,7 @@ export function CustomerDashboardClient() {
               <ProviderCard
                 key={p.id}
                 provider={mockProviderToLegacy(p)}
-                showHire={!!user && user.role === "customer"}
+                showHire={canBook}
                 recommendationLabel={popularLabels.get(p.id)}
               />
             ))}
@@ -158,7 +160,7 @@ export function CustomerDashboardClient() {
         </section>
       )}
 
-      {user && (
+      {isCustomer && user && (
         <CustomerBookingsPanel
           bookings={bookings}
           onReport={(target) => setReportTarget(target)}

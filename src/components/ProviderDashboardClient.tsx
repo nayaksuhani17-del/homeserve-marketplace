@@ -128,15 +128,6 @@ function BookingCard({
           )}
           {variant === "upcoming" && (
             <>
-              {onToggleChat && (
-                <button
-                  type="button"
-                  onClick={onToggleChat}
-                  className="btn-secondary px-4 py-2 text-sm active:scale-95"
-                >
-                  💬 {chatOpen ? "Hide chat" : "Message customer"}
-                </button>
-              )}
               {onComplete && (
                 <button
                   type="button"
@@ -149,10 +140,19 @@ function BookingCard({
               )}
             </>
           )}
+          {(variant === "upcoming" || variant === "completed") && onToggleChat && (
+            <button
+              type="button"
+              onClick={onToggleChat}
+              className="btn-secondary px-4 py-2 text-sm active:scale-95"
+            >
+              💬 {chatOpen ? "Hide chat" : "Message customer"}
+            </button>
+          )}
         </div>
       </div>
 
-      {variant === "upcoming" && chatOpen && (
+      {(variant === "upcoming" || variant === "completed") && chatOpen && (
         <div className="mt-4 animate-fade-in border-t border-gray-100 pt-4">
           <BookingChat booking={booking} />
         </div>
@@ -249,7 +249,24 @@ export function ProviderDashboardClient() {
 
   if (!user || user.role !== "provider") {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-20 text-center text-gray-500">Loading…</div>
+      <div className="mx-auto max-w-7xl px-4 py-20 text-center text-gray-500">
+        Redirecting…
+      </div>
+    );
+  }
+
+  if (!provider) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-20 text-center">
+        <p className="text-lg font-semibold text-gray-900">Provider profile not found</p>
+        <p className="mt-2 text-sm text-gray-500">
+          This account is set as a provider but has no service profile yet. Create a new
+          provider account from Switch Account, or contact support.
+        </p>
+        <Link href="/" className="btn-primary mt-6 inline-block">
+          Back to home
+        </Link>
+      </div>
     );
   }
 
@@ -298,7 +315,7 @@ export function ProviderDashboardClient() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 animate-page-enter">
+    <div className="mx-auto max-w-7xl px-4 py-8 page-enter">
       {/* Header */}
       <header className="flex flex-col gap-4 border-b border-gray-100 pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -338,7 +355,7 @@ export function ProviderDashboardClient() {
           }`}
         >
           {provider.approved
-            ? "✓ Verified provider — you&apos;re live and accepting bookings."
+            ? "✓ Verified provider — you're live and accepting bookings."
             : "⏳ Profile pending approval — keep your listing up to date."}
         </div>
       )}
@@ -475,7 +492,7 @@ export function ProviderDashboardClient() {
                     }
                     chatOpen={openChatId === booking.id}
                     onToggleChat={
-                      bookingTab === "upcoming"
+                      bookingTab === "upcoming" || bookingTab === "completed"
                         ? () =>
                             setOpenChatId((id) => (id === booking.id ? null : booking.id))
                         : undefined
@@ -604,9 +621,7 @@ export function ProviderDashboardClient() {
                 </div>
               )}
 
-              {displayReviews.length === 0 ? (
-                <p className="mt-4 text-sm text-gray-500">No reviews yet.</p>
-              ) : (
+              {displayReviews.length > 0 && (
                 <ul className="mt-4 space-y-3">
                   {displayReviews.slice(0, 5).map((review, i) => (
                     <li
