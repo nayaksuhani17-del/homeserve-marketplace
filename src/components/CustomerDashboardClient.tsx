@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ProviderCard } from "@/components/ProviderCard";
 import { ProviderMarketplace } from "@/components/ProviderMarketplace";
 import { CustomerBookingsPanel } from "@/components/customer/CustomerBookingsPanel";
@@ -12,6 +13,15 @@ import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
 
 export function CustomerDashboardClient() {
+  const searchParams = useSearchParams();
+  const bookingsTabParam = searchParams.get("bookings");
+  const initialBookingsTab =
+    bookingsTabParam === "past"
+      ? "past"
+      : bookingsTabParam === "upcoming"
+        ? "upcoming"
+        : undefined;
+
   const {
     user,
     ready,
@@ -53,6 +63,18 @@ export function CustomerDashboardClient() {
       ? `Welcome back, ${user.name.split(" ")[0]} 👋`
       : `Browse services, ${user.name.split(" ")[0]}`
     : "Find your perfect pro";
+
+  useEffect(() => {
+    if (!ready || !isCustomer) return;
+    if (bookingsTabParam || window.location.hash === "#your-bookings") {
+      const timer = window.setTimeout(() => {
+        document
+          .getElementById("your-bookings")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+      return () => window.clearTimeout(timer);
+    }
+  }, [ready, isCustomer, bookingsTabParam, dbRevision]);
 
   const recLabels = assignRecommendationLabels(
     recommended.map(mockProviderToLegacy)
@@ -169,8 +191,9 @@ export function CustomerDashboardClient() {
         <>
           <BookingNotificationBanner />
           <CustomerBookingsPanel
-            key={dbRevision}
+            key={`${dbRevision}-${initialBookingsTab ?? "default"}`}
             bookings={bookings}
+            initialTab={initialBookingsTab}
             onReport={(target) => setReportTarget(target)}
           />
         </>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
 
 export function NotificationBell() {
+  const router = useRouter();
   const { user, getNotifications, unreadNotificationCount, markNotificationsRead } =
     useMockApp();
   const [open, setOpen] = useState(false);
@@ -23,6 +24,18 @@ export function NotificationBell() {
   if (!user) return null;
 
   const notifications = getNotifications();
+
+  function navigateFromNotification(href: string, notificationId: string) {
+    setOpen(false);
+    markNotificationsRead([notificationId]);
+    router.push(href);
+    window.setTimeout(() => {
+      const hash = href.includes("#") ? href.split("#")[1] : null;
+      if (hash) {
+        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 200);
+  }
 
   return (
     <div className="relative" ref={panelRef}>
@@ -65,13 +78,13 @@ export function NotificationBell() {
                   <p className="font-medium text-gray-900">{n.title}</p>
                   <p className="mt-0.5 text-gray-600">{n.message}</p>
                   {n.href && (
-                    <Link
-                      href={n.href}
-                      onClick={() => setOpen(false)}
+                    <button
+                      type="button"
+                      onClick={() => navigateFromNotification(n.href!, n.id)}
                       className="mt-1 inline-block text-xs font-medium text-green-700 hover:underline"
                     >
                       View →
-                    </Link>
+                    </button>
                   )}
                 </div>
               ))

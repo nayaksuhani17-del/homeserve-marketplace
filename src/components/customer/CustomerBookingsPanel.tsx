@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, useEffect } from "react";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { BookingChat } from "@/components/BookingChat";
 import { ReviewForm } from "@/components/ReviewForm";
@@ -27,6 +27,7 @@ function sortPast(a: MockBooking, b: MockBooking) {
 
 type CustomerBookingsPanelProps = {
   bookings: MockBooking[];
+  initialTab?: Tab;
   onReport: (target: {
     providerId: string;
     providerName: string;
@@ -34,12 +35,20 @@ type CustomerBookingsPanelProps = {
   }) => void;
 };
 
-export function CustomerBookingsPanel({ bookings, onReport }: CustomerBookingsPanelProps) {
+export function CustomerBookingsPanel({
+  bookings,
+  initialTab,
+  onReport,
+}: CustomerBookingsPanelProps) {
   const { db, cancelBooking } = useMockApp();
   const { toast } = useToast();
   const [, startTransition] = useTransition();
-  const [tab, setTab] = useState<Tab>("upcoming");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "upcoming");
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   const { upcoming, past } = useMemo(() => {
     const up = bookings
@@ -54,7 +63,7 @@ export function CustomerBookingsPanel({ bookings, onReport }: CustomerBookingsPa
   const visible = tab === "upcoming" ? upcoming : past;
 
   return (
-    <section className="mt-10">
+    <section id="your-bookings" className="mt-10 scroll-mt-24">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Your bookings</h2>

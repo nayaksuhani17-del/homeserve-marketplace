@@ -95,13 +95,14 @@ import {
   trackRecentProvider,
 } from "@/lib/smart";
 import type { RecommendationLabel } from "@/lib/recommendations";
+import { customerBookingsHref, providerDashboardHref } from "@/lib/notification-links";
+import { advancedSearch, type UnifiedSearchResult } from "@/lib/search/unified";
 import {
   dashboardPathForRole,
   isDemoAccount,
   roleLabel,
   type AccountSummary,
 } from "@/lib/accounts";
-import { advancedSearch, type UnifiedSearchResult } from "@/lib/search/unified";
 
 export const SYSTEM_EVENT = "homeserve-system-event";
 
@@ -371,14 +372,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
                 type: "booking",
                 title: "Booking accepted",
                 message: "Your booking has been accepted ✅",
-                href: "/customer/dashboard",
+                href: customerBookingsHref("upcoming"),
               },
               providerAccount?.id,
               {
                 type: "booking",
                 title: "Job confirmed",
                 message: `You accepted ${current.customerName}'s booking.`,
-                href: "/provider/dashboard",
+                href: providerDashboardHref("upcoming"),
               }
             );
             emitSystemEvent({
@@ -398,7 +399,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
                     type: "payment",
                     title: "Job complete",
                     message: `Your ${live.service} job with ${live.providerName} is complete. Leave a review!`,
-                    href: "/customer/dashboard",
+                    href: customerBookingsHref("past"),
                   });
                   saveDb(completed);
                   emitSystemEvent({
@@ -415,7 +416,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
               type: "booking",
               title: "Booking declined",
               message: "Your booking was declined ❌",
-              href: "/customer/dashboard",
+              href: customerBookingsHref("past"),
             });
             emitSystemEvent({
               type: "booking_declined",
@@ -774,14 +775,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "booking",
         title: "Request sent",
         message: `Waiting for ${provider.name} to respond to your ${input.service} request.`,
-        href: "/customer/dashboard",
+        href: customerBookingsHref("upcoming"),
       });
       if (providerAccount) {
         next = appendNotification(next, providerAccount.id, {
           type: "booking",
           title: "New job request received",
           message: `${user.name} requested ${input.service} on ${input.date}${input.time ? ` at ${input.time}` : ""}.`,
-          href: "/provider/dashboard",
+          href: providerDashboardHref("requests"),
         });
       }
       persistImmediate(next);
@@ -814,7 +815,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "payment",
         title: "Job complete",
         message: `${booking.providerName} marked your ${booking.service} job complete. Payment released.`,
-        href: "/customer/dashboard",
+        href: customerBookingsHref("past"),
       });
       persistImmediate(next);
       emitSystemEvent({
@@ -1092,14 +1093,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "booking",
         title: "Booking cancelled",
         message: `Your ${booking.service} booking on ${booking.date} was cancelled.${refundNote}`,
-        href: "/customer/dashboard",
+        href: customerBookingsHref("past"),
       });
       if (provider) {
         next = appendNotification(next, provider.userId, {
           type: "booking",
           title: "Booking cancelled",
           message: `${booking.customerName}'s ${booking.service} booking was cancelled.`,
-          href: "/provider/dashboard",
+          href: providerDashboardHref("requests"),
         });
       }
 
@@ -1156,14 +1157,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
               type: "booking",
               title: "Booking accepted",
               message: "Your booking has been accepted ✅",
-              href: "/customer/dashboard",
+              href: customerBookingsHref("upcoming"),
             },
             user.id,
             {
               type: "booking",
               title: "Job confirmed",
               message: `You accepted ${booking.customerName}'s ${booking.service} booking.`,
-              href: "/provider/dashboard",
+              href: providerDashboardHref("upcoming"),
             }
           );
         } else {
@@ -1171,7 +1172,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
             type: "booking",
             title: "Booking declined",
             message: "Your booking was declined ❌",
-            href: "/customer/dashboard",
+            href: customerBookingsHref("past"),
           });
         }
 
