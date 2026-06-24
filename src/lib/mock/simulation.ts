@@ -154,6 +154,12 @@ export function generateProviderChatReply(customerMessage: string): string {
   return "Thanks for your message! I'll confirm everything before the appointment.";
 }
 
+export function providerHasAutoReply(
+  provider: { autoReplyEnabled?: boolean } | undefined
+): boolean {
+  return provider?.autoReplyEnabled === true;
+}
+
 export function getChatReplyDelayMs(): number {
   return 2000 + Math.floor(Math.random() * 3000);
 }

@@ -418,6 +418,7 @@ export function ProviderDashboardClient() {
                 availability: provider.availability,
                 availableToday: provider.availableToday,
                 availableTomorrow: provider.availableTomorrow,
+                autoReplyEnabled: provider.autoReplyEnabled,
               }}
             />
           </div>

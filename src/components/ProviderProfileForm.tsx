@@ -19,6 +19,7 @@ type ProviderProfileFormProps = {
     availability: string;
     availableToday?: boolean;
     availableTomorrow?: boolean;
+    autoReplyEnabled?: boolean;
   };
 };
 
@@ -45,6 +46,7 @@ function ProviderProfileFormInner({ defaultValues }: ProviderProfileFormProps) {
   const [availability, setAvailability] = useState(defaultValues?.availability ?? "Mon-Fri: 9am-5pm");
   const [availableToday, setAvailableToday] = useState(defaultValues?.availableToday ?? true);
   const [availableTomorrow, setAvailableTomorrow] = useState(defaultValues?.availableTomorrow ?? true);
+  const [autoReplyEnabled, setAutoReplyEnabled] = useState(defaultValues?.autoReplyEnabled ?? false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -82,6 +84,7 @@ function ProviderProfileFormInner({ defaultValues }: ProviderProfileFormProps) {
         availability,
         availableToday,
         availableTomorrow,
+        autoReplyEnabled,
       });
       if (result.error) {
         setError(result.error);
@@ -210,6 +213,26 @@ function ProviderProfileFormInner({ defaultValues }: ProviderProfileFormProps) {
           placeholder="e.g. Mon-Fri: 9am-6pm, Sat: 10am-2pm"
           className="input-field"
         />
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={autoReplyEnabled}
+            onChange={(e) => setAutoReplyEnabled(e.target.checked)}
+            className="mt-0.5 accent-green-600"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">
+              Auto-reply when I&apos;m unavailable
+            </span>
+            <span className="mt-0.5 block text-xs text-gray-500">
+              Off by default. When enabled, customers get short templated replies to booking
+              chat and direct messages until you respond yourself.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="flex flex-wrap gap-4">

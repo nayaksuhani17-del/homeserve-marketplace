@@ -451,6 +451,7 @@ export function updateProviderRecord(
       | "availableTomorrow"
       | "weekAvailability"
       | "blockedSlots"
+      | "autoReplyEnabled"
     >
   >
 ): MockDatabase {

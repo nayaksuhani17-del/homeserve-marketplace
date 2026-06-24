@@ -84,6 +84,7 @@ import {
   getNextAvailableSlot,
   getResponseDelayMs,
   getResponseSpeed,
+  providerHasAutoReply,
   shouldAcceptBooking,
 } from "@/lib/mock/simulation";
 import {
@@ -188,6 +189,7 @@ type MockAppContextValue = {
     availableToday?: boolean;
     availableTomorrow?: boolean;
     weekAvailability?: boolean[];
+    autoReplyEnabled?: boolean;
   }) => Promise<{ error?: string }>;
   approveProvider: (providerId: string, approved: boolean) => Promise<void>;
   rejectProvider: (providerId: string) => Promise<void>;
@@ -878,7 +880,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       });
       persist(next);
 
-      if (senderRole === "customer") {
+      const provider = db.providers.find((p) => p.id === booking.providerId);
+      if (senderRole === "customer" && providerHasAutoReply(provider)) {
         const replyDelay = getChatReplyDelayMs();
         setTimeout(() => {
           setDb((prev) => {
@@ -945,7 +948,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       persistImmediate(next);
 
       const receiverProvider = db.providers.find((p) => p.userId === receiverId);
-      if (receiverProvider && user.role === "customer") {
+      if (
+        receiverProvider &&
+        user.role === "customer" &&
+        providerHasAutoReply(receiverProvider)
+      ) {
         const replyDelay = getChatReplyDelayMs();
         setTimeout(() => {
           setDb((prev) => {
@@ -1455,6 +1462,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       availableToday?: boolean;
       availableTomorrow?: boolean;
       weekAvailability?: boolean[];
+      autoReplyEnabled?: boolean;
     }) => {
       if (!db || !user) return { error: "You must be logged in." };
       if (user.role !== "provider") {

@@ -51,6 +51,7 @@ function normalizeProvider(provider: MockProvider, users: MockUser[]): MockProvi
     weekAvailability: normalizeWeekAvailability(provider, provider.weekAvailability),
     blockedSlots: provider.blockedSlots ?? [],
     rejected: provider.rejected ?? false,
+    autoReplyEnabled: provider.autoReplyEnabled === true,
     ratingAvg: Number.isFinite(provider.ratingAvg) ? provider.ratingAvg : 0,
     reviewCount: provider.reviewCount ?? 0,
     jobsCompleted: provider.jobsCompleted ?? 0,

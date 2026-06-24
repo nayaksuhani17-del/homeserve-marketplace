@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useMockApp } from "@/context/MockAppContext";
-import { CHAT_QUICK_PROMPTS } from "@/lib/mock/simulation";
+import { CHAT_QUICK_PROMPTS, providerHasAutoReply } from "@/lib/mock/simulation";
 import type { MockBooking } from "@/lib/mock/types";
 
 type BookingChatProps = {
@@ -10,7 +10,7 @@ type BookingChatProps = {
 };
 
 export function BookingChat({ booking }: BookingChatProps) {
-  const { user, getChatMessages, sendChatMessage } = useMockApp();
+  const { user, db, getChatMessages, sendChatMessage } = useMockApp();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -19,6 +19,8 @@ export function BookingChat({ booking }: BookingChatProps) {
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messages = getChatMessages(booking.id);
+  const providerProfile = db?.providers.find((p) => p.id === booking.providerId);
+  const autoReplyOn = providerHasAutoReply(providerProfile);
   const chatEnabled =
     booking.status === "confirmed" || booking.status === "completed";
 
@@ -52,7 +54,7 @@ export function BookingChat({ booking }: BookingChatProps) {
         return;
       }
       setText("");
-      if (user?.role === "customer") {
+      if (user?.role === "customer" && autoReplyOn) {
         setProviderTyping(true);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
         typingTimerRef.current = setTimeout(() => setProviderTyping(false), 3500);
@@ -102,7 +104,7 @@ export function BookingChat({ booking }: BookingChatProps) {
             </div>
           );
         })}
-        {providerTyping && user?.role === "customer" && (
+        {providerTyping && user?.role === "customer" && autoReplyOn && (
           <div className="flex justify-start">
             <div className="rounded-2xl bg-gray-100 px-3 py-2 text-sm text-gray-500">
               {booking.providerName} is typing…

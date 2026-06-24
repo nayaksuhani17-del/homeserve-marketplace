@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useMockApp } from "@/context/MockAppContext";
-import { CHAT_QUICK_PROMPTS } from "@/lib/mock/simulation";
+import { CHAT_QUICK_PROMPTS, providerHasAutoReply } from "@/lib/mock/simulation";
 import type { MockDirectMessage } from "@/lib/mock/types";
 
 type DirectMessagePanelProps = {
@@ -28,6 +28,8 @@ export function DirectMessagePanel({
 
   const messages = getDirectMessages(otherUserId);
   const otherUser = db?.users.find((u) => u.id === otherUserId);
+  const otherProvider = db?.providers.find((p) => p.userId === otherUserId);
+  const autoReplyOn = providerHasAutoReply(otherProvider);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -75,9 +77,11 @@ export function DirectMessagePanel({
         return;
       }
       setText("");
-      setTyping(true);
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = setTimeout(() => setTyping(false), 3500);
+      if (autoReplyOn) {
+        setTyping(true);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = setTimeout(() => setTyping(false), 3500);
+      }
     });
   }
 
@@ -144,7 +148,7 @@ export function DirectMessagePanel({
             </div>
           );
         })}
-        {typing && (
+        {typing && autoReplyOn && (
           <p className="text-xs text-gray-400 animate-pulse">{otherUserName} is typing…</p>
         )}
         <div ref={bottomRef} />

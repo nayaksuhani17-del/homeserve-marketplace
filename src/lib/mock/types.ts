@@ -57,6 +57,8 @@ export type MockProvider = {
   weekAvailability?: boolean[];
   /** `${date}:${time}` slots the provider has blocked */
   blockedSlots: string[];
+  /** When true, send templated auto-replies to customers who message while you're away. */
+  autoReplyEnabled?: boolean;
 };
 
 export type MockBooking = {
@@ -165,7 +167,7 @@ export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
 /** Cookie flag so middleware allows mock-authenticated demo routes. */
 export const MOCK_SESSION_COOKIE = "homeserve-mock-auth";
-export const MOCK_DB_VERSION = 12;
+export const MOCK_DB_VERSION = 13;
 
 export type SystemEvent = {
   id: string;
