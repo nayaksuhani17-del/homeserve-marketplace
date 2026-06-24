@@ -517,6 +517,59 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     Boolean(lastAdminBlock.error?.includes("last admin")),
     "Cannot delete last admin account"
   );
+
+  const acceptBookingId = demoId("accept-booking");
+  const acceptCreated = createBookingRecord(
+    guardDb,
+    {
+      customerId: sarah!.id,
+      providerId: marcus!.id,
+      service: "Painting",
+      date,
+      time: "21:00",
+      hours: 2,
+    },
+    acceptBookingId
+  );
+  const acceptDb = resolveBookingRecord(acceptCreated.db, acceptBookingId, true);
+  acceptDb.notifications = [
+    {
+      id: demoId("accept-notif"),
+      userId: sarah!.id,
+      type: "booking",
+      title: "Booking accepted",
+      message: "Your booking has been accepted ✅",
+      read: false,
+      href: "/customer/dashboard",
+      createdAt: new Date().toISOString(),
+    },
+    ...acceptDb.notifications,
+  ];
+  const acceptedBooking = acceptDb.bookings.find((b) => b.id === acceptBookingId);
+  assert(acceptedBooking?.status === "confirmed", "Provider accept sets status confirmed");
+  assert(
+    acceptDb.notifications.some(
+      (n) => n.userId === sarah!.id && n.message.includes("accepted")
+    ),
+    "Customer receives accept notification"
+  );
+
+  const declineId = demoId("decline-booking");
+  const declineCreated = createBookingRecord(
+    guardDb,
+    {
+      customerId: sarah!.id,
+      providerId: marcus!.id,
+      service: "Electrician",
+      date,
+      time: "22:00",
+      hours: 1,
+    },
+    declineId
+  );
+  const declineDb = resolveBookingRecord(declineCreated.db, declineId, false);
+  const declinedBooking = declineDb.bookings.find((b) => b.id === declineId);
+  assert(declinedBooking?.status === "declined", "Provider reject sets status declined");
 }
 
 // ─── Summary ───

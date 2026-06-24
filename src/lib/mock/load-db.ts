@@ -1,6 +1,8 @@
 import { normalizeMockDatabase, needsNormalization } from "./normalize";
 import { MOCK_DB_KEY, MOCK_DB_VERSION, type MockDatabase } from "./types";
 
+export const MOCK_DB_UPDATED_EVENT = "homeserve-mock-db-updated";
+
 export function loadDb(): MockDatabase | null {
   if (typeof window === "undefined") return null;
   try {
@@ -24,4 +26,9 @@ export function loadDb(): MockDatabase | null {
 export function saveDb(db: MockDatabase) {
   const normalized = normalizeMockDatabase(db);
   localStorage.setItem(MOCK_DB_KEY, JSON.stringify(normalized));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(MOCK_DB_UPDATED_EVENT, { detail: normalized })
+    );
+  }
 }

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ProviderCard } from "@/components/ProviderCard";
 import { ProviderMarketplace } from "@/components/ProviderMarketplace";
 import { CustomerBookingsPanel } from "@/components/customer/CustomerBookingsPanel";
+import { BookingNotificationBanner } from "@/components/customer/BookingNotificationBanner";
 import { ReportProviderModal } from "@/components/ReportProviderModal";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
@@ -14,9 +15,10 @@ export function CustomerDashboardClient() {
   const {
     user,
     ready,
+    db,
+    dbRevision,
     getStats,
     filterProviders,
-    getBookingsForCustomer,
     getRecentlyViewedProviders,
     getSavedProviders,
   } = useMockApp();
@@ -28,7 +30,10 @@ export function CustomerDashboardClient() {
 
   const isCustomer = user?.role === "customer";
   const stats = getStats();
-  const bookings = isCustomer && user ? getBookingsForCustomer(user.id) : [];
+  const bookings = useMemo(() => {
+    if (!isCustomer || !user || !db) return [];
+    return db.bookings.filter((b) => b.customerId === user.id);
+  }, [isCustomer, user, db, dbRevision]);
   const verifiedFeed = useMemo(
     () => filterProviders({ status: "verified", sort: "rating" }),
     [filterProviders]
@@ -161,10 +166,14 @@ export function CustomerDashboardClient() {
       )}
 
       {isCustomer && user && (
-        <CustomerBookingsPanel
-          bookings={bookings}
-          onReport={(target) => setReportTarget(target)}
-        />
+        <>
+          <BookingNotificationBanner />
+          <CustomerBookingsPanel
+            key={dbRevision}
+            bookings={bookings}
+            onReport={(target) => setReportTarget(target)}
+          />
+        </>
       )}
 
       <ProviderMarketplace />

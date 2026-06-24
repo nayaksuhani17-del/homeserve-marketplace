@@ -167,6 +167,7 @@ export function ProviderDashboardClient() {
     user,
     ready,
     db,
+    dbRevision,
     getProviderForUser,
     getBookingsForProvider,
     getProviderReviews,
@@ -196,7 +197,7 @@ export function ProviderDashboardClient() {
   const provider = user ? getProviderForUser(user.id) : undefined;
   const bookings = useMemo(
     () => (provider ? getBookingsForProvider(provider.id) : []),
-    [provider, getBookingsForProvider]
+    [provider, getBookingsForProvider, db, dbRevision]
   );
   const displayReviews = provider ? getProviderReviews(provider.id) : [];
   const rawReviews: MockReview[] = useMemo(

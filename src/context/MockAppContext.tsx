@@ -13,7 +13,7 @@ import {
 } from "react";
 import { normalizeMockDatabase } from "@/lib/mock/normalize";
 import { newGuestProvider, newGuestUser, newId } from "@/lib/mock/guest";
-import { loadDb, saveDb } from "@/lib/mock/load-db";
+import { loadDb, saveDb, MOCK_DB_UPDATED_EVENT } from "@/lib/mock/load-db";
 import {
   addReviewRecord,
   addNotificationRecord,
@@ -107,6 +107,8 @@ export const SYSTEM_EVENT = "homeserve-system-event";
 type MockAppContextValue = {
   ready: boolean;
   db: MockDatabase | null;
+  /** Bumps when shared store is persisted — use to refresh booking/notification views. */
+  dbRevision: number;
   session: MockSession | null;
   user: MockUser | null;
   loading: boolean;
@@ -263,6 +265,7 @@ const DEMO_ROLE_EMAIL: Record<"customer" | "provider" | "admin", string> = {
 export function MockAppProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [db, setDb] = useState<MockDatabase | null>(null);
+  const [dbRevision, setDbRevision] = useState(0);
   const [session, setSession] = useState<MockSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
@@ -365,8 +368,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
               { ...current, status: "confirmed", paymentStatus: "authorized" },
               {
                 type: "booking",
-                title: "Booking confirmed",
-                message: `${current.providerName} accepted your ${current.service} request.`,
+                title: "Booking accepted",
+                message: "Your booking has been accepted ✅",
                 href: "/customer/dashboard",
               },
               providerAccount?.id,
@@ -410,7 +413,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
             next = appendNotification(next, current.customerId, {
               type: "booking",
               title: "Booking declined",
-              message: `${current.providerName} couldn't take your ${current.service} request.`,
+              message: "Your booking was declined ❌",
               href: "/customer/dashboard",
             });
             emitSystemEvent({
@@ -498,37 +501,53 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const persistImmediate = useCallback((next: MockDatabase) => {
+  const discardPendingSave = useCallback(() => {
+    if (saveDbTimerRef.current) {
+      clearTimeout(saveDbTimerRef.current);
+      saveDbTimerRef.current = null;
+    }
+    pendingDbRef.current = null;
+  }, []);
+
+  const applyDb = useCallback((next: MockDatabase, bumpRevision = true) => {
     const normalized = normalizeMockDatabase(next);
     filterCacheRef.current = null;
-    flushPendingSave();
     setDb(normalized);
-    saveDb(normalized);
-  }, [flushPendingSave]);
+    if (bumpRevision) setDbRevision((r) => r + 1);
+    return normalized;
+  }, []);
+
+  const persistImmediate = useCallback(
+    (next: MockDatabase) => {
+      discardPendingSave();
+      const normalized = applyDb(next);
+      saveDb(normalized);
+    },
+    [discardPendingSave, applyDb]
+  );
 
   /** Write in-memory DB to disk before account switch / login reload. */
   const syncDbBeforeSwitch = useCallback((): MockDatabase | null => {
-    flushPendingSave();
-    if (db) {
-      const normalized = normalizeMockDatabase(db);
-      saveDb(normalized);
-      return normalized;
-    }
-    return loadDb();
-  }, [db, flushPendingSave]);
+    discardPendingSave();
+    const latest = db ? normalizeMockDatabase(db) : loadDb();
+    if (latest) saveDb(latest);
+    return loadDb() ?? latest;
+  }, [db, discardPendingSave]);
 
-  const persist = useCallback((next: MockDatabase) => {
-    const normalized = normalizeMockDatabase(next);
-    filterCacheRef.current = null;
-    setDb(normalized);
-    pendingDbRef.current = normalized;
-    if (saveDbTimerRef.current) clearTimeout(saveDbTimerRef.current);
-    saveDbTimerRef.current = setTimeout(() => {
-      saveDb(normalized);
-      pendingDbRef.current = null;
-      saveDbTimerRef.current = null;
-    }, 400);
-  }, []);
+  const persist = useCallback(
+    (next: MockDatabase) => {
+      const normalized = applyDb(next, false);
+      pendingDbRef.current = normalized;
+      if (saveDbTimerRef.current) clearTimeout(saveDbTimerRef.current);
+      saveDbTimerRef.current = setTimeout(() => {
+        saveDb(normalized);
+        pendingDbRef.current = null;
+        saveDbTimerRef.current = null;
+        setDbRevision((r) => r + 1);
+      }, 400);
+    },
+    [applyDb]
+  );
 
   useEffect(() => {
     function onStorage(e: StorageEvent) {
@@ -536,15 +555,23 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       try {
         const parsed = JSON.parse(e.newValue) as MockDatabase;
         if (parsed.version !== MOCK_DB_VERSION) return;
-        filterCacheRef.current = null;
-        setDb(normalizeMockDatabase(parsed));
+        applyDb(parsed);
       } catch {
         /* ignore corrupt storage */
       }
     }
+    function onDbUpdated(e: Event) {
+      const detail = (e as CustomEvent<MockDatabase>).detail;
+      if (!detail || detail.version !== MOCK_DB_VERSION) return;
+      applyDb(detail);
+    }
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+    window.addEventListener(MOCK_DB_UPDATED_EVENT, onDbUpdated);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(MOCK_DB_UPDATED_EVENT, onDbUpdated);
+    };
+  }, [applyDb]);
 
   const user = useMemo(() => {
     if (!db || !session) return null;
@@ -658,14 +685,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!found || found.banned) return { error: "Account not found." };
       setLoading(true);
       await simulateDelay(DEMO_MODE ? 80 : 200);
-      setDb(source);
+      applyDb(source);
       const sess = { userId: found.id };
       setSession(sess);
       saveSession(sess);
       setLoading(false);
       return { redirect: dashboardPathForRole(found.role) };
     },
-    [syncDbBeforeSwitch]
+    [syncDbBeforeSwitch, applyDb]
   );
 
   const demoLogin = useCallback(
@@ -1067,70 +1094,94 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const respondToBooking = useCallback(
     async (bookingId: string, accepted: boolean) => {
-      if (!db || !user) return { error: "You must be logged in." };
-      const booking = db.bookings.find((b) => b.id === bookingId);
-      if (!booking) return { error: "Booking not found." };
-      if (booking.status !== "pending") {
-        return { error: "This request was already handled." };
-      }
-
-      const provider = db.providers.find((p) => p.id === booking.providerId);
-      if (!provider || provider.userId !== user.id) {
-        return { error: "Only the assigned provider can respond." };
-      }
+      if (!user) return { error: "You must be logged in." };
 
       setLoading(true);
       await simulateDelay(400);
       clearScheduledResponse(bookingId);
 
-      let next = resolveBookingRecord(db, bookingId, accepted);
-      if (accepted) {
-        next = notifyBookingParties(
-          next,
-          { ...booking, status: "confirmed", paymentStatus: "authorized" },
-          {
+      let error: string | undefined;
+      let providerName = "Provider";
+
+      setDb((prev) => {
+        if (!prev) {
+          error = "App not ready.";
+          return prev;
+        }
+        const booking = prev.bookings.find((b) => b.id === bookingId);
+        if (!booking) {
+          error = "Booking not found.";
+          return prev;
+        }
+        if (booking.status !== "pending") {
+          error = "This request was already handled.";
+          return prev;
+        }
+
+        const provider = prev.providers.find((p) => p.id === booking.providerId);
+        if (!provider || provider.userId !== user.id) {
+          error = "Only the assigned provider can respond.";
+          return prev;
+        }
+        providerName = provider.name;
+
+        let next = resolveBookingRecord(prev, bookingId, accepted);
+        if (accepted) {
+          next = notifyBookingParties(
+            next,
+            { ...booking, status: "confirmed", paymentStatus: "authorized" },
+            {
+              type: "booking",
+              title: "Booking accepted",
+              message: "Your booking has been accepted ✅",
+              href: "/customer/dashboard",
+            },
+            user.id,
+            {
+              type: "booking",
+              title: "Job confirmed",
+              message: `You accepted ${booking.customerName}'s ${booking.service} booking.`,
+              href: "/provider/dashboard",
+            }
+          );
+        } else {
+          next = appendNotification(next, booking.customerId, {
             type: "booking",
-            title: "Provider accepted your booking",
-            message: `${provider.name} confirmed your ${booking.service} request for ${booking.date}.`,
+            title: "Booking declined",
+            message: "Your booking was declined ❌",
             href: "/customer/dashboard",
-          },
-          user.id,
-          {
-            type: "booking",
-            title: "Job confirmed",
-            message: `You accepted ${booking.customerName}'s ${booking.service} booking.`,
-            href: "/provider/dashboard",
-          }
-        );
-        emitSystemEvent({
-          type: "booking_accepted",
-          message: `${provider.name} accepted a booking`,
-        });
-      } else {
-        next = appendNotification(next, booking.customerId, {
-          type: "booking",
-          title: "Booking declined",
-          message: `${provider.name} declined your ${booking.service} request.`,
-          href: "/customer/dashboard",
-        });
-        emitSystemEvent({
-          type: "booking_declined",
-          message: `${provider.name} declined a request`,
-        });
+          });
+        }
+
+        filterCacheRef.current = null;
+        discardPendingSave();
+        const normalized = normalizeMockDatabase(next);
+        saveDb(normalized);
+        setDbRevision((r) => r + 1);
+        return normalized;
+      });
+
+      if (error) {
+        setLoading(false);
+        return { error };
       }
 
-      persistImmediate(next);
+      emitSystemEvent({
+        type: accepted ? "booking_accepted" : "booking_declined",
+        message: accepted
+          ? `${providerName} accepted a booking`
+          : `${providerName} declined a request`,
+      });
       setLoading(false);
       return {};
     },
     [
-      db,
       user,
-      persistImmediate,
       clearScheduledResponse,
       notifyBookingParties,
       appendNotification,
       emitSystemEvent,
+      discardPendingSave,
     ]
   );
 
@@ -1721,6 +1772,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const value: MockAppContextValue = {
     ready,
     db,
+    dbRevision,
     session,
     user,
     loading,
