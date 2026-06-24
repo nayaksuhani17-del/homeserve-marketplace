@@ -497,6 +497,17 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     saveDb(normalized);
   }, [flushPendingSave]);
 
+  /** Write in-memory DB to disk before account switch / login reload. */
+  const syncDbBeforeSwitch = useCallback((): MockDatabase | null => {
+    flushPendingSave();
+    if (db) {
+      const normalized = normalizeMockDatabase(db);
+      saveDb(normalized);
+      return normalized;
+    }
+    return loadDb();
+  }, [db, flushPendingSave]);
+
   const persist = useCallback((next: MockDatabase) => {
     const normalized = normalizeMockDatabase(next);
     filterCacheRef.current = null;
@@ -533,8 +544,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string, redirectTo?: string) => {
-      flushPendingSave();
-      const source = loadDb() ?? db;
+      const source = syncDbBeforeSwitch();
       if (!source) return { error: "App not ready" };
       setLoading(true);
       await simulateDelay();
@@ -561,7 +571,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (redirectTo) return { redirect: redirectTo };
       return { redirect: dashboardPathForRole(found.role) };
     },
-    [db, flushPendingSave]
+    [syncDbBeforeSwitch]
   );
 
   const register = useCallback(
@@ -586,7 +596,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       }
       const guest = newGuestUser({ name, email, password, role });
       const provider = role === "provider" ? newGuestProvider(guest) : undefined;
-      let next = registerUserRecord(db, guest, provider);
+      const registered = registerUserRecord(db, guest, provider);
+      if (registered.error) {
+        setLoading(false);
+        return { error: registered.error };
+      }
+      let next = registered.db;
       next = appendNotification(next, guest.id, {
         type: "system",
         title: role === "provider" ? "Welcome to HomeServe Pro" : "Welcome to HomeServe",
@@ -628,9 +643,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const switchAccount = useCallback(
     async (userId: string) => {
-      flushPendingSave();
-      const fresh = loadDb();
-      const source = fresh ?? db;
+      const source = syncDbBeforeSwitch();
       if (!source) return { error: "App not ready" };
       const found = source.users.find((u) => u.id === userId);
       if (!found || found.banned) return { error: "Account not found." };
@@ -643,13 +656,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { redirect: dashboardPathForRole(found.role) };
     },
-    [db, flushPendingSave]
+    [syncDbBeforeSwitch]
   );
 
   const demoLogin = useCallback(
     async (role: "customer" | "provider" | "admin", redirectTo?: string) => {
-      flushPendingSave();
-      const source = loadDb() ?? db;
+      const source = syncDbBeforeSwitch();
       if (!source) return { error: "App not ready" };
       const email = DEMO_ROLE_EMAIL[role];
       const found = source.users.find((u) => u.email === email);
@@ -663,7 +675,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { redirect: redirectTo ?? DEMO_ROLE_REDIRECT[role] };
     },
-    [db, flushPendingSave]
+    [syncDbBeforeSwitch]
   );
 
   const logout = useCallback(() => {
@@ -857,14 +869,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!db) return;
       setLoading(true);
       await simulateDelay(400);
-      persist(removeReviewRecord(db, reviewId));
+      persistImmediate(removeReviewRecord(db, reviewId));
       emitSystemEvent({
         type: "report",
         message: "Review removed — provider rating updated",
       });
       setLoading(false);
     },
-    [db, persist, emitSystemEvent]
+    [db, persistImmediate, emitSystemEvent]
   );
 
   const cancelBooking = useCallback(
@@ -1099,9 +1111,9 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const markNotificationsRead = useCallback(
     (ids?: string[]) => {
       if (!db || !user) return;
-      persist(markNotificationsReadRecord(db, user.id, ids));
+      persistImmediate(markNotificationsReadRecord(db, user.id, ids));
     },
-    [db, user, persist]
+    [db, user, persistImmediate]
   );
 
   const getAnalytics = useCallback(() => {
@@ -1139,11 +1151,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: result.error };
       }
-      persist(result.db);
+      persistImmediate(result.db);
       setLoading(false);
       return {};
     },
-    [db, user, persist]
+    [db, user, persistImmediate]
   );
 
   const getAvailabilityHint = useCallback(
@@ -1236,6 +1248,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       availability?: string;
       availableToday?: boolean;
       availableTomorrow?: boolean;
+      weekAvailability?: boolean[];
     }) => {
       if (!db || !user) return { error: "You must be logged in." };
       if (user.role !== "provider") {
@@ -1243,17 +1256,16 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       }
       const existing = db.providers.find((p) => p.userId === user.id);
       if (!existing) {
-        setLoading(false);
         return { error: "Provider profile not found for this account." };
       }
       setLoading(true);
       await simulateDelay();
       const next = updateProviderRecord(db, user.id, patch);
-      persist(next);
+      persistImmediate(next);
       setLoading(false);
       return {};
     },
-    [db, user, persist]
+    [db, user, persistImmediate]
   );
 
   const approveProvider = useCallback(

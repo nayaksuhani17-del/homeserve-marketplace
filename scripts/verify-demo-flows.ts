@@ -16,7 +16,10 @@ import {
   registerUserRecord,
   updateUserRoleRecord,
   countAdmins,
+  addNotificationRecord,
+  toggleProviderBlockedSlotRecord,
 } from "../src/lib/mock/operations";
+import { normalizeMockDatabase } from "../src/lib/mock/normalize";
 import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
 import { getMarketplaceAnalytics } from "../src/lib/mock/analytics";
 import { demoId } from "../src/lib/demo/ids";
@@ -284,7 +287,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
     password: "test1234",
     role: "customer",
   });
-  multiDb = registerUserRecord(multiDb, customer1);
+  multiDb = registerUserRecord(multiDb, customer1).db;
 
   const provider1 = newGuestUser({
     name: "Jamie Provider",
@@ -293,7 +296,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
     role: "provider",
   });
   const jamieProfile = newGuestProvider(provider1);
-  multiDb = registerUserRecord(multiDb, provider1, jamieProfile);
+  multiDb = registerUserRecord(multiDb, provider1, jamieProfile).db;
 
   assert(
     multiDb.users.some((u) => u.email === "alex.test@example.com"),
@@ -319,8 +322,20 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
     password: "test1234",
     role: "customer",
   });
-  multiDb = registerUserRecord(multiDb, customer2);
+  multiDb = registerUserRecord(multiDb, customer2).db;
   assert(multiDb.users.length === totalBefore + 1, "Unlimited accounts — second customer added");
+
+  const dupeAttempt = {
+    ...newGuestUser({
+      name: "Alex Duplicate",
+      email: "alex2.test@example.com",
+      password: "test1234",
+      role: "customer",
+    }),
+    id: demoId("dupe-user-same-email"),
+  };
+  const dupe = registerUserRecord(multiDb, dupeAttempt);
+  assert(!!dupe.error, "Duplicate email registration blocked");
 }
 
 // ─── 🛡️ MULTI-ADMIN SYSTEM ───
@@ -347,6 +362,106 @@ console.log("\n🛡️ MULTI-ADMIN SYSTEM");
   const blocked = updateUserRoleRecord(adminDb, originalAdmin!.id, "customer");
   assert(!!blocked.error, "Cannot demote the last remaining admin");
   assert(countAdmins(adminDb) >= 1, "At least one admin always remains");
+}
+
+// ─── 🛡️ CRITICAL REGRESSION GUARDS ───
+console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
+{
+  let guardDb = buildInitialDatabase();
+  const sarah = guardDb.users.find((u) => u.email === "sarah.mitchell@demo.com");
+  const marcus = guardDb.providers.find((p) => p.email === "marcus.reed@demo.com");
+  const marcusUser = guardDb.users.find((u) => u.email === "marcus.reed@demo.com");
+  assert(!!sarah && !!marcus && !!marcusUser, "Guard fixtures exist");
+
+  const bookingId = demoId("guard-booking");
+  const syncDate = new Date();
+  syncDate.setDate(syncDate.getDate() + 12);
+  const date = syncDate.toISOString().split("T")[0]!;
+
+  const created = createBookingRecord(
+    guardDb,
+    {
+      customerId: sarah!.id,
+      providerId: marcus!.id,
+      service: "Plumber",
+      date,
+      time: "23:30",
+      hours: 2,
+    },
+    bookingId
+  );
+  assert(!created.error, "Guard booking created");
+  guardDb = addNotificationRecord(created.db, {
+    id: demoId("guard-notif"),
+    userId: marcusUser!.id,
+    type: "booking",
+    title: "New job request received",
+    message: "Regression guard booking notification",
+    href: "/provider/dashboard",
+  });
+  const reloaded = JSON.parse(
+    JSON.stringify(normalizeMockDatabase(guardDb))
+  ) as typeof guardDb;
+  assert(
+    reloaded.bookings.some((b) => b.id === bookingId && b.status === "pending"),
+    "Booking visible after reload (account switch simulation)"
+  );
+  assert(
+    reloaded.bookings.some(
+      (b) => b.providerId === marcus!.id && b.customerId === sarah!.id
+    ),
+    "Provider sees customer booking from shared store"
+  );
+  assert(
+    reloaded.notifications.some((n) => n.userId === marcusUser!.id && n.type === "booking"),
+    "Provider notification saved in shared store"
+  );
+
+  guardDb = resolveBookingRecord(reloaded, bookingId, true);
+  guardDb = completeBookingRecord(guardDb, bookingId);
+  const ratingBefore = guardDb.providers.find((p) => p.id === marcus!.id)!.ratingAvg;
+  const countBefore = guardDb.providers.find((p) => p.id === marcus!.id)!.reviewCount;
+  guardDb = addReviewRecord(
+    guardDb,
+    {
+      customerId: sarah!.id,
+      providerId: marcus!.id,
+      bookingId,
+      rating: 5,
+      comment: "Regression guard review",
+    },
+    demoId("guard-review")
+  );
+  const marcusAfter = guardDb.providers.find((p) => p.id === marcus!.id)!;
+  assert(
+    marcusAfter.reviewCount >= countBefore,
+    "Provider review count updates after review"
+  );
+  assert(
+    marcusAfter.ratingAvg >= ratingBefore,
+    "Provider rating updates after review"
+  );
+
+  const blocked = toggleProviderBlockedSlotRecord(guardDb, marcusUser!.id, date, "15:00");
+  assert(!blocked.error, "Availability block toggles without error");
+  assert(
+    blocked.db.providers
+      .find((p) => p.id === marcus!.id)!
+      .blockedSlots.some((s) => s.includes(date)),
+    "Blocked slot persisted on provider profile"
+  );
+
+  const normalized = normalizeMockDatabase({
+    ...guardDb,
+    users: [
+      ...guardDb.users,
+      { ...sarah!, id: demoId("dupe-user"), email: "Sarah.Mitchell@demo.com" },
+    ],
+  });
+  assert(
+    normalized.users.filter((u) => u.email === "sarah.mitchell@demo.com").length === 1,
+    "Normalize dedupes duplicate emails"
+  );
 }
 
 // ─── Summary ───

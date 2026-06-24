@@ -529,13 +529,24 @@ export function registerUserRecord(
   db: MockDatabase,
   user: MockUser,
   provider?: MockProvider
-): MockDatabase {
-  const users = [...db.users.filter((u) => u.email !== user.email), user];
+): { db: MockDatabase; error?: string } {
+  const emailKey = user.email.toLowerCase();
+  const duplicate = db.users.find(
+    (u) => u.email.toLowerCase() === emailKey && u.id !== user.id
+  );
+  if (duplicate) {
+    return { db, error: "An account with this email already exists." };
+  }
+  const normalizedUser = { ...user, email: emailKey };
+  const users = [
+    ...db.users.filter((u) => u.email.toLowerCase() !== emailKey),
+    normalizedUser,
+  ];
   let providers = db.providers;
   if (provider) {
     providers = [...providers.filter((p) => p.userId !== user.id), provider];
   }
-  return { ...db, users, providers };
+  return { db: { ...db, users, providers } };
 }
 
 export function getStats(db: MockDatabase) {

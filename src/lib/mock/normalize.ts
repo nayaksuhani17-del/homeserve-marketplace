@@ -72,15 +72,41 @@ export function needsNormalization(raw: MockDatabase): boolean {
       p.weekAvailability.length !== 7 ||
       !Array.isArray(p.blockedSlots) ||
       typeof p.rejected !== "boolean"
-  ) || !raw.reports?.length;
+  ) || !raw.reports?.length || hasDuplicateUserEmails(raw.users ?? []);
 }
 
 /** Patch localStorage DBs to the current schema. */
+function dedupeUsers(users: MockUser[]): MockUser[] {
+  const byEmail = new Map<string, MockUser>();
+  for (const user of users) {
+    const key = user.email.toLowerCase();
+    const existing = byEmail.get(key);
+    if (
+      !existing ||
+      new Date(user.createdAt).getTime() >= new Date(existing.createdAt).getTime()
+    ) {
+      byEmail.set(key, { ...user, email: key });
+    }
+  }
+  return Array.from(byEmail.values());
+}
+
+function hasDuplicateUserEmails(users: MockUser[]): boolean {
+  const seen = new Set<string>();
+  for (const user of users) {
+    const key = user.email.toLowerCase();
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
+}
+
 export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
+  const users = dedupeUsers(raw.users ?? []);
   return {
     version: MOCK_DB_VERSION,
-    users: raw.users ?? [],
-    providers: (raw.providers ?? []).map((p) => normalizeProvider(p, raw.users ?? [])),
+    users,
+    providers: (raw.providers ?? []).map((p) => normalizeProvider(p, users)),
     bookings: (raw.bookings ?? []).map(normalizeBooking),
     reviews: raw.reviews ?? [],
     chatMessages: raw.chatMessages ?? [],
