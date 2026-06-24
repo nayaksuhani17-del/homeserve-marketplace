@@ -160,7 +160,7 @@ export function ProviderProfileClient({
           <TrustBadges provider={legacyProvider} />
 
           <p className="mt-2 text-xs text-amber-700">
-            {viewers} {viewers === 1 ? "person is" : "people are"} viewing this profile now
+            ~{viewers} {viewers === 1 ? "person" : "people"} recently viewed this profile
           </p>
 
           <div className="mt-4">

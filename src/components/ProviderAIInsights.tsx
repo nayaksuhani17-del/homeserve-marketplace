@@ -37,7 +37,7 @@ export function ProviderAISummary({ provider }: ProviderAISummaryProps) {
   return (
     <div className="card border-green-100 bg-green-50 p-5">
       <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
-        <span>✨</span> AI Summary
+        <span>✨</span> Profile summary
       </div>
       <p className="mt-2 text-sm leading-relaxed text-gray-700">{summary}</p>
     </div>
@@ -72,7 +72,7 @@ export function BehavioralInsightsPanel({ provider, reviews }: BehavioralInsight
   return (
     <div className="card border-indigo-100 bg-indigo-50/50 p-5">
       <div className="flex items-center gap-2 text-sm font-semibold text-indigo-800">
-        <span>🧠</span> Smart profile insights
+        <span>🧠</span> Profile highlights
       </div>
       <ul className="mt-3 space-y-2">
         {insights.map((item) => (

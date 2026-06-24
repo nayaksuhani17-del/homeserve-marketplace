@@ -98,7 +98,7 @@ export function LiveActivity() {
         </span>
         <div>
           <p className="text-xs font-medium text-green-700">
-            {liveItem?.live ? "Just now" : "Live activity"}
+            {liveItem?.live ? "Just now" : "Demo activity"}
           </p>
           <p className="text-gray-700">{activity.text}</p>
         </div>

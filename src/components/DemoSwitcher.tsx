@@ -29,46 +29,6 @@ const DEMO_ACCOUNTS = [
   },
 ];
 
-export function DemoSwitcher() {
-  const router = useRouter();
-  const { demoLogin, loading, ready } = useMockApp();
-  const [busy, setBusy] = useState(false);
-
-  async function switchAccount(role: "customer" | "provider" | "admin") {
-    if (!ready) return;
-    setBusy(true);
-    const result = await demoLogin(role);
-    if (result.redirect) {
-      router.push(result.redirect);
-      router.refresh();
-    }
-    setBusy(false);
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="hidden text-xs text-green-700 sm:inline">Demo:</span>
-      <select
-        disabled={!ready || loading || busy}
-        defaultValue=""
-        onChange={(e) => {
-          const role = e.target.value as "customer" | "provider" | "admin";
-          if (role) switchAccount(role);
-          e.target.value = "";
-        }}
-        className="max-w-[140px] rounded-lg border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-900 sm:max-w-none"
-      >
-        <option value="">Switch account…</option>
-        {DEMO_ACCOUNTS.map((account) => (
-          <option key={account.role} value={account.role}>
-            {account.shortLabel}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 export function HomeDemoButtons() {
   const router = useRouter();
   const { demoLogin, loading, ready, user } = useMockApp();

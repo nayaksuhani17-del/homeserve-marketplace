@@ -1,3 +1,4 @@
+/** Supabase production server actions — inactive while DEMO_MODE uses MockAppContext. */
 "use server";
 
 import { revalidatePath } from "next/cache";

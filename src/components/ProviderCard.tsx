@@ -139,7 +139,7 @@ export function ProviderCard({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
           </span>
-          {viewers} {viewers === 1 ? "person is" : "people are"} viewing this pro
+          {viewers} {viewers === 1 ? "person" : "people"} recently viewed this pro
         </div>
 
         <p className="truncate text-sm text-gray-500">{provider.location || "Local area"}</p>

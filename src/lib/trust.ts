@@ -46,7 +46,7 @@ export function computeTrustBadges(provider: ProviderWithUser): TrustBadgeKey[] 
   return badges;
 }
 
-/** Deterministic fake viewer count for social proof. */
+/** Demo-only activity estimate for marketplace cards (not live analytics). */
 export function getViewerCount(providerId: string): number {
   let h = 0;
   for (let i = 0; i < providerId.length; i++) {

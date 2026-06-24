@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderCard } from "./ProviderCard";
@@ -8,10 +8,10 @@ import { ProviderPagination } from "./ProviderPagination";
 import { AdvancedFilters } from "./AdvancedFilters";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
+import { SmartSearchBar } from "./SmartSearchBar";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { getServiceMeta, similarServices } from "@/lib/services";
-import { detectUrgency } from "@/lib/smart";
 import type { ProviderFilters } from "@/lib/mock/types";
 import type { RecommendationLabel } from "@/lib/recommendations";
 import type { MockProvider } from "@/lib/mock/types";
@@ -34,7 +34,7 @@ function filtersFromSearchParams(searchParams: URLSearchParams): ProviderFilters
 export function ProviderMarketplace() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { filterProviders, parseSearch, ready, user } = useMockApp();
+  const { filterProviders, ready, user } = useMockApp();
   const [pending, startTransition] = useTransition();
   const [filtersOpen, setFiltersOpen] = useState(true);
 
@@ -43,13 +43,7 @@ export function ProviderMarketplace() {
     [searchParams]
   );
 
-  const urlQuery = filters.q ?? "";
-  const [query, setQuery] = useState(urlQuery);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local search input with URL
-    setQuery(urlQuery);
-  }, [urlQuery]);
+  const query = filters.q ?? "";
 
   const emptyResult = {
     list: [] as MockProvider[],
@@ -79,35 +73,6 @@ export function ProviderMarketplace() {
     },
     [router]
   );
-
-  useEffect(() => {
-    if (query === urlQuery) return;
-    const timer = setTimeout(() => {
-      startTransition(() => {
-        const parsed = parseSearch(query);
-        const urgent = detectUrgency(query);
-        syncUrl(
-          {
-            ...filters,
-            page: "1",
-            q: parsed.q || query || undefined,
-            service: parsed.service ?? filters.service,
-            sort: parsed.sort ?? filters.sort,
-            minRating: parsed.minRating ? String(parsed.minRating) : filters.minRating,
-            minPrice: parsed.minPrice ? String(parsed.minPrice) : filters.minPrice,
-            maxPrice: parsed.maxPrice ? String(parsed.maxPrice) : filters.maxPrice,
-            maxDistance: parsed.maxDistance
-              ? String(parsed.maxDistance)
-              : filters.maxDistance,
-            availability:
-              urgent ? "today" : parsed.availability ?? filters.availability,
-          },
-          query
-        );
-      });
-    }, 280);
-    return () => clearTimeout(timer);
-  }, [query, urlQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeFilters = [
     filters.service && `Service: ${filters.service}`,
@@ -167,22 +132,14 @@ export function ProviderMarketplace() {
             </span>
           )}
         </div>
-        <div className="input-with-icon mt-3">
-          <span className="input-icon-slot text-base" aria-hidden>
-            🔍
-          </span>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder='Search by name (e.g. "Marcus") or service (e.g. "plumber")'
-            className="input-field"
-          />
-        </div>
+        <SmartSearchBar
+          defaultQuery={query}
+          placeholder='Search people & services — e.g. "Marcus", "electrician near me"'
+        />
         <p className="mt-2 text-xs text-gray-500">
           {pending
             ? "Updating results…"
-            : `${result.total} provider${result.total === 1 ? "" : "s"} · search by name or service`}
+            : `${result.total} provider${result.total === 1 ? "" : "s"} · unified search across pros and accounts`}
         </p>
       </div>
 

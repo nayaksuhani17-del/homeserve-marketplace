@@ -43,7 +43,7 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="badge-verified">Verified pros</span>
               <span className="rounded-full bg-green-50 px-3 py-1 text-green-800 ring-1 ring-green-100">
-                Trusted by homeowners nationwide
+                Interactive demo — sample marketplace data
               </span>
             </div>
             <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-gray-900 sm:text-4xl">

@@ -8,6 +8,7 @@ import { ProviderMarketplace } from "@/components/ProviderMarketplace";
 import { CustomerBookingsPanel } from "@/components/customer/CustomerBookingsPanel";
 import { BookingNotificationBanner } from "@/components/customer/BookingNotificationBanner";
 import { ReportProviderModal } from "@/components/ReportProviderModal";
+import { SmartAssistant } from "@/components/SmartAssistant";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
@@ -98,11 +99,11 @@ export function CustomerDashboardClient() {
     <div className="mx-auto max-w-6xl px-4 py-10 page-enter">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-green-700">Trusted local marketplace</p>
+          <p className="text-sm font-medium text-green-700">Local services marketplace (demo)</p>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">{greeting}</h1>
           <p className="mt-1 text-gray-600">
-            {stats.verifiedProviders} verified pros · {stats.jobsCompleted.toLocaleString()}+ jobs
-            completed · Trusted by homeowners
+            {stats.verifiedProviders} verified pros · {stats.jobsCompleted.toLocaleString()}+ demo
+            jobs completed
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -197,6 +198,12 @@ export function CustomerDashboardClient() {
             onReport={(target) => setReportTarget(target)}
           />
         </>
+      )}
+
+      {canBook && (
+        <section className="mt-10">
+          <SmartAssistant />
+        </section>
       )}
 
       <ProviderMarketplace />

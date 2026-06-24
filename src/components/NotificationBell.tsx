@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
+import {
+  resolveNotificationHref,
+  scrollToNotificationTarget,
+} from "@/lib/notification-links";
 
 export function NotificationBell() {
   const router = useRouter();
@@ -25,16 +29,24 @@ export function NotificationBell() {
 
   const notifications = getNotifications();
 
-  function navigateFromNotification(href: string, notificationId: string) {
+  function navigateFromNotification(href: string, notificationId: string, message: string) {
+    const target = resolveNotificationHref(href, message);
     setOpen(false);
     markNotificationsRead([notificationId]);
-    router.push(href);
-    window.setTimeout(() => {
-      const hash = href.includes("#") ? href.split("#")[1] : null;
-      if (hash) {
-        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 200);
+
+    const url = new URL(target, window.location.origin);
+    const sameLocation =
+      window.location.pathname === url.pathname &&
+      window.location.search === url.search &&
+      window.location.hash === url.hash;
+
+    if (sameLocation) {
+      scrollToNotificationTarget(target);
+      return;
+    }
+
+    router.push(target);
+    window.setTimeout(() => scrollToNotificationTarget(target), 200);
   }
 
   return (
@@ -80,7 +92,7 @@ export function NotificationBell() {
                   {n.href && (
                     <button
                       type="button"
-                      onClick={() => navigateFromNotification(n.href!, n.id)}
+                      onClick={() => navigateFromNotification(n.href!, n.id, n.message)}
                       className="mt-1 inline-block text-xs font-medium text-green-700 hover:underline"
                     >
                       View →

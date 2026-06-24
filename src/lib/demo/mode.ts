@@ -1,6 +1,8 @@
 /** Executive demo optimizations — tuned for live presentations. */
 export const DEMO_MODE = true;
 
+/** MockAppContext + localStorage is the active runtime. Supabase routes and server actions are kept for a future production cutover. */
+
 /**
  * When true, bookings stay pending until the provider accepts or rejects manually.
  * Shared localStorage is the single source of truth across account switches.

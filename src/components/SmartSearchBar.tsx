@@ -19,9 +19,15 @@ const HireModal = dynamic(
   { ssr: false }
 );
 
-export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
+export function SmartSearchBar({
+  placeholder,
+  defaultQuery,
+}: {
+  placeholder?: string;
+  defaultQuery?: string;
+}) {
   const { parseSearch, advancedSearch, ready, getProvider } = useMockApp();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(defaultQuery ?? "");
   const [loading, setLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
@@ -34,6 +40,10 @@ export function SmartSearchBar({ placeholder }: { placeholder?: string }) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (defaultQuery !== undefined) setQuery(defaultQuery);
+  }, [defaultQuery]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

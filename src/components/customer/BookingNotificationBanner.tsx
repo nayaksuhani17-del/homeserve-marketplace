@@ -1,9 +1,15 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
+import {
+  customerBookingsHref,
+  resolveNotificationHref,
+  scrollToNotificationTarget,
+} from "@/lib/notification-links";
 
 export function BookingNotificationBanner() {
+  const router = useRouter();
   const { user, db, getNotifications, markNotificationsRead } = useMockApp();
 
   if (!user || !db) return null;
@@ -18,6 +24,16 @@ export function BookingNotificationBanner() {
   if (!latest) return null;
 
   const isAccepted = latest.message.includes("accepted");
+  const target =
+    latest.href != null
+      ? resolveNotificationHref(latest.href, latest.message)
+      : customerBookingsHref(isAccepted ? "upcoming" : "past");
+
+  function viewBookings() {
+    markNotificationsRead([latest!.id]);
+    router.push(target);
+    window.setTimeout(() => scrollToNotificationTarget(target), 200);
+  }
 
   return (
     <div
@@ -30,11 +46,9 @@ export function BookingNotificationBanner() {
     >
       <p className="font-medium">{latest.message}</p>
       <div className="flex gap-2">
-        {latest.href && (
-          <Link href={latest.href} className="btn-secondary px-3 py-1 text-xs">
-            View bookings
-          </Link>
-        )}
+        <button type="button" onClick={viewBookings} className="btn-secondary px-3 py-1 text-xs">
+          View bookings
+        </button>
         <button
           type="button"
           onClick={() => markNotificationsRead([latest.id])}
