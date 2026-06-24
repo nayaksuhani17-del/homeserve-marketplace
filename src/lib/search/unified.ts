@@ -57,7 +57,11 @@ function detectServiceInQuery(query: string): string | undefined {
   return undefined;
 }
 
-function userMatchesName(user: MockUser | MockProvider, tokens: string[], fullQuery: string): boolean {
+function userMatchesName(
+  user: MockUser | MockProvider,
+  tokens: string[],
+  fullQuery: string
+): boolean {
   const name = user.name.toLowerCase();
   const email = user.email.toLowerCase();
   const q = fullQuery.toLowerCase();
