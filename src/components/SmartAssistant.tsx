@@ -19,13 +19,13 @@ type Message = {
   service?: string;
 };
 
-export function SmartAssistant() {
+export function SmartAssistant({ compact = false }: { compact?: boolean }) {
   const { assist, ready } = useMockApp();
   const [expanded, setExpanded] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      text: "Need help finding the right pro? Describe your issue and I'll suggest top matches.",
+      text: "Describe your issue and I'll suggest matching pros.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -34,8 +34,9 @@ export function SmartAssistant() {
   const [, startTransition] = useTransition();
 
   useEffect(() => {
+    if (!expanded) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, expanded]);
 
   function ask(text: string) {
     if (!text.trim() || loading || !ready) return;
@@ -66,56 +67,58 @@ export function SmartAssistant() {
   }
 
   return (
-    <div className="card overflow-hidden bg-white shadow-sm">
+    <div className={`overflow-hidden rounded-xl border border-gray-200 bg-gray-50 ${compact ? "" : "card"}`}>
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 border-b border-green-100 bg-green-50 px-6 py-4 text-left transition-colors hover:bg-green-100/80"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-gray-100/80"
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-600 text-sm text-white">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-600 text-sm text-white">
             ?
-          </div>
-          <div>
-            <h2 className="font-semibold text-gray-900">Need help choosing?</h2>
-            <p className="text-sm text-gray-600">Optional assistant — describe your problem for quick matches</p>
+          </span>
+          <div className="min-w-0">
+            <p className="font-medium text-gray-900">Need help choosing?</p>
+            <p className="truncate text-sm text-gray-500">
+              Optional assistant — quick pro suggestions
+            </p>
           </div>
         </div>
-        <span className="text-sm text-green-700">{expanded ? "Hide" : "Open"}</span>
+        <span className="shrink-0 text-sm text-green-700">{expanded ? "Hide" : "Open"}</span>
       </button>
 
       {expanded && (
-        <div className="flex h-80 flex-col bg-gradient-to-b from-gray-50 to-white">
-          <div className="flex flex-wrap gap-2 border-b border-gray-100 px-4 py-3">
+        <div className="flex h-72 flex-col border-t border-gray-200 bg-white">
+          <div className="flex flex-wrap gap-2 border-b border-gray-100 px-3 py-2">
             {STARTER_PROMPTS.map((prompt) => (
               <button
                 key={prompt}
                 type="button"
                 onClick={() => ask(prompt)}
                 disabled={loading || !ready}
-                className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-green-800 ring-1 ring-green-200 transition hover:bg-green-50 disabled:opacity-50"
+                className="rounded-full bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700 ring-1 ring-gray-200 transition hover:bg-green-50 hover:text-green-800 disabled:opacity-50"
               >
                 {prompt}
               </button>
             ))}
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="flex-1 space-y-2 overflow-y-auto p-3">
             {messages.map((msg, i) => (
               <div
                 key={i}
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm ${
+                  className={`max-w-[90%] rounded-xl px-3 py-2 text-sm ${
                     msg.role === "user"
                       ? "bg-green-600 text-white"
-                      : "bg-white text-gray-700 shadow-sm ring-1 ring-gray-200"
+                      : "bg-gray-50 text-gray-700 ring-1 ring-gray-200"
                   }`}
                 >
                   <p className="whitespace-pre-line">{msg.text}</p>
                   {msg.providers && msg.providers.length > 0 && (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-2 space-y-2">
                       {msg.providers.slice(0, 3).map((p) => (
                         <ChatProviderCard key={p.id} provider={p} compact />
                       ))}
@@ -134,11 +137,11 @@ export function SmartAssistant() {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-gray-200">
+                <div className="rounded-xl bg-gray-50 px-3 py-2 ring-1 ring-gray-200">
                   <span className="inline-flex gap-1">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-green-500 [animation-delay:0ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-green-500 [animation-delay:150ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-green-500 [animation-delay:300ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-green-500 [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-green-500 [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-green-500 [animation-delay:300ms]" />
                   </span>
                 </div>
               </div>
@@ -146,13 +149,13 @@ export function SmartAssistant() {
             <div ref={bottomRef} />
           </div>
 
-          <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4">
+          <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3">
             <div className="flex gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder='Describe your issue…'
+                placeholder="Describe your issue…"
                 className="input-field min-w-0 flex-1"
                 disabled={!ready}
               />

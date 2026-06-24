@@ -26,56 +26,55 @@ export function ClientNavbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 backdrop-blur-lg">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <Link href="/" className="text-xl font-bold text-green-600">
+    <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5">
+        <Link href="/" className="text-lg font-bold text-green-600">
           HomeServe
         </Link>
-        <nav className="flex items-center gap-2 text-sm font-medium text-gray-700 sm:gap-3">
-          <Link href="/" className="hidden transition-colors duration-200 hover:text-green-600 sm:inline">
-            Home
-          </Link>
+        <nav className="flex items-center gap-1 text-sm font-medium text-gray-600 sm:gap-2">
           <Link
             href="/customer/dashboard"
-            className="transition-colors duration-200 hover:text-green-600"
+            className="rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700"
           >
             Browse
           </Link>
           {user?.role === "customer" && (
             <Link
               href="/customer/saved"
-              className="hidden transition-colors duration-200 hover:text-green-600 sm:inline"
+              className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 sm:inline"
             >
               Saved
             </Link>
           )}
-          {dashboardHref && (
+          {dashboardHref && user?.role !== "customer" && (
             <Link
               href={dashboardHref}
-              className="transition-colors duration-200 hover:text-green-600"
+              className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 sm:inline"
             >
               {user?.role === "admin" ? "Admin" : "Dashboard"}
             </Link>
           )}
-          <AccountSwitcher />
-          <NotificationBell />
-          {ready && user ? (
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="hidden rounded-lg px-2 py-1.5 text-xs text-gray-500 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-700 sm:inline"
-              title="Clear session — use Switch Account to change profiles instead"
-            >
-              Exit
-            </button>
-          ) : (
-            <Link
-              href="/login"
-              className="hidden rounded-lg px-3 py-1.5 text-gray-700 transition hover:bg-gray-100 sm:inline"
-            >
-              Log in
-            </Link>
-          )}
+          <div className="ml-1 flex items-center gap-1 border-l border-gray-200 pl-2 sm:ml-2 sm:pl-3">
+            <AccountSwitcher />
+            <NotificationBell />
+            {ready && user ? (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="hidden rounded-lg px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-50 sm:inline"
+                title="Clear session"
+              >
+                Exit
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-lg px-2.5 py-1.5 text-gray-700 hover:bg-gray-50"
+              >
+                Log in
+              </Link>
+            )}
+          </div>
         </nav>
       </div>
     </header>

@@ -31,9 +31,8 @@ export default function RootLayout({
               <ClientLayoutExtras />
               <ClientNavbar />
               <main className="page-enter flex-1">{children}</main>
-              <footer className="border-t border-gray-200 bg-white py-8 text-center text-sm text-gray-500">
-                <p className="font-medium text-gray-700">HomeServe interactive demo</p>
-                <p className="mt-1">© {new Date().getFullYear()} HomeServe — Local home services marketplace prototype</p>
+              <footer className="border-t border-gray-100 bg-white py-6 text-center text-xs text-gray-500">
+                <p>HomeServe interactive demo</p>
               </footer>
             </ToastProvider>
           </AppLoadingGate>

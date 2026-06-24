@@ -11,11 +11,6 @@ const ACTIVITY_TEMPLATES = [
   { emoji: "⚡", text: "3 people are viewing an electrician right now" },
   { emoji: "🎨", text: "James booked a painter for tomorrow" },
   { emoji: "🌿", text: "Lisa scheduled lawn mowing nearby" },
-  { emoji: "💻", text: "Alex got computer repair in under 30 mins" },
-  { emoji: "🍳", text: "Priya booked a private chef for this weekend" },
-  { emoji: "🚗", text: "Tom found a mobile mechanic 1.8 mi away" },
-  { emoji: "✨", text: "Sarah saved a top-rated cleaner to favorites" },
-  { emoji: "📦", text: "A family just booked a local move — same-day quote" },
 ];
 
 const EVENT_EMOJI: Record<SystemEvent["type"], string> = {
@@ -28,7 +23,7 @@ const EVENT_EMOJI: Record<SystemEvent["type"], string> = {
   report: "🛡️",
 };
 
-const NAMES = ["Sarah", "Mike", "Emily", "James", "Lisa", "Alex", "Priya", "Tom", "Nina", "David"];
+const NAMES = ["Sarah", "Mike", "Emily", "James", "Lisa"];
 const SERVICES = ["House Cleaning", "Plumber", "Electrician", "Painting", "Lawn Mowing"];
 
 type LiveItem = { emoji: string; text: string; live?: boolean };
@@ -36,6 +31,7 @@ type LiveItem = { emoji: string; text: string; live?: boolean };
 export function LiveActivity() {
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(true);
+  const [dismissed, setDismissed] = useState(false);
   const [liveItem, setLiveItem] = useState<LiveItem | null>(null);
 
   const activities = useMemo(
@@ -57,15 +53,14 @@ export function LiveActivity() {
     function onSystemEvent(e: Event) {
       const detail = (e as CustomEvent<SystemEvent>).detail;
       if (!detail) return;
+      setDismissed(false);
       setLiveItem({
         emoji: EVENT_EMOJI[detail.type] ?? "🔔",
         text: detail.message,
         live: true,
       });
       setVisible(true);
-      setTimeout(() => {
-        setLiveItem(null);
-      }, 8000);
+      setTimeout(() => setLiveItem(null), 6000);
     }
 
     window.addEventListener(SYSTEM_EVENT, onSystemEvent);
@@ -74,38 +69,42 @@ export function LiveActivity() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (liveItem) return;
+      if (liveItem || dismissed) return;
       setVisible(false);
       setTimeout(() => {
         setIndex((i) => (i + 1) % activities.length);
         setVisible(true);
       }, 300);
-    }, 6500);
+    }, 8000);
     return () => clearInterval(interval);
-  }, [activities.length, liveItem]);
+  }, [activities.length, liveItem, dismissed]);
+
+  if (dismissed && !liveItem) return null;
 
   const activity = liveItem ?? activities[index]!;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-40 sm:right-auto sm:max-w-xs">
+    <div className="fixed bottom-4 left-4 z-40 hidden max-w-xs sm:block">
       <div
-        className={`flex max-w-xs items-center gap-3 rounded-2xl border border-green-200 bg-white/95 px-4 py-3 text-sm shadow-lg backdrop-blur transition-all duration-300 ${
-          visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+        className={`flex items-start gap-2.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-md transition-all duration-300 ${
+          visible ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
         }`}
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-base">
-          {activity.emoji}
-        </span>
-        <div>
-          <p className="text-xs font-medium text-green-700">
+        <span className="text-base leading-none">{activity.emoji}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
             {liveItem?.live ? "Just now" : "Demo activity"}
           </p>
-          <p className="text-gray-700">{activity.text}</p>
+          <p className="text-xs text-gray-700">{activity.text}</p>
         </div>
-        <span className="relative ml-1 flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-        </span>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="shrink-0 text-gray-400 hover:text-gray-600"
+          aria-label="Dismiss"
+        >
+          ×
+        </button>
       </div>
     </div>
   );

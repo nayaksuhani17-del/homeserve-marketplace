@@ -63,11 +63,11 @@ export function CustomerBookingsPanel({
   const visible = tab === "upcoming" ? upcoming : past;
 
   return (
-    <section id="your-bookings" className="mt-10 scroll-mt-24">
+    <section id="your-bookings" className="scroll-mt-24">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Your bookings</h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <h2 className="section-title">Your bookings</h2>
+          <p className="section-desc">
             {upcoming.length} upcoming · {past.length} past
           </p>
         </div>

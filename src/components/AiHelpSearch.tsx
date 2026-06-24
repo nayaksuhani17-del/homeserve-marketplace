@@ -79,7 +79,7 @@ function avgRating(providers: MockProvider[]): string {
 
 export function AiHelpSearch() {
   const { filterProviders, ready } = useMockApp();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
@@ -181,11 +181,11 @@ export function AiHelpSearch() {
               <AssistantIcon />
             </span>
             <span>
-              <span className="block text-sm font-semibold uppercase tracking-wide text-green-800">
-                Smart Match Assistant
+              <span className="block text-sm font-semibold text-green-800">
+                Smart match assistant
               </span>
-              <span className="mt-0.5 block text-base font-medium text-gray-900">
-                Describe your need in plain language — we&apos;ll find the right pro
+              <span className="mt-0.5 block text-sm text-gray-600">
+                Describe your need — we&apos;ll find matching pros
               </span>
             </span>
           </span>
@@ -195,33 +195,15 @@ export function AiHelpSearch() {
         </button>
       ) : (
         <div className="ai-panel-expanded animate-slide-up overflow-hidden">
-          <div className="relative border-b border-green-200/60 bg-gradient-to-r from-green-50/80 to-white px-6 py-6 sm:px-8">
-            <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-green-200/30 blur-2xl" />
-            <div className="relative flex items-start justify-between gap-4">
+          <div className="border-b border-gray-100 px-5 py-5 sm:px-6">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-green-800 shadow-sm">
-                  <AssistantIcon className="h-3.5 w-3.5" />
-                  Intelligent Matching
-                </div>
-                <h2 className="mt-3 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
-                  Need help choosing?
+                <h2 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+                  What do you need help with?
                 </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 sm:text-base">
-                  Describe your situation in everyday language. Our assistant interprets
-                  your request, applies the right filters, and surfaces verified
-                  professionals instantly.
+                <p className="mt-1 max-w-xl text-sm text-gray-600">
+                  Plain-language search — we match your request to verified pros instantly.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-medium text-gray-500">
-                  <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-gray-200">
-                    Verified providers only
-                  </span>
-                  <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-gray-200">
-                    Instant ranked results
-                  </span>
-                  <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-gray-200">
-                    No account required
-                  </span>
-                </div>
               </div>
               <button
                 type="button"
@@ -233,7 +215,7 @@ export function AiHelpSearch() {
             </div>
           </div>
 
-          <div className="bg-[#f0fdf4] px-6 py-6 sm:px-8 sm:py-8">
+          <div className="bg-gray-50 px-5 py-5 sm:px-6 sm:py-6">
             <form onSubmit={handleSubmit}>
               <label htmlFor="ai-help-input" className="sr-only">
                 Describe your issue

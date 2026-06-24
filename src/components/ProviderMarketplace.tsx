@@ -9,6 +9,7 @@ import { AdvancedFilters } from "./AdvancedFilters";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
 import { SmartSearchBar } from "./SmartSearchBar";
+import { SmartAssistant } from "./SmartAssistant";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { getServiceMeta, similarServices } from "@/lib/services";
@@ -31,12 +32,12 @@ function filtersFromSearchParams(searchParams: URLSearchParams): ProviderFilters
   };
 }
 
-export function ProviderMarketplace() {
+export function ProviderMarketplace({ showAssistant = false }: { showAssistant?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { filterProviders, ready, user } = useMockApp();
   const [pending, startTransition] = useTransition();
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filters = useMemo(
     () => filtersFromSearchParams(searchParams),
@@ -113,50 +114,54 @@ export function ProviderMarketplace() {
   }
 
   return (
-    <div id="marketplace">
-      <div className="mt-8">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {filters.service ? `${filters.service} providers` : "Available providers"}
+    <div id="marketplace" className="section-divider">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="section-title">
+            {filters.service ? `${filters.service} providers` : "Browse providers"}
           </h2>
+          <p className="section-desc">
+            {pending
+              ? "Updating results…"
+              : `${result.total} result${result.total === 1 ? "" : "s"} · search, filter, and book`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {result.urgent && (
+            <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700 ring-1 ring-red-100">
+              Urgent — fast responders first
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setFiltersOpen((v) => !v)}
-            className="btn-secondary text-sm lg:hidden"
+            className="btn-secondary text-sm"
           >
-            {filtersOpen ? "Hide filters" : "Show filters"}
+            {filtersOpen ? "Hide filters" : "Filters"}
           </button>
-          {result.urgent && (
-            <span className="animate-fade-in rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100">
-              Fast responders prioritized
-            </span>
-          )}
         </div>
+      </div>
+
+      <div className="mt-4 space-y-4">
         <SmartSearchBar
           defaultQuery={query}
-          placeholder='Search people & services — e.g. "Marcus", "electrician near me"'
+          placeholder='Search by name or service — e.g. "Marcus" or "plumber"'
         />
-        <p className="mt-2 text-xs text-gray-500">
-          {pending
-            ? "Updating results…"
-            : `${result.total} provider${result.total === 1 ? "" : "s"} · unified search across pros and accounts`}
-        </p>
+        {showAssistant && <SmartAssistant compact />}
       </div>
 
       {activeFilters.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {activeFilters.map((f) => (
-            <span key={f} className="badge-tag animate-fade-in">
+            <span key={f} className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
               {f}
             </span>
           ))}
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-4">
-        <aside
-          className={`lg:col-span-1 ${filtersOpen ? "block" : "hidden lg:block"}`}
-        >
+      <div className="mt-5 grid gap-6 lg:grid-cols-4">
+        <aside className={`lg:col-span-1 ${filtersOpen ? "block" : "hidden"}`}>
           <AdvancedFilters
             key={[
               filters.service,
@@ -186,9 +191,7 @@ export function ProviderMarketplace() {
             <>
               {(result.bestMatchId || Object.keys(result.topRankMap).length > 0) &&
                 !filters.sort && (
-                  <p className="text-sm font-medium text-green-700">
-                    ✨ Best Match highlighted — top-rated pros for your search
-                  </p>
+                  <p className="text-xs text-gray-500">Best match highlighted for this search</p>
                 )}
               <div
                 className={`mt-4 grid gap-5 sm:grid-cols-2 transition-opacity duration-200 ${

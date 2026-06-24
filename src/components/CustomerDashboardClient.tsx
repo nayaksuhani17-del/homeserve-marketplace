@@ -8,10 +8,12 @@ import { ProviderMarketplace } from "@/components/ProviderMarketplace";
 import { CustomerBookingsPanel } from "@/components/customer/CustomerBookingsPanel";
 import { BookingNotificationBanner } from "@/components/customer/BookingNotificationBanner";
 import { ReportProviderModal } from "@/components/ReportProviderModal";
-import { SmartAssistant } from "@/components/SmartAssistant";
+import { PageHeader, QuickNav, Section } from "@/components/ui/Section";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
+
+type DiscoverTab = "recommended" | "popular";
 
 export function CustomerDashboardClient() {
   const searchParams = useSearchParams();
@@ -38,6 +40,7 @@ export function CustomerDashboardClient() {
     providerName: string;
     bookingId?: string;
   } | null>(null);
+  const [discoverTab, setDiscoverTab] = useState<DiscoverTab>("recommended");
 
   const isCustomer = user?.role === "customer";
   const stats = getStats();
@@ -61,7 +64,7 @@ export function CustomerDashboardClient() {
   const savedCount = user ? getSavedProviders().length : 0;
   const greeting = user
     ? user.role === "customer"
-      ? `Welcome back, ${user.name.split(" ")[0]} 👋`
+      ? `Welcome back, ${user.name.split(" ")[0]}`
       : `Browse services, ${user.name.split(" ")[0]}`
     : "Find your perfect pro";
 
@@ -84,9 +87,21 @@ export function CustomerDashboardClient() {
     popular.map(mockProviderToLegacy)
   );
 
+  const discoverProviders =
+    discoverTab === "recommended" ? recommended : popular;
+  const discoverLabels =
+    discoverTab === "recommended" ? recLabels : popularLabels;
+  const hasDiscover = recommended.length > 0 || popular.length > 0;
+
+  const quickLinks = [
+    ...(isCustomer && user ? [{ href: "#your-bookings", label: "Bookings" }] : []),
+    { href: "#marketplace", label: "Browse" },
+    ...(hasDiscover ? [{ href: "#discover", label: "Suggestions" }] : []),
+  ];
+
   if (!ready) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-10">
+      <div className="page-shell">
         <div className="h-8 w-64 animate-pulse rounded bg-gray-200" />
         <div className="mt-8 h-12 animate-pulse rounded-xl bg-gray-100" />
       </div>
@@ -96,100 +111,39 @@ export function CustomerDashboardClient() {
   const canBook = isCustomer;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 page-enter">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-green-700">Local services marketplace (demo)</p>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">{greeting}</h1>
-          <p className="mt-1 text-gray-600">
-            {stats.verifiedProviders} verified pros · {stats.jobsCompleted.toLocaleString()}+ demo
-            jobs completed
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {user && (
-            <Link href="/customer/saved" className="btn-secondary">
-              ♥ Saved ({savedCount})
-            </Link>
-          )}
-          {!user && (
-            <Link href="/login" className="btn-primary">
-              Log in to book
-            </Link>
-          )}
-          {user && !canBook && (
-            <p className="text-sm text-gray-500">
-              Switch to a customer account to book services
-            </p>
-          )}
-        </div>
-      </div>
+    <div className="page-shell page-enter space-y-10">
+      <PageHeader
+        eyebrow="Browse & book local pros"
+        title={greeting}
+        description={`${stats.verifiedProviders} verified pros · ${stats.jobsCompleted.toLocaleString()}+ jobs completed`}
+        actions={
+          <>
+            {user && (
+              <Link href="/customer/saved" className="btn-secondary">
+                Saved ({savedCount})
+              </Link>
+            )}
+            {!user && (
+              <Link href="/login" className="btn-primary">
+                Log in to book
+              </Link>
+            )}
+          </>
+        }
+      />
+
+      <QuickNav links={quickLinks} />
 
       {user && !canBook && (
-        <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
           You&apos;re browsing as a {user.role}. Use{" "}
-          <strong>Switch Account</strong> in the header to book as a customer or manage your{" "}
+          <strong>Switch Account</strong> in the header to book as a customer or open your{" "}
           {user.role === "provider" ? "provider" : "admin"} dashboard.
         </div>
       )}
 
-      {canBook && recommended.length > 0 && (
-        <section className="mt-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Recommended for you</h2>
-            <span className="text-xs text-gray-500">Best Match highlighted</span>
-          </div>
-          <div className="mt-4 grid gap-5 sm:grid-cols-3">
-            {recommended.map((p, i) => (
-              <ProviderCard
-                key={p.id}
-                provider={mockProviderToLegacy(p)}
-                showHire={canBook}
-                isBestMatch={i === 0}
-                recommendationLabel={recLabels.get(p.id)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {popular.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold text-gray-900">Popular near you</h2>
-          <p className="mt-1 text-sm text-gray-500">Most booked pros in your area this week</p>
-          <div className="mt-4 grid gap-5 sm:grid-cols-3">
-            {popular.map((p) => (
-              <ProviderCard
-                key={p.id}
-                provider={mockProviderToLegacy(p)}
-                showHire={canBook}
-                recommendationLabel={popularLabels.get(p.id)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {user && recent.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold text-gray-900">Recently viewed</h2>
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
-            {recent.map((p) => (
-              <Link
-                key={p.id}
-                href={`/provider/${p.id}`}
-                className="card card-hover shrink-0 px-4 py-3 text-sm transition hover:-translate-y-0.5"
-              >
-                <p className="font-medium text-gray-900">{p.name}</p>
-                <p className="text-xs text-gray-500">{p.services[0]}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       {isCustomer && user && (
-        <>
+        <div className="space-y-4">
           <BookingNotificationBanner />
           <CustomerBookingsPanel
             key={`${dbRevision}-${initialBookingsTab ?? "default"}`}
@@ -197,16 +151,83 @@ export function CustomerDashboardClient() {
             initialTab={initialBookingsTab}
             onReport={(target) => setReportTarget(target)}
           />
-        </>
+        </div>
       )}
 
-      {canBook && (
-        <section className="mt-10">
-          <SmartAssistant />
-        </section>
+      <ProviderMarketplace showAssistant={canBook} />
+
+      {hasDiscover && (
+        <Section
+          id="discover"
+          title="Suggested for you"
+          description="Curated picks based on ratings and local demand"
+          collapsible
+          defaultOpen={false}
+          className="section-divider"
+        >
+          <div className="mb-4 flex gap-1 rounded-xl bg-gray-100 p-1 w-fit">
+            {(
+              [
+                { id: "recommended" as const, label: "Recommended" },
+                { id: "popular" as const, label: "Popular" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setDiscoverTab(t.id)}
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  discoverTab === t.id
+                    ? "bg-white text-green-800 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {discoverProviders.length > 0 ? (
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {discoverProviders.map((p, i) => (
+                <ProviderCard
+                  key={p.id}
+                  provider={mockProviderToLegacy(p)}
+                  showHire={canBook}
+                  isBestMatch={discoverTab === "recommended" && i === 0}
+                  recommendationLabel={discoverLabels.get(p.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              No {discoverTab === "recommended" ? "recommendations" : "popular picks"} right now.
+            </p>
+          )}
+        </Section>
       )}
 
-      <ProviderMarketplace />
+      {user && recent.length > 0 && (
+        <Section
+          title="Recently viewed"
+          description="Pick up where you left off"
+          collapsible
+          defaultOpen={false}
+        >
+          <div className="flex flex-wrap gap-2">
+            {recent.map((p) => (
+              <Link
+                key={p.id}
+                href={`/provider/${p.id}`}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm transition hover:border-green-200 hover:bg-green-50/50"
+              >
+                <span className="font-medium text-gray-900">{p.name}</span>
+                <span className="mx-1.5 text-gray-300">·</span>
+                <span className="text-gray-500">{p.services[0]}</span>
+              </Link>
+            ))}
+          </div>
+        </Section>
+      )}
 
       {reportTarget && (
         <ReportProviderModal
