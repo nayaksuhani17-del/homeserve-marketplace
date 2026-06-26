@@ -17,6 +17,7 @@ import { ReviewForm } from "./ReviewForm";
 import { ReportProviderModal } from "./ReportProviderModal";
 import { useMockApp } from "@/context/MockAppContext";
 import { customerMessagesHref } from "@/lib/notification-links";
+import { canLeaveReview } from "@/lib/mock/operations";
 import { computeProviderTags } from "@/lib/providers";
 import { hasCustomerRole } from "@/lib/user-capabilities";
 import { formatProviderPrice, PRICING_TYPE_LABELS } from "@/lib/pricing";
@@ -113,12 +114,16 @@ export function ProviderProfileClient({
     }
   }
 
-  const reviewableBooking = canBookAsCustomer
+  const reviewableBooking =
+    canBookAsCustomer && db
       ? getBookingsForCustomer(sessionUser.id).find(
           (b) =>
             b.providerId === provider.id &&
-            b.status === "completed" &&
-            !db?.reviews.some((r) => r.bookingId === b.id)
+            canLeaveReview(db, {
+              customerId: sessionUser.id,
+              bookingId: b.id,
+              providerId: provider.id,
+            })
         )
       : undefined;
   const rebookPrefill = getRebookPrefill(provider.id);

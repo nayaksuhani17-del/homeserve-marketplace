@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { StarRating } from "./StarRating";
 import { useToast } from "./Toast";
 import { useMockApp } from "@/context/MockAppContext";
+import { validateReview } from "@/lib/mock/operations";
 
 type ReviewFormProps = {
   providerId: string;
@@ -11,7 +12,7 @@ type ReviewFormProps = {
 };
 
 export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
-  const { addReview, user } = useMockApp();
+  const { addReview, user, db } = useMockApp();
   const { toast } = useToast();
   const [rating, setRating] = useState(5);
   const [hover, setHover] = useState(0);
@@ -19,12 +20,27 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const eligibilityError = useMemo(() => {
+    if (!user) return "You must be logged in.";
+    if (!db) return "Loading…";
+    return validateReview(db, {
+      customerId: user.id,
+      bookingId,
+      providerId,
+    });
+  }, [user, db, bookingId, providerId]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
     if (!user) {
       setError("You must be logged in.");
+      return;
+    }
+
+    if (eligibilityError) {
+      setError(eligibilityError);
       return;
     }
 
@@ -42,6 +58,14 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
       toast("Review submitted — provider rating updated", "success");
       setComment("");
     });
+  }
+
+  if (eligibilityError) {
+    return (
+      <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+        {eligibilityError}
+      </p>
+    );
   }
 
   const display = hover || rating;

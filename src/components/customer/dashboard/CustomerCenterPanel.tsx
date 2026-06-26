@@ -12,6 +12,7 @@ import type { MockBooking, MockProvider } from "@/lib/mock/types";
 import { customerMessagesHref } from "@/lib/notification-links";
 import { formatProviderPrice } from "@/lib/pricing";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
+import { canLeaveReview } from "@/lib/mock/operations";
 
 const EXAMPLE_PROMPTS = [
   "My sink is leaking",
@@ -260,9 +261,18 @@ function JobDetail({
   hasReview: boolean;
   onNewRequest: () => void;
 }) {
-  const { db } = useMockApp();
+  const { db, user } = useMockApp();
   const providerUserId = db?.providers.find((p) => p.id === booking.providerId)?.userId;
-  const showReview = booking.status === "completed" && !hasReview;
+  const showReview =
+    user != null &&
+    db != null &&
+    canLeaveReview(db, {
+      customerId: user.id,
+      bookingId: booking.id,
+      providerId: booking.providerId,
+    });
+  const awaitingReview =
+    booking.status === "pending" || booking.status === "confirmed";
   const canMessage =
     providerUserId &&
     (booking.status === "pending" ||
@@ -336,9 +346,15 @@ function JobDetail({
 
         {showReview && (
           <div className="mt-6">
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">Leave feedback</h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900">Leave Review</h3>
             <ReviewForm providerId={booking.providerId} bookingId={booking.id} />
           </div>
+        )}
+
+        {awaitingReview && (
+          <p className="mt-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            You can leave a review after the job is completed.
+          </p>
         )}
 
         {booking.status === "completed" && hasReview && (

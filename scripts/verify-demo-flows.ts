@@ -9,6 +9,8 @@ import {
   completeBookingRecord,
   createBookingRecord,
   addReviewRecord,
+  validateReview,
+  canLeaveReview,
   rejectProviderRecord,
   resolveBookingRecord,
   dismissReportRecord,
@@ -643,6 +645,79 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   const declineDb = resolveBookingRecord(declineCreated.db, declineId, false);
   const declinedBooking = declineDb.bookings.find((b) => b.id === declineId);
   assert(declinedBooking?.status === "declined", "Provider reject sets status declined");
+
+  const otherProvider = guardDb.providers.find((p) => p.id !== marcus!.id && p.approved);
+  const confirmedBooking = guardDb.bookings.find(
+    (b) => b.customerId === sarah!.id && b.status === "confirmed"
+  );
+  const completedBooking = guardDb.bookings.find(
+    (b) =>
+      b.customerId === sarah!.id &&
+      b.providerId === marcus!.id &&
+      b.status === "completed" &&
+      !guardDb.reviews.some((r) => r.bookingId === b.id)
+  );
+
+  if (confirmedBooking) {
+    const reviewError = validateReview(guardDb, {
+      customerId: sarah!.id,
+      bookingId: confirmedBooking.id,
+      providerId: confirmedBooking.providerId,
+    });
+    assert(
+      Boolean(reviewError?.includes("completed")),
+      "Cannot review before job is completed"
+    );
+  }
+
+  if (completedBooking && otherProvider) {
+    assert(
+      !!validateReview(guardDb, {
+        customerId: sarah!.id,
+        bookingId: completedBooking.id,
+        providerId: otherProvider.id,
+      }),
+      "Cannot review provider you did not hire for this booking"
+    );
+  }
+
+  if (completedBooking) {
+    const dupId = demoId("dup-review");
+    const first = addReviewRecord(
+      guardDb,
+      {
+        customerId: sarah!.id,
+        providerId: marcus!.id,
+        bookingId: completedBooking.id,
+        rating: 5,
+        comment: "First review",
+      },
+      dupId
+    );
+    assert(
+      canLeaveReview(first, {
+        customerId: sarah!.id,
+        bookingId: completedBooking.id,
+        providerId: marcus!.id,
+      }) === false,
+      "One review per booking — duplicate blocked"
+    );
+    const blockedDup = addReviewRecord(
+      first,
+      {
+        customerId: sarah!.id,
+        providerId: marcus!.id,
+        bookingId: completedBooking.id,
+        rating: 4,
+        comment: "Duplicate attempt",
+      },
+      demoId("dup-review-2")
+    );
+    assert(
+      blockedDup.reviews.filter((r) => r.bookingId === completedBooking.id).length === 1,
+      "Duplicate review record not stored"
+    );
+  }
 }
 
 // ─── Summary ───

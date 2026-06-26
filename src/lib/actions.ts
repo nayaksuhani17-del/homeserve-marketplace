@@ -169,6 +169,33 @@ export async function createReview(formData: FormData) {
   const comment = (formData.get("comment") as string) || "";
 
   if (!providerId || !rating) return { error: "Missing review details." };
+  if (!bookingId) return { error: "A completed booking is required to leave a review." };
+
+  const { data: booking, error: bookingError } = await supabase
+    .from("bookings")
+    .select("id, customer_id, provider_id, status")
+    .eq("id", bookingId)
+    .maybeSingle();
+
+  if (bookingError) return { error: bookingError.message };
+  if (!booking) return { error: "Booking not found." };
+  if (booking.customer_id !== user.id) {
+    return { error: "You can only review jobs you booked." };
+  }
+  if (booking.provider_id !== providerId) {
+    return { error: "This review does not match the provider for this booking." };
+  }
+  if (booking.status !== "completed") {
+    return { error: "You can leave a review after the job is completed." };
+  }
+
+  const { data: existing } = await supabase
+    .from("reviews")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+
+  if (existing) return { error: "You already reviewed this booking." };
 
   const { error } = await supabase.from("reviews").insert({
     customer_id: user.id,

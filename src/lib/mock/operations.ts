@@ -377,21 +377,34 @@ export function hasReviewForBooking(db: MockDatabase, bookingId: string): boolea
 
 export function validateReview(
   db: MockDatabase,
-  input: { customerId: string; bookingId?: string }
+  input: { customerId: string; bookingId?: string; providerId?: string }
 ): string | undefined {
   if (!input.bookingId) {
     return "A completed booking is required to leave a review.";
   }
   const booking = db.bookings.find((b) => b.id === input.bookingId);
   if (!booking) return "Booking not found.";
-  if (booking.customerId !== input.customerId) return "This is not your booking.";
+  if (booking.customerId !== input.customerId) {
+    return "You can only review jobs you booked.";
+  }
+  if (input.providerId && booking.providerId !== input.providerId) {
+    return "This review does not match the provider for this booking.";
+  }
   if (booking.status !== "completed") {
-    return "You can only review jobs after they are marked complete.";
+    return "You can leave a review after the job is completed.";
   }
   if (db.reviews.some((r) => r.bookingId === input.bookingId)) {
     return "You already reviewed this booking.";
   }
   return undefined;
+}
+
+/** True when the customer may submit a review for this booking + provider pair. */
+export function canLeaveReview(
+  db: MockDatabase,
+  input: { customerId: string; bookingId: string; providerId: string }
+): boolean {
+  return validateReview(db, input) === undefined;
 }
 
 export function addReviewRecord(
@@ -405,6 +418,13 @@ export function addReviewRecord(
   },
   reviewId: string
 ): MockDatabase {
+  const validationError = validateReview(db, {
+    customerId: input.customerId,
+    bookingId: input.bookingId,
+    providerId: input.providerId,
+  });
+  if (validationError) return db;
+
   const customer = db.users.find((u) => u.id === input.customerId);
   if (!customer) return db;
 

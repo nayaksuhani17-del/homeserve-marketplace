@@ -1590,6 +1590,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       const validationError = validateReview(db, {
         customerId: user.id,
         bookingId: input.bookingId,
+        providerId: input.providerId,
       });
       if (validationError) {
         return { error: validationError };

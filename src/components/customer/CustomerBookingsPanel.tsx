@@ -8,7 +8,7 @@ import { ReviewForm } from "@/components/ReviewForm";
 import { EmptyState } from "@/components/EmptyState";
 import { useToast } from "@/components/Toast";
 import { useMockApp } from "@/context/MockAppContext";
-import { hasReviewForBooking } from "@/lib/mock/operations";
+import { hasReviewForBooking, canLeaveReview } from "@/lib/mock/operations";
 import type { MockBooking } from "@/lib/mock/types";
 
 type Tab = "upcoming" | "past";
@@ -40,7 +40,7 @@ export function CustomerBookingsPanel({
   initialTab,
   onReport,
 }: CustomerBookingsPanelProps) {
-  const { db, cancelBooking } = useMockApp();
+  const { db, cancelBooking, user } = useMockApp();
   const { toast } = useToast();
   const [, startTransition] = useTransition();
   const [tab, setTab] = useState<Tab>(initialTab ?? "upcoming");
@@ -120,11 +120,17 @@ export function CustomerBookingsPanel({
         <div className="mt-4 space-y-4">
           {visible.map((booking) => {
             const canReview =
-              booking.status === "completed" &&
+              user != null &&
               db != null &&
-              !hasReviewForBooking(db, booking.id);
+              canLeaveReview(db, {
+                customerId: user.id,
+                bookingId: booking.id,
+                providerId: booking.providerId,
+              });
             const showChat =
               booking.status === "confirmed" || booking.status === "completed";
+            const awaitingReview =
+              booking.status === "pending" || booking.status === "confirmed";
 
             return (
               <div
@@ -150,6 +156,11 @@ export function CustomerBookingsPanel({
                       {booking.time ? ` at ${booking.time}` : ""} · ~{booking.hours}h · $
                       {booking.estimatedCost} est.
                     </p>
+                    {booking.status === "completed" && canReview && (
+                      <span className="mt-2 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 ring-1 ring-amber-100">
+                        Review pending
+                      </span>
+                    )}
                     <div className="mt-2">
                       <BookingStatusBadge
                         status={booking.status}
@@ -221,8 +232,14 @@ export function CustomerBookingsPanel({
 
                 {canReview && (
                   <div className="mt-4 border-t border-gray-100 pt-4">
+                    <h4 className="mb-3 text-sm font-semibold text-gray-900">Leave Review</h4>
                     <ReviewForm providerId={booking.providerId} bookingId={booking.id} />
                   </div>
+                )}
+                {awaitingReview && (
+                  <p className="mt-4 border-t border-gray-100 pt-4 text-sm text-gray-500">
+                    You can leave a review after the job is completed.
+                  </p>
                 )}
                 {!canReview &&
                   booking.status === "completed" &&
