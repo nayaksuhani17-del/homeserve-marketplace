@@ -17,6 +17,7 @@ import {
   validateReview,
 } from "../src/lib/mock/operations";
 import { demoId } from "../src/lib/demo/ids";
+import { normalizeMockDatabase } from "../src/lib/mock/normalize";
 import type { MockBooking, MockDatabase } from "../src/lib/mock/types";
 
 const failures: string[] = [];
@@ -271,6 +272,70 @@ console.log("\n6. UI updates immediately (provider display data)");
     stats?.reviewCount === provider.reviewCount,
     "computeProviderRatingStats matches provider.reviewCount"
   );
+}
+
+// ─── 7. localStorage tamper protection ───
+console.log("\n7. localStorage tamper protection");
+{
+  const booking = db.bookings.find((b) => b.id === bookingId)!;
+  const tampered: MockDatabase = {
+    ...db,
+    reviews: [
+      ...db.reviews,
+      {
+        id: demoId("tampered-review"),
+        customerId: otherCustomer.id,
+        customerName: "Hacker",
+        providerId: marcus.id,
+        bookingId: booking.id,
+        rating: 1,
+        comment: "Wrong user injected",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: demoId("tampered-dup"),
+        customerId: sarah.id,
+        customerName: sarah.name,
+        providerId: marcus.id,
+        bookingId: booking.id,
+        rating: 5,
+        comment: "Duplicate injected",
+        createdAt: new Date(Date.now() + 1000).toISOString(),
+      },
+    ],
+  };
+  const pendingBooking = db.bookings.find((b) => b.status === "pending");
+  if (pendingBooking) {
+    tampered.reviews.push({
+      id: demoId("tampered-incomplete"),
+      customerId: pendingBooking.customerId,
+      customerName: "Bad",
+      providerId: pendingBooking.providerId,
+      bookingId: pendingBooking.id,
+      rating: 5,
+      comment: "Review for unfinished job",
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  const cleaned = normalizeMockDatabase(tampered);
+
+  assert(
+    !cleaned.reviews.some(
+      (r) => r.comment === "Wrong user injected" || r.customerId === otherCustomer.id && r.bookingId === booking.id
+    ),
+    "Strips reviews from wrong customer for booking"
+  );
+  assert(
+    cleaned.reviews.filter((r) => r.bookingId === booking.id).length <= 1,
+    "Deduplicates injected duplicate reviews per booking"
+  );
+  if (pendingBooking) {
+    assert(
+      !cleaned.reviews.some((r) => r.bookingId === pendingBooking.id),
+      "Strips reviews for non-completed bookings"
+    );
+  }
 }
 
 // ─── Summary ───

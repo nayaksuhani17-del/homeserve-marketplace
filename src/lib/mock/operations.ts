@@ -12,6 +12,26 @@ import type {
   MockUser,
   ProviderFilters,
 } from "./types";
+import {
+  REVIEW_ALREADY_SUBMITTED_MESSAGE,
+  REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE,
+  sanitizeStoredReviews,
+  validateReviewSubmission,
+} from "./review-guard";
+
+export {
+  REVIEW_ALREADY_SUBMITTED_MESSAGE,
+  REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE,
+  REVIEW_BOOKING_NOT_FOUND_MESSAGE,
+  REVIEW_BOOKING_REQUIRED_MESSAGE,
+  REVIEW_INVALID_RATING_MESSAGE,
+  REVIEW_WRONG_CUSTOMER_MESSAGE,
+  REVIEW_WRONG_PROVIDER_MESSAGE,
+  isPersistedReviewValid,
+  normalizeReviewRecord,
+  sanitizeStoredReviews,
+  validateReviewSubmission,
+} from "./review-guard";
 
 export function simulateDelay(ms = 600): Promise<void> {
   if (DEMO_MODE) return Promise.resolve();
@@ -27,7 +47,7 @@ export function recalculateProviderRating(
   const stats = computeProviderRatingStats(reviews, providerId);
   return providers.map((p) => {
     if (p.id !== providerId) return p;
-    if (!stats) return p;
+    if (!stats) return { ...p, ratingAvg: 0, reviewCount: 0 };
     return {
       ...p,
       ratingAvg: stats.ratingAvg,
@@ -382,11 +402,6 @@ export function removeReviewRecord(db: MockDatabase, reviewId: string): MockData
   return { ...db, reviews, providers };
 }
 
-export const REVIEW_ALREADY_SUBMITTED_MESSAGE = "You have already reviewed this job";
-
-export const REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE =
-  "Review available after job completion";
-
 export function findReviewForBooking(
   db: MockDatabase,
   bookingId: string
@@ -407,29 +422,7 @@ export function validateReview(
     rating?: number;
   }
 ): string | undefined {
-  if (!input.bookingId) {
-    return "A completed booking is required to leave a review.";
-  }
-  const booking = db.bookings.find((b) => b.id === input.bookingId);
-  if (!booking) return "Booking not found.";
-  if (booking.customerId !== input.customerId) {
-    return "You can only review jobs you booked.";
-  }
-  if (input.providerId && booking.providerId !== input.providerId) {
-    return "This review does not match the provider for this booking.";
-  }
-  if (booking.status !== "completed") {
-    return REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE;
-  }
-  if (findReviewForBooking(db, input.bookingId)) {
-    return REVIEW_ALREADY_SUBMITTED_MESSAGE;
-  }
-  if (input.rating != null) {
-    if (!Number.isFinite(input.rating) || input.rating < 1 || input.rating > 5) {
-      return "Please select a rating between 1 and 5.";
-    }
-  }
-  return undefined;
+  return validateReviewSubmission(db, input);
 }
 
 /** Customer may leave a review for this booking (completed, owned, not yet reviewed). */
@@ -472,13 +465,25 @@ export function addReviewRecord(
   },
   reviewId: string
 ): AddReviewRecordResult {
-  const validationError = validateReview(db, {
+  const validationError = validateReviewSubmission(db, {
     customerId: input.customerId,
     bookingId: input.bookingId,
     providerId: input.providerId,
     rating: input.rating,
   });
   if (validationError) return { db, error: validationError };
+
+  if (findReviewForBooking(db, input.bookingId)) {
+    return { db, error: REVIEW_ALREADY_SUBMITTED_MESSAGE };
+  }
+
+  const booking = db.bookings.find((b) => b.id === input.bookingId);
+  if (!booking || booking.status !== "completed") {
+    return { db, error: REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE };
+  }
+  if (booking.customerId !== input.customerId) {
+    return { db, error: "You can only review jobs you booked." };
+  }
 
   const customer = db.users.find((u) => u.id === input.customerId);
   if (!customer) return { db, error: "Customer not found." };
@@ -490,7 +495,7 @@ export function addReviewRecord(
     customerName: customer.name,
     providerId: input.providerId,
     bookingId: input.bookingId,
-    rating: input.rating,
+    rating: Math.round(input.rating),
     comment: input.comment.trim(),
     createdAt: timestamp,
   };
@@ -849,9 +854,8 @@ export function scrubDatabaseIntegrity(db: MockDatabase): MockDatabase {
     (b) => userIds.has(b.customerId) && providerIds.has(b.providerId)
   );
   const bookingIds = new Set(bookings.map((b) => b.id));
-  const reviews = (db.reviews ?? []).filter(
-    (r) => userIds.has(r.customerId) && providerIds.has(r.providerId)
-  );
+  const base = { ...db, users, providers, bookings };
+  const reviews = sanitizeStoredReviews(base, db.reviews ?? []);
   const directMessages = (db.directMessages ?? []).filter(
     (m) => userIds.has(m.senderId) && userIds.has(m.receiverId)
   );
@@ -861,10 +865,19 @@ export function scrubDatabaseIntegrity(db: MockDatabase): MockDatabase {
     (r) => userIds.has(r.reporterId) && providerIds.has(r.providerId)
   );
 
+  let nextProviders = providers;
+  const touchedProviderIds = new Set([
+    ...reviews.map((r) => r.providerId),
+    ...providers.map((p) => p.id),
+  ]);
+  for (const providerId of touchedProviderIds) {
+    nextProviders = recalculateProviderRating(providerId, nextProviders, reviews);
+  }
+
   return {
     ...db,
     users,
-    providers,
+    providers: nextProviders,
     bookings,
     reviews,
     directMessages,

@@ -13,7 +13,7 @@ import {
 import { getDemoProviderById } from "@/lib/demo/providers";
 import { getProviderUser } from "@/lib/providers";
 import { estimateBookingCost } from "@/lib/pricing";
-import { REVIEW_ALREADY_SUBMITTED_MESSAGE, REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE } from "@/lib/mock/operations";
+import { REVIEW_ALREADY_SUBMITTED_MESSAGE, REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE, REVIEW_WRONG_CUSTOMER_MESSAGE } from "@/lib/mock/operations";
 
 export async function getCurrentUser() {
   const appUser = await getAppUser();
@@ -153,8 +153,10 @@ export async function createReview(formData: FormData) {
   if (!appUser) return { error: "You must be logged in." };
 
   if (appUser.source === "demo") {
-    revalidatePath("/customer/dashboard");
-    return { success: true };
+    return {
+      error:
+        "Demo reviews must be submitted from your dashboard in the active session.",
+    };
   }
 
   const supabase = await createClient();
@@ -184,7 +186,7 @@ export async function createReview(formData: FormData) {
   if (bookingError) return { error: bookingError.message };
   if (!booking) return { error: "Booking not found." };
   if (booking.customer_id !== user.id) {
-    return { error: "You can only review jobs you booked." };
+    return { error: REVIEW_WRONG_CUSTOMER_MESSAGE };
   }
   if (booking.provider_id !== providerId) {
     return { error: "This review does not match the provider for this booking." };
