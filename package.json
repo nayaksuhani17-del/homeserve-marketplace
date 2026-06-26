@@ -6,7 +6,9 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:reviews": "tsx scripts/verify-review-system.ts",
+    "verify:demo": "tsx scripts/verify-demo-flows.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
