@@ -28,6 +28,20 @@ type HireModalProps = {
 
 type Step = "form" | "slots" | "processing" | "waiting" | "done";
 
+function HiringSummary({
+  providerName,
+  service,
+}: {
+  providerName: string;
+  service: string;
+}) {
+  return (
+    <p className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-900">
+      You&apos;re hiring <strong>{providerName}</strong> for <strong>{service}</strong>
+    </p>
+  );
+}
+
 export function HireModal(props: HireModalProps) {
   if (!props.open) return null;
   const sessionKey = [
@@ -285,6 +299,7 @@ function HireModalSession({
         </div>
       ) : step === "slots" ? (
         <div className="space-y-4">
+          <HiringSummary providerName={providerName} service={service} />
           <p className="text-sm text-gray-600">
             Available slots for <strong>{date}</strong>
           </p>
@@ -331,6 +346,7 @@ function HireModalSession({
         </div>
       ) : (
         <form onSubmit={goToSlots} className="space-y-4">
+          <HiringSummary providerName={providerName} service={service} />
           <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
             ⚡ {bestTime}
           </div>

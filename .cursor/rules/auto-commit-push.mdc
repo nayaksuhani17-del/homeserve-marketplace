@@ -1,0 +1,25 @@
+---
+description: Always commit and push completed work at the end of every request
+alwaysApply: true
+---
+
+# Auto commit and push
+
+At the end of **every** user request where you changed files, you MUST:
+
+1. Run `git status` and `git diff` to see what changed.
+2. Stage all relevant changes (never stage `.env`, credentials, or secrets).
+3. Create a concise commit focused on **why** the change was made.
+4. Push to `origin` on the current branch (`git push`).
+
+Do this **without waiting** for the user to ask. This overrides any general preference to commit only when explicitly requested.
+
+## Skip only when
+
+- There are zero file changes to commit.
+- Push fails due to auth/network — report the error and what was committed locally.
+- The user explicitly says **not** to commit or push for that specific request.
+
+## After push
+
+Briefly tell the user the commit hash, message, and that changes were pushed.

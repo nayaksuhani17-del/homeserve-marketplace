@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useMockApp } from "@/context/MockAppContext";
+import { ProfileNameLink } from "@/components/ProfileNameLink";
 import { CHAT_QUICK_PROMPTS, providerHasAutoReply } from "@/lib/mock/simulation";
 import type { StoredMessage } from "@/lib/messages/store";
 
@@ -11,6 +12,8 @@ type ChatViewProps = {
   onClose?: () => void;
   /** embedded = card/modal, page = full dashboard panel, panel = messaging hub right pane */
   layout?: "embedded" | "page" | "panel";
+  /** Return path for profile links (e.g. messages thread URL). */
+  profileReturnTo?: string;
 };
 
 export function ChatView({
@@ -18,6 +21,7 @@ export function ChatView({
   otherUserName,
   onClose,
   layout = "embedded",
+  profileReturnTo,
 }: ChatViewProps) {
   const { user, db, getDirectMessages, sendDirectMessage } = useMockApp();
   const [text, setText] = useState("");
@@ -110,7 +114,12 @@ export function ChatView({
     <div className={shellClass}>
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-gray-900">{otherUserName}</p>
+          <ProfileNameLink
+            userId={otherUserId}
+            name={otherUserName}
+            returnTo={profileReturnTo}
+            className="truncate text-sm font-semibold"
+          />
           {!isPanel && (
             <p className="text-xs text-gray-500">Direct messages</p>
           )}
@@ -147,7 +156,12 @@ export function ChatView({
                 }`}
               >
                 {!isMine && (
-                  <p className="mb-0.5 text-[10px] font-medium opacity-70">{senderLabel}</p>
+                  <ProfileNameLink
+                    userId={msg.sender_id}
+                    name={senderLabel}
+                    returnTo={profileReturnTo}
+                    className="mb-0.5 block text-[10px] opacity-70"
+                  />
                 )}
                 <p>{msg.text}</p>
                 <p
@@ -163,7 +177,15 @@ export function ChatView({
           );
         })}
         {typing && autoReplyOn && (
-          <p className="text-xs text-gray-400 animate-pulse">{otherUserName} is typing…</p>
+          <p className="animate-pulse text-xs text-gray-400">
+            <ProfileNameLink
+              userId={otherUserId}
+              name={otherUserName}
+              returnTo={profileReturnTo}
+              className="text-xs font-normal"
+            />{" "}
+            is typing…
+          </p>
         )}
         <div ref={bottomRef} />
       </div>

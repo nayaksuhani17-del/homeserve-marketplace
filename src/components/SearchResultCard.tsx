@@ -49,9 +49,23 @@ export function SearchResultCard({
 }: SearchResultCardProps) {
   return (
     <div
+      role={onViewProfile ? "button" : undefined}
+      tabIndex={onViewProfile ? 0 : undefined}
+      onClick={(e) => {
+        if (!onViewProfile) return;
+        if ((e.target as HTMLElement).closest("button, a")) return;
+        onViewProfile();
+      }}
+      onKeyDown={(e) => {
+        if (!onViewProfile) return;
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if ((e.target as HTMLElement).closest("button, a")) return;
+        e.preventDefault();
+        onViewProfile();
+      }}
       className={`flex flex-col gap-2 rounded-xl border border-gray-100 bg-white transition hover:border-green-200 hover:bg-green-50/40 ${
-        compact ? "p-3" : "p-4"
-      }`}
+        onViewProfile ? "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-green-500" : ""
+      } ${compact ? "p-3" : "p-4"}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
@@ -90,15 +104,36 @@ export function SearchResultCard({
 
       <div className="flex flex-wrap gap-2">
         {role === "provider" && onViewProfile && (
-          <button type="button" onClick={onViewProfile} className="btn-secondary px-3 py-1 text-xs">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewProfile();
+            }}
+            className="btn-secondary px-3 py-1 text-xs"
+          >
             View Profile
           </button>
         )}
-        <button type="button" onClick={onMessage} className="btn-secondary px-3 py-1 text-xs">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMessage();
+          }}
+          className="btn-secondary px-3 py-1 text-xs"
+        >
           Message
         </button>
         {role === "provider" && approved && onHire && (
-          <button type="button" onClick={onHire} className="btn-primary px-3 py-1 text-xs">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onHire();
+            }}
+            className="btn-primary px-3 py-1 text-xs"
+          >
             Hire
           </button>
         )}

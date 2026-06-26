@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ProviderProfileClient } from "@/components/ProviderProfileClient";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
+import { resolveProfileBackLink } from "@/lib/profile-links";
 
 export function ProviderProfilePageClient({ providerId }: { providerId: string }) {
   const { getProvider, getProviderReviews, user, ready, trackProviderView } = useMockApp();
@@ -15,11 +16,9 @@ export function ProviderProfilePageClient({ providerId }: { providerId: string }
     if (providerId && ready) trackProviderView(providerId);
   }, [providerId, ready, trackProviderView]);
 
-  const autoOpenHire = Boolean(
-    user &&
-      (searchParams.get("hire") === "1" || searchParams.get("rebook") === "1")
-  );
+  const autoOpenHire = Boolean(user && searchParams.get("rebook") === "1");
   const quickRebook = searchParams.get("quick") === "1";
+  const back = resolveProfileBackLink(searchParams.get("from"));
 
   if (!ready) {
     return (
@@ -35,8 +34,8 @@ export function ProviderProfilePageClient({ providerId }: { providerId: string }
     return (
       <div className="mx-auto max-w-3xl px-4 py-20 text-center">
         <h1 className="text-2xl font-bold text-gray-900">Provider not found</h1>
-        <Link href="/customer/dashboard" className="link-brand mt-4 inline-block">
-          ← Back to search
+        <Link href={back.href} className="link-brand mt-4 inline-block">
+          {back.label}
         </Link>
       </div>
     );
@@ -47,8 +46,8 @@ export function ProviderProfilePageClient({ providerId }: { providerId: string }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <Link href="/customer/dashboard" className="link-brand text-sm">
-        ← Back to providers
+      <Link href={back.href} className="link-brand text-sm">
+        {back.label}
       </Link>
       <div className="mt-6">
         <ProviderProfileClient

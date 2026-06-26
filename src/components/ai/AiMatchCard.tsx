@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { StarRating } from "@/components/StarRating";
 import { RecommendationBadge } from "@/components/RecommendationBadge";
 import { formatProviderPriceAmount } from "@/lib/pricing";
@@ -13,6 +14,7 @@ type AiMatchCardProps = {
   rank: number;
   recommendationLabel?: RecommendationLabel;
   selectedService?: string;
+  onHire?: (provider: MockProvider) => void;
 };
 
 export function AiMatchCard({
@@ -20,14 +22,35 @@ export function AiMatchCard({
   rank,
   recommendationLabel,
   selectedService,
+  onHire,
 }: AiMatchCardProps) {
+  const router = useRouter();
   const service = selectedService || provider.services[0] || "General";
+  const profileHref = `/provider/${provider.id}?service=${encodeURIComponent(service)}`;
   const price = formatProviderPriceAmount(provider.pricingType, provider.price);
   const responseLabel = formatResponseTime(provider.responseTimeMins);
   const showFast = provider.tags?.includes("Fast Responder") || provider.availableToday;
 
+  function openProfile() {
+    router.push(profileHref);
+  }
+
   return (
-    <article className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-green-200 hover:shadow-lg hover:shadow-green-100/50">
+    <article
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button, a")) return;
+        openProfile();
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if ((e.target as HTMLElement).closest("button, a")) return;
+        e.preventDefault();
+        openProfile();
+      }}
+      role="link"
+      tabIndex={0}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-sm outline-none transition-all duration-300 hover:-translate-y-0.5 hover:border-green-200 hover:shadow-lg hover:shadow-green-100/50 focus-visible:ring-2 focus-visible:ring-green-500"
+    >
       <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-green-600 via-emerald-500 to-green-400 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start gap-3">
@@ -92,12 +115,35 @@ export function AiMatchCard({
             </p>
             <p className="text-[11px] text-gray-500">{responseLabel}</p>
           </div>
-          <Link
-            href={`/provider/${provider.id}?service=${encodeURIComponent(service)}&hire=1`}
-            className="rounded-xl bg-green-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-green-700 hover:shadow-md active:scale-[0.98]"
-          >
-            View &amp; Book
-          </Link>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <Link
+              href={profileHref}
+              onClick={(e) => e.stopPropagation()}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50"
+            >
+              View Profile
+            </Link>
+            {onHire ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onHire(provider);
+                }}
+                className="rounded-xl bg-green-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-green-700 hover:shadow-md active:scale-[0.98]"
+              >
+                Hire
+              </button>
+            ) : (
+              <Link
+                href={profileHref}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-xl bg-green-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-green-700 hover:shadow-md active:scale-[0.98]"
+              >
+                Hire
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </article>

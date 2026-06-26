@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { AiMatchCard } from "@/components/ai/AiMatchCard";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -14,6 +15,11 @@ import {
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
 import type { MockProvider } from "@/lib/mock/types";
+
+const HireModal = dynamic(
+  () => import("@/components/HireModal").then((m) => m.HireModal),
+  { ssr: false }
+);
 
 const EXAMPLES = [
   "My sink is leaking and I need help",
@@ -90,6 +96,7 @@ export function AiHelpSearch() {
   const [dashboardHref, setDashboardHref] = useState("/customer/dashboard");
   const [detectedService, setDetectedService] = useState<string | undefined>();
   const [isFallback, setIsFallback] = useState(false);
+  const [hireTarget, setHireTarget] = useState<MockProvider | null>(null);
 
   useEffect(() => {
     if (!loading) {
@@ -332,6 +339,7 @@ export function AiHelpSearch() {
                       rank={i + 1}
                       recommendationLabel={labels.get(p.id)}
                       selectedService={detectedService}
+                      onHire={setHireTarget}
                     />
                   ))}
                 </div>
@@ -354,6 +362,21 @@ export function AiHelpSearch() {
             )}
           </div>
         </div>
+      )}
+
+      {hireTarget && (
+        <HireModal
+          open
+          onClose={() => setHireTarget(null)}
+          providerId={hireTarget.id}
+          providerName={hireTarget.name}
+          pricingType={hireTarget.pricingType}
+          price={hireTarget.price}
+          basePrice={hireTarget.basePrice}
+          hourlyRate={hireTarget.hourlyRate}
+          availableToday={hireTarget.availableToday}
+          defaultService={detectedService || hireTarget.services[0] || "General"}
+        />
       )}
     </section>
   );

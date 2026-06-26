@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
 import { ChatView } from "@/components/chat/ChatView";
+import { ProfileNameLink } from "@/components/ProfileNameLink";
 import {
   customerMessagesHref,
   providerMessagesHref,
@@ -113,25 +114,29 @@ export function MessagingDashboardClient({ mode }: MessagingDashboardClientProps
               {conversations.map((c) => {
                 const active = selectedId === c.otherUserId;
                 return (
-                  <li key={c.otherUserId}>
+                  <li
+                    key={c.otherUserId}
+                    className={`px-4 py-3 transition hover:bg-white/80 ${
+                      active ? "bg-white shadow-sm ring-1 ring-inset ring-gray-200" : ""
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <ProfileNameLink
+                        userId={c.otherUserId}
+                        name={c.otherUserName}
+                        returnTo={hrefForChat(c.otherUserId)}
+                        className="truncate text-sm"
+                      />
+                      <span className="shrink-0 text-[10px] text-gray-400">
+                        {formatPreviewTime(c.lastTimestamp)}
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => selectConversation(c.otherUserId)}
-                      className={`w-full px-4 py-3 text-left transition hover:bg-white/80 ${
-                        active ? "bg-white shadow-sm ring-1 ring-inset ring-gray-200" : ""
-                      }`}
+                      className="mt-0.5 w-full truncate text-left text-xs text-gray-500 transition hover:text-gray-800"
                     >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="truncate text-sm font-medium text-gray-900">
-                          {c.otherUserName}
-                        </p>
-                        <span className="shrink-0 text-[10px] text-gray-400">
-                          {formatPreviewTime(c.lastTimestamp)}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-gray-500">
-                        {c.lastMessage}
-                      </p>
+                      {c.lastMessage}
                     </button>
                   </li>
                 );
@@ -148,6 +153,7 @@ export function MessagingDashboardClient({ mode }: MessagingDashboardClientProps
             otherUserId={selectedId}
             otherUserName={selectedName}
             layout="panel"
+            profileReturnTo={hrefForChat(selectedId)}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">

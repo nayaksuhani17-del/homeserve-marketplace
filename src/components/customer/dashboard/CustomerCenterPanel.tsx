@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { HireModal } from "@/components/HireModal";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ReviewForm } from "@/components/ReviewForm";
@@ -33,6 +34,10 @@ type HireTarget = {
   availableToday: boolean;
   defaultService: string;
 };
+
+function providerProfileHref(providerId: string, service: string): string {
+  return `/provider/${providerId}?service=${encodeURIComponent(service)}`;
+}
 
 type CustomerCenterPanelProps = {
   view: CenterView;
@@ -151,6 +156,8 @@ function ProviderResults({
   onBack: () => void;
   onHire: (provider: MockProvider) => void;
 }) {
+  const router = useRouter();
+
   return (
     <div className="flex flex-1 flex-col px-4 py-8 sm:px-10">
       <div className="mx-auto w-full max-w-2xl">
@@ -173,41 +180,70 @@ function ProviderResults({
           </div>
         ) : (
           <ul className="mt-8 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white">
-            {providers.map((p) => (
-              <li
-                key={p.id}
-                className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-900">{p.name}</p>
-                  <p className="mt-0.5 text-sm text-gray-500">
-                    {p.services.slice(0, 2).join(" · ")}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                    <span className="font-medium text-gray-800">
-                      {formatProviderPrice(p.pricingType, p.price)}
-                    </span>
-                    <StarRating rating={p.ratingAvg} size="sm" />
+            {providers.map((p) => {
+              const service = pickService(p, query);
+              const profileHref = providerProfileHref(p.id, service);
+
+              return (
+                <li
+                  key={p.id}
+                  className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => router.push(profileHref)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(profileHref);
+                      }
+                    }}
+                    className="min-w-0 flex-1 cursor-pointer rounded-lg outline-none transition hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-green-500"
+                  >
+                    <p className="font-semibold text-gray-900">{p.name}</p>
+                    <p className="mt-0.5 text-sm text-gray-500">
+                      {p.services.slice(0, 2).join(" · ")}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                      <span className="font-medium text-gray-800">
+                        {formatProviderPrice(p.pricingType, p.price)}
+                      </span>
+                      <StarRating rating={p.ratingAvg} size="sm" />
+                      {p.reviewCount > 0 && (
+                        <span className="text-xs text-gray-500">
+                          {p.reviewCount} reviews
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                {canBook && isLoggedIn ? (
-                  <button
-                    type="button"
-                    onClick={() => onHire(p)}
-                    className="shrink-0 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
-                  >
-                    Hire
-                  </button>
-                ) : (
-                  <Link
-                    href={`/login?redirect=${encodeURIComponent("/customer/dashboard")}`}
-                    className="shrink-0 rounded-lg border border-gray-300 px-5 py-2.5 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                  >
-                    Log in to hire
-                  </Link>
-                )}
-              </li>
-            ))}
+                  {canBook && isLoggedIn ? (
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Link
+                        href={profileHref}
+                        className="rounded-lg border border-gray-300 px-4 py-2.5 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                      >
+                        View Profile
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => onHire(p)}
+                        className="rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
+                      >
+                        Hire
+                      </button>
+                    </div>
+                  ) : (
+                    <Link
+                      href={`/login?redirect=${encodeURIComponent(profileHref)}`}
+                      className="shrink-0 rounded-lg border border-gray-300 px-5 py-2.5 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    >
+                      Log in to hire
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

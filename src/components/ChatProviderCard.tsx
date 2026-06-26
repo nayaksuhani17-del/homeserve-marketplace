@@ -16,7 +16,7 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
 
   return (
     <Link
-      href={`/provider/${provider.id}?service=${encodeURIComponent(service)}&hire=1`}
+      href={`/provider/${provider.id}?service=${encodeURIComponent(service)}`}
       className="card card-hover block bg-white p-4"
     >
       <div className="flex gap-3">

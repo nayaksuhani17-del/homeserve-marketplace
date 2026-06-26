@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { StarRating } from "./StarRating";
 import { RecommendationBadge } from "./RecommendationBadge";
@@ -50,6 +51,7 @@ export function ProviderCard({
   recommendationLabel,
   isBestMatch,
 }: ProviderCardProps) {
+  const router = useRouter();
   const { trackProviderClick, user: sessionUser, db } = useMockApp();
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
@@ -65,11 +67,29 @@ export function ProviderCard({
     Number(provider.price)
   );
   const serviceIcon = getServiceMeta(provider.services[0] ?? "").icon;
+  const profileHref = `/provider/${provider.id}?service=${encodeURIComponent(defaultService)}`;
+
+  function openProfile() {
+    trackProviderClick(provider.id);
+    router.push(profileHref);
+  }
 
   return (
     <>
       <article
-        className={`card card-hover group relative flex flex-col overflow-hidden p-0 ${
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("button, a")) return;
+          openProfile();
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          if ((e.target as HTMLElement).closest("button, a")) return;
+          e.preventDefault();
+          openProfile();
+        }}
+        role="link"
+        tabIndex={0}
+        className={`card card-hover group relative flex cursor-pointer flex-col overflow-hidden p-0 outline-none focus-visible:ring-2 focus-visible:ring-green-500 ${
           isBestMatch
             ? "ring-2 ring-green-500 ring-offset-2"
             : isTopRated
@@ -167,11 +187,14 @@ export function ProviderCard({
             </div>
             <div className="flex flex-wrap justify-end gap-1.5">
               <Link
-                href={`/provider/${provider.id}`}
-                onClick={() => trackProviderClick(provider.id)}
+                href={profileHref}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  trackProviderClick(provider.id);
+                }}
                 className="btn-secondary px-3 py-1.5 text-xs"
               >
-                View
+                View Profile
               </Link>
               {sessionUser &&
                 provider.user_id &&
@@ -179,7 +202,10 @@ export function ProviderCard({
                 db?.users.some((u) => u.id === provider.user_id) && (
                 <button
                   type="button"
-                  onClick={() => setMessageOpen(true)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMessageOpen(true);
+                  }}
                   className="btn-secondary px-3 py-1.5 text-xs"
                 >
                   Message
@@ -189,14 +215,20 @@ export function ProviderCard({
                 <>
                   <button
                     type="button"
-                    onClick={() => setQuoteOpen(true)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQuoteOpen(true);
+                    }}
                     className="btn-ghost px-2 py-1.5 text-xs ring-1 ring-gray-200"
                   >
                     Quote
                   </button>
                   <button
                     type="button"
-                    onClick={() => setHireOpen(true)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHireOpen(true);
+                    }}
                     className="btn-primary px-3 py-1.5 text-xs"
                   >
                     Hire

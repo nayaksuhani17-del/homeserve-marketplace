@@ -108,7 +108,7 @@ export function ProviderProfileClient({
   async function handleSwitchToCustomerMode() {
     const result = await switchMode("customer");
     if (result.redirect) {
-      router.push(`${result.redirect}?service=${encodeURIComponent(defaultService)}&hire=1`);
+      router.push(`${result.redirect}?service=${encodeURIComponent(defaultService)}`);
       router.refresh();
     }
   }
@@ -312,7 +312,7 @@ export function ProviderProfileClient({
                 ) : (
                   <Link
                     href={`/login?redirect=${encodeURIComponent(
-                      `/provider/${provider.id}?service=${encodeURIComponent(defaultService)}&hire=1`
+                      `/provider/${provider.id}?service=${encodeURIComponent(defaultService)}`
                     )}`}
                     className="btn-primary px-8 py-3 text-base"
                   >
