@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderCard } from "@/components/ProviderCard";
 import { ProviderMarketplace } from "@/components/ProviderMarketplace";
 import { CustomerBookingsPanel } from "@/components/customer/CustomerBookingsPanel";
@@ -12,6 +12,11 @@ import { PageHeader, QuickNav, Section } from "@/components/ui/Section";
 import { useMockApp } from "@/context/MockAppContext";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { assignRecommendationLabels } from "@/lib/recommendations";
+import {
+  hasCustomerRole,
+  hasProviderRole,
+  isAdmin,
+} from "@/lib/user-capabilities";
 
 type DiscoverTab = "recommended" | "popular";
 
@@ -30,11 +35,14 @@ export function CustomerDashboardClient() {
     ready,
     db,
     dbRevision,
+    activeMode,
+    enableProviderRole,
     getStats,
     filterProviders,
     getRecentlyViewedProviders,
     getSavedProviders,
   } = useMockApp();
+  const router = useRouter();
   const [reportTarget, setReportTarget] = useState<{
     providerId: string;
     providerName: string;
@@ -42,12 +50,26 @@ export function CustomerDashboardClient() {
   } | null>(null);
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>("recommended");
 
-  const isCustomer = user?.role === "customer";
+  const [becomingProvider, setBecomingProvider] = useState(false);
+
+  const isCustomerMode =
+    !!user && hasCustomerRole(user) && activeMode === "customer";
+  const canBook = isCustomerMode;
+  const showBecomeProvider =
+    !!user && hasCustomerRole(user) && !hasProviderRole(user) && !isAdmin(user);
+
+  useEffect(() => {
+    if (!ready || !user || isAdmin(user)) return;
+    if (hasProviderRole(user) && activeMode === "provider") {
+      router.replace("/provider/dashboard");
+    }
+  }, [ready, user, activeMode, router]);
+
   const stats = getStats();
   const bookings = useMemo(() => {
-    if (!isCustomer || !user || !db) return [];
+    if (!isCustomerMode || !user || !db) return [];
     return db.bookings.filter((b) => b.customerId === user.id);
-  }, [isCustomer, user, db, dbRevision]);
+  }, [isCustomerMode, user, db, dbRevision]);
   const verifiedFeed = useMemo(
     () => filterProviders({ status: "verified", sort: "rating" }),
     [filterProviders]
@@ -63,13 +85,13 @@ export function CustomerDashboardClient() {
   const recent = user ? getRecentlyViewedProviders() : [];
   const savedCount = user ? getSavedProviders().length : 0;
   const greeting = user
-    ? user.role === "customer"
+    ? isCustomerMode
       ? `Welcome back, ${user.name.split(" ")[0]}`
       : `Browse services, ${user.name.split(" ")[0]}`
     : "Find your perfect pro";
 
   useEffect(() => {
-    if (!ready || !isCustomer) return;
+    if (!ready || !isCustomerMode) return;
     if (bookingsTabParam || window.location.hash === "#your-bookings") {
       const timer = window.setTimeout(() => {
         document
@@ -78,7 +100,7 @@ export function CustomerDashboardClient() {
       }, 120);
       return () => window.clearTimeout(timer);
     }
-  }, [ready, isCustomer, bookingsTabParam, dbRevision]);
+  }, [ready, isCustomerMode, bookingsTabParam, dbRevision]);
 
   const recLabels = assignRecommendationLabels(
     recommended.map(mockProviderToLegacy)
@@ -94,7 +116,7 @@ export function CustomerDashboardClient() {
   const hasDiscover = recommended.length > 0 || popular.length > 0;
 
   const quickLinks = [
-    ...(isCustomer && user ? [{ href: "#your-bookings", label: "Bookings" }] : []),
+    ...(isCustomerMode && user ? [{ href: "#your-bookings", label: "Bookings" }] : []),
     { href: "#marketplace", label: "Browse" },
     ...(hasDiscover ? [{ href: "#discover", label: "Suggestions" }] : []),
   ];
@@ -108,7 +130,15 @@ export function CustomerDashboardClient() {
     );
   }
 
-  const canBook = isCustomer;
+  async function handleBecomeProvider() {
+    setBecomingProvider(true);
+    const result = await enableProviderRole();
+    setBecomingProvider(false);
+    if (result.redirect) {
+      router.push(result.redirect);
+      router.refresh();
+    }
+  }
 
   return (
     <div className="page-shell page-enter space-y-10">
@@ -118,7 +148,17 @@ export function CustomerDashboardClient() {
         description={`${stats.verifiedProviders} verified pros · ${stats.jobsCompleted.toLocaleString()}+ jobs completed`}
         actions={
           <>
-            {user && (
+            {showBecomeProvider && (
+              <button
+                type="button"
+                onClick={handleBecomeProvider}
+                disabled={becomingProvider}
+                className="btn-secondary"
+              >
+                {becomingProvider ? "Setting up…" : "Become a Provider"}
+              </button>
+            )}
+            {isCustomerMode && user && (
               <Link href="/customer/saved" className="btn-secondary">
                 Saved ({savedCount})
               </Link>
@@ -134,15 +174,7 @@ export function CustomerDashboardClient() {
 
       <QuickNav links={quickLinks} />
 
-      {user && !canBook && (
-        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          You&apos;re browsing as a {user.role}. Use{" "}
-          <strong>Switch Account</strong> in the header to book as a customer or open your{" "}
-          {user.role === "provider" ? "provider" : "admin"} dashboard.
-        </div>
-      )}
-
-      {isCustomer && user && (
+      {isCustomerMode && user && (
         <div className="space-y-4">
           <BookingNotificationBanner />
           <CustomerBookingsPanel

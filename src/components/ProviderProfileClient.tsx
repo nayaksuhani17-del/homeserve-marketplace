@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { StarRating } from "./StarRating";
@@ -17,6 +18,7 @@ import { ReportProviderModal } from "./ReportProviderModal";
 import { DirectMessageModal } from "./DirectMessagePanel";
 import { useMockApp } from "@/context/MockAppContext";
 import { computeProviderTags } from "@/lib/providers";
+import { hasCustomerRole } from "@/lib/user-capabilities";
 import { formatProviderPrice, PRICING_TYPE_LABELS } from "@/lib/pricing";
 import type { PricingType } from "@/lib/pricing";
 import type { ServicePackage } from "@/lib/quotes";
@@ -67,6 +69,7 @@ export function ProviderProfileClient({
   autoOpenHire,
   quickRebook = false,
 }: ProviderProfileClientProps) {
+  const router = useRouter();
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -75,6 +78,8 @@ export function ProviderProfileClient({
   const {
     user: sessionUser,
     db,
+    activeMode,
+    switchMode,
     getBookingsForCustomer,
     getRebookPrefill,
     getAvailabilityHint,
@@ -96,8 +101,20 @@ export function ProviderProfileClient({
   const liveProvider = db?.providers.find((p) => p.id === provider.id);
   const liveReviews = db?.reviews.filter((r) => r.providerId === provider.id) ?? reviews;
 
-  const reviewableBooking =
-    sessionUser?.role === "customer"
+  const canBookAsCustomer =
+    !!sessionUser &&
+    hasCustomerRole(sessionUser) &&
+    activeMode === "customer";
+
+  async function handleSwitchToCustomerMode() {
+    const result = await switchMode("customer");
+    if (result.redirect) {
+      router.push(`${result.redirect}?service=${encodeURIComponent(defaultService)}&hire=1`);
+      router.refresh();
+    }
+  }
+
+  const reviewableBooking = canBookAsCustomer
       ? getBookingsForCustomer(sessionUser.id).find(
           (b) =>
             b.providerId === provider.id &&
@@ -278,13 +295,21 @@ export function ProviderProfileClient({
                 >
                   Get Instant Quote
                 </button>
-                {isLoggedIn ? (
+                {canBookAsCustomer ? (
                   <button
                     type="button"
                     onClick={() => setHireOpen(true)}
                     className="btn-primary px-8 py-3 text-base"
                   >
                     Hire Now
+                  </button>
+                ) : isLoggedIn ? (
+                  <button
+                    type="button"
+                    onClick={handleSwitchToCustomerMode}
+                    className="btn-primary px-8 py-3 text-base"
+                  >
+                    Switch to Customer mode
                   </button>
                 ) : (
                   <Link
@@ -298,7 +323,7 @@ export function ProviderProfileClient({
                 )}
               </div>
               <p className="mt-3 text-sm text-green-700">{availabilityHint}</p>
-              {isLoggedIn && sessionUser?.role === "customer" && (
+              {isLoggedIn && canBookAsCustomer && (
                 <button
                   type="button"
                   onClick={() => setReportOpen(true)}

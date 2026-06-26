@@ -5,25 +5,25 @@ import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
+import { ModeBadge, ModeSwitcher } from "@/components/ModeSwitcher";
+import { hasCustomerRole, hasProviderRole, isAdmin } from "@/lib/user-capabilities";
 
 export function ClientNavbar() {
-  const { user, logout, ready } = useMockApp();
+  const { user, logout, ready, activeMode } = useMockApp();
   const router = useRouter();
-
-  const dashboardHref =
-    user?.role === "admin"
-      ? "/admin"
-      : user?.role === "provider"
-        ? "/provider/dashboard"
-        : user?.role === "customer"
-          ? "/customer/dashboard"
-          : null;
 
   function handleSignOut() {
     logout();
     router.push("/");
     router.refresh();
   }
+
+  const showBrowse =
+    !user || isAdmin(user) || activeMode === "customer" || activeMode === null;
+  const showSaved = user && hasCustomerRole(user) && activeMode === "customer";
+  const showProviderDash =
+    user && hasProviderRole(user) && activeMode === "provider";
+  const showAdmin = user && isAdmin(user);
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
@@ -32,13 +32,15 @@ export function ClientNavbar() {
           HomeServe
         </Link>
         <nav className="flex items-center gap-1 text-sm font-medium text-gray-600 sm:gap-2">
-          <Link
-            href="/customer/dashboard"
-            className="rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700"
-          >
-            Browse
-          </Link>
-          {user?.role === "customer" && (
+          {showBrowse && (
+            <Link
+              href="/customer/dashboard"
+              className="rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700"
+            >
+              Browse
+            </Link>
+          )}
+          {showSaved && (
             <Link
               href="/customer/saved"
               className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 sm:inline"
@@ -46,15 +48,29 @@ export function ClientNavbar() {
               Saved
             </Link>
           )}
-          {dashboardHref && user?.role !== "customer" && (
+          {showProviderDash && (
             <Link
-              href={dashboardHref}
+              href="/provider/dashboard"
               className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 sm:inline"
             >
-              {user?.role === "admin" ? "Admin" : "Dashboard"}
+              Dashboard
             </Link>
           )}
-          <div className="ml-1 flex items-center gap-1 border-l border-gray-200 pl-2 sm:ml-2 sm:pl-3">
+          {showAdmin && (
+            <Link
+              href="/admin"
+              className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 sm:inline"
+            >
+              Admin
+            </Link>
+          )}
+          <div className="ml-1 flex items-center gap-1.5 border-l border-gray-200 pl-2 sm:ml-2 sm:pl-3">
+            {user && !isAdmin(user) && (
+              <>
+                <ModeBadge />
+                <ModeSwitcher />
+              </>
+            )}
             <AccountSwitcher />
             <NotificationBell />
             {ready && user ? (

@@ -75,7 +75,7 @@ export function needsNormalization(raw: MockDatabase): boolean {
       !Array.isArray(p.blockedSlots) ||
       typeof p.rejected !== "boolean"
   ) || !raw.reports?.length || hasDuplicateUserEmails(raw.users ?? []) ||
-    hasOrphanProviders(raw);
+    hasOrphanProviders(raw) || hasMissingRoleFlags(raw.users ?? []);
 }
 
 function hasOrphanProviders(raw: MockDatabase): boolean {
@@ -99,6 +99,37 @@ function dedupeUsers(users: MockUser[]): MockUser[] {
   return Array.from(byEmail.values());
 }
 
+function normalizeUser(user: MockUser): MockUser {
+  if (user.role === "admin") {
+    return { ...user, customerRole: false, providerRole: false };
+  }
+  if (typeof user.customerRole === "boolean" && typeof user.providerRole === "boolean") {
+    const role =
+      user.providerRole && !user.customerRole
+        ? "provider"
+        : user.customerRole
+          ? "customer"
+          : user.role;
+    return { ...user, role };
+  }
+  const customerRole = user.role === "customer";
+  const providerRole = user.role === "provider";
+  return {
+    ...user,
+    customerRole,
+    providerRole,
+    role: providerRole ? "provider" : "customer",
+  };
+}
+
+function hasMissingRoleFlags(users: MockUser[]): boolean {
+  return users.some(
+    (u) =>
+      u.role !== "admin" &&
+      (typeof u.customerRole !== "boolean" || typeof u.providerRole !== "boolean")
+  );
+}
+
 function hasDuplicateUserEmails(users: MockUser[]): boolean {
   const seen = new Set<string>();
   for (const user of users) {
@@ -110,7 +141,7 @@ function hasDuplicateUserEmails(users: MockUser[]): boolean {
 }
 
 export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
-  const users = dedupeUsers(raw.users ?? []);
+  const users = dedupeUsers(raw.users ?? []).map(normalizeUser);
   const normalized: MockDatabase = {
     version: MOCK_DB_VERSION,
     users,

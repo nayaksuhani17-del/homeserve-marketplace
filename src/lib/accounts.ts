@@ -1,4 +1,5 @@
 import type { MockUser } from "@/lib/mock/types";
+import { capabilitySummary as userCapabilitySummary } from "@/lib/user-capabilities";
 
 const DEMO_EMAILS = new Set([
   "sarah.mitchell@demo.com",
@@ -15,9 +16,14 @@ export type AccountSummary = {
   name: string;
   email: string;
   role: MockUser["role"];
+  capabilities: string;
   isDemo: boolean;
   isActive: boolean;
 };
+
+export function capabilitySummary(user: MockUser): string {
+  return userCapabilitySummary(user);
+}
 
 export function roleLabel(role: MockUser["role"]): string {
   if (role === "admin") return "Admin";

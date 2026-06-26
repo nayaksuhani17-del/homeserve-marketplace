@@ -20,6 +20,10 @@ export type MockUser = {
   email: string;
   password: string;
   role: MockRole;
+  /** Can browse, book, and review as a customer. */
+  customerRole: boolean;
+  /** Can manage jobs and earnings as a provider. */
+  providerRole: boolean;
   banned: boolean;
   avatarUrl?: string;
   createdAt: string;
@@ -146,8 +150,12 @@ export type MockDatabase = {
   reports: MockReport[];
 };
 
+export type AppMode = "customer" | "provider";
+
 export type MockSession = {
   userId: string;
+  /** Active hat when the account has customer and/or provider capabilities. */
+  activeMode?: AppMode;
 };
 
 export type ProviderFilters = {
@@ -167,7 +175,7 @@ export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
 /** Cookie flag so middleware allows mock-authenticated demo routes. */
 export const MOCK_SESSION_COOKIE = "homeserve-mock-auth";
-export const MOCK_DB_VERSION = 13;
+export const MOCK_DB_VERSION = 14;
 
 export type SystemEvent = {
   id: string;

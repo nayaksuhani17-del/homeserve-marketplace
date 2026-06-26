@@ -23,12 +23,17 @@ import {
 import type { MockBooking, MockDatabase, MockProvider, MockReview, MockUser } from "./types";
 
 function toMockUser(u: (typeof DEMO_USERS)[0]): MockUser {
+  const isAdmin = u.role === "admin";
+  const customerRole = u.role === "customer";
+  const providerRole = u.role === "provider";
   return {
     id: userId(u.key),
     name: u.name,
     email: u.email,
     password: DEMO_PASSWORD,
-    role: u.role,
+    role: isAdmin ? "admin" : providerRole ? "provider" : "customer",
+    customerRole,
+    providerRole,
     banned: false,
     avatarUrl: u.avatarUrl,
     createdAt: new Date(Date.now() - 86400000 * 90).toISOString(),

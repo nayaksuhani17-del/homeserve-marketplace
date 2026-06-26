@@ -6,17 +6,20 @@ import { useRouter } from "next/navigation";
 import { ProviderCard } from "@/components/ProviderCard";
 import { EmptyState } from "@/components/EmptyState";
 import { useMockApp } from "@/context/MockAppContext";
+import { hasCustomerRole } from "@/lib/user-capabilities";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 
 export function SavedProvidersClient() {
   const router = useRouter();
-  const { user, ready, getSavedProviders } = useMockApp();
+  const { user, ready, activeMode, getSavedProviders } = useMockApp();
 
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/login?redirect=/customer/saved");
-    else if (user.role !== "customer") router.replace("/customer/dashboard");
-  }, [ready, user, router]);
+    else if (!hasCustomerRole(user) || activeMode !== "customer") {
+      router.replace("/customer/dashboard");
+    }
+  }, [ready, user, activeMode, router]);
 
   if (!ready || !user) {
     return (

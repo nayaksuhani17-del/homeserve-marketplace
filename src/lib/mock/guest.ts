@@ -6,14 +6,21 @@ export function newGuestUser(input: {
   name: string;
   email: string;
   password: string;
-  role: "customer" | "provider";
+  customerRole: boolean;
+  providerRole: boolean;
 }): MockUser {
+  const customerRole = input.customerRole;
+  const providerRole = input.providerRole;
+  const role =
+    providerRole && !customerRole ? "provider" : customerRole ? "customer" : "provider";
   return {
     id: demoId(`guest-user:${input.email.toLowerCase()}`),
     name: input.name,
     email: input.email.toLowerCase(),
     password: input.password,
-    role: input.role,
+    role,
+    customerRole,
+    providerRole,
     banned: false,
     avatarUrl: `https://i.pravatar.cc/150?u=${encodeURIComponent(input.email)}`,
     createdAt: new Date().toISOString(),

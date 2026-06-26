@@ -288,7 +288,8 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
     name: "Alex Customer",
     email: "alex.test@example.com",
     password: "test1234",
-    role: "customer",
+    customerRole: true,
+    providerRole: false,
   });
   multiDb = registerUserRecord(multiDb, customer1).db;
 
@@ -296,7 +297,8 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
     name: "Jamie Provider",
     email: "jamie.test@example.com",
     password: "test1234",
-    role: "provider",
+    customerRole: false,
+    providerRole: true,
   });
   const jamieProfile = newGuestProvider(provider1);
   multiDb = registerUserRecord(multiDb, provider1, jamieProfile).db;
@@ -323,7 +325,8 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
     name: "Alex Customer Two",
     email: "alex2.test@example.com",
     password: "test1234",
-    role: "customer",
+    customerRole: true,
+    providerRole: false,
   });
   multiDb = registerUserRecord(multiDb, customer2).db;
   assert(multiDb.users.length === totalBefore + 1, "Unlimited accounts — second customer added");
@@ -333,7 +336,8 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
       name: "Alex Duplicate",
       email: "alex2.test@example.com",
       password: "test1234",
-      role: "customer",
+      customerRole: true,
+    providerRole: false,
     }),
     id: demoId("dupe-user-same-email"),
   };
@@ -496,7 +500,8 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     name: "Guest Delete",
     email: "guest.delete@test.com",
     password: "test123",
-    role: "customer",
+    customerRole: true,
+    providerRole: false,
   });
   dmDb = {
     ...dmDb,
@@ -527,7 +532,8 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     name: "Zoe WipeTest",
     email: "zoe.wipe@test.com",
     password: "test123",
-    role: "provider",
+    customerRole: false,
+    providerRole: true,
   });
   const guestProvider = newGuestProvider(guestProviderUser);
   const withProvider = registerUserRecord(deleted.db, guestProviderUser, guestProvider).db;

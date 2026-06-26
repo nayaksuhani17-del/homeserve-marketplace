@@ -3,12 +3,20 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMockApp, DEFAULT_DEMO_PASSWORD } from "@/context/MockAppContext";
-import type { UserRole } from "@/lib/constants";
+import type { SignupRoles } from "@/context/MockAppContext";
 
 type AuthFormProps = {
   redirectTo?: string;
   defaultMode?: "login" | "signup";
 };
+
+type SignupChoice = "customer" | "provider" | "both";
+
+function rolesFromChoice(choice: SignupChoice): SignupRoles {
+  if (choice === "both") return { customerRole: true, providerRole: true };
+  if (choice === "provider") return { customerRole: false, providerRole: true };
+  return { customerRole: true, providerRole: false };
+}
 
 export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormProps) {
   const router = useRouter();
@@ -19,7 +27,7 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Exclude<UserRole, "admin">>("customer");
+  const [signupChoice, setSignupChoice] = useState<SignupChoice>("customer");
   const [message, setMessage] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -27,7 +35,7 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
     setMessage(null);
 
     if (mode === "signup") {
-      const result = await register(name, email, password, role);
+      const result = await register(name, email, password, rolesFromChoice(signupChoice));
       if (result.error) {
         setMessage(result.error);
         return;
@@ -46,6 +54,8 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
     router.refresh();
   }
 
+  const roles = rolesFromChoice(signupChoice);
+
   return (
     <div className="card mx-auto w-full max-w-md bg-white p-8 shadow-md">
       <div className="mb-6 text-center">
@@ -54,7 +64,7 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
         </p>
         <p className="mt-1 text-sm text-gray-600">
           {mode === "signup"
-            ? "Join HomeServe as a customer or service provider. Your data stays saved in this browser."
+            ? "One account can book services, offer services, or both. Switch modes anytime."
             : "Sign in to book services, manage jobs, or access your dashboard."}
         </p>
       </div>
@@ -98,28 +108,36 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
-                I am a
+                I want to
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                {(["customer", "provider"] as const).map((r) => (
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    ["customer", "Customer"],
+                    ["provider", "Provider"],
+                    ["both", "Both"],
+                  ] as const
+                ).map(([value, label]) => (
                   <button
-                    key={r}
+                    key={value}
                     type="button"
-                    onClick={() => setRole(r)}
-                    className={`rounded-xl border px-4 py-2.5 text-sm transition-all duration-200 ${
-                      role === r
+                    onClick={() => setSignupChoice(value)}
+                    className={`rounded-xl border px-2 py-2.5 text-xs transition-all duration-200 sm:text-sm ${
+                      signupChoice === value
                         ? "border-green-600 bg-green-100 font-medium text-green-800"
                         : "border-gray-200 text-gray-600 hover:border-gray-300"
                     }`}
                   >
-                    {r === "customer" ? "Customer" : "Service Provider"}
+                    {label}
                   </button>
                 ))}
               </div>
               <p className="mt-1.5 text-xs text-gray-500">
-                {role === "provider"
-                  ? "Provider profiles are verified instantly and visible to customers."
-                  : "Book verified pros, track bookings, and leave reviews."}
+                {signupChoice === "both"
+                  ? "Book services and receive job requests on one account. Switch modes from the header."
+                  : signupChoice === "provider"
+                    ? "Your provider profile is verified instantly and visible to customers."
+                    : "Book verified pros, track bookings, and leave reviews."}
               </p>
             </div>
           </>
@@ -172,9 +190,11 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
             ? "Please wait…"
             : mode === "login"
               ? "Log in"
-              : role === "provider"
-                ? "Create provider account"
-                : "Create customer account"}
+              : roles.providerRole && roles.customerRole
+                ? "Create account (Customer + Provider)"
+                : roles.providerRole
+                  ? "Create provider account"
+                  : "Create customer account"}
         </button>
       </form>
 

@@ -99,13 +99,30 @@ import type { RecommendationLabel } from "@/lib/recommendations";
 import { customerBookingsHref, providerDashboardHref } from "@/lib/notification-links";
 import { advancedSearch, type UnifiedSearchResult } from "@/lib/search/unified";
 import {
+  dashboardPathForMode,
+  defaultModeForUser,
+  hasCustomerRole,
+  hasProviderRole,
+  isAdmin,
+  resolveActiveMode,
+  sessionForUser,
+} from "@/lib/user-capabilities";
+import type { AppMode } from "@/lib/mock/types";
+import {
+  capabilitySummary,
   dashboardPathForRole,
   isDemoAccount,
   roleLabel,
+  roleBadgeClass,
   type AccountSummary,
 } from "@/lib/accounts";
 
 export const SYSTEM_EVENT = "homeserve-system-event";
+
+export type SignupRoles = {
+  customerRole: boolean;
+  providerRole: boolean;
+};
 
 type MockAppContextValue = {
   ready: boolean;
@@ -114,6 +131,8 @@ type MockAppContextValue = {
   dbRevision: number;
   session: MockSession | null;
   user: MockUser | null;
+  /** Active customer/provider hat for dual-role accounts. */
+  activeMode: AppMode | null;
   loading: boolean;
   login: (
     email: string,
@@ -124,7 +143,7 @@ type MockAppContextValue = {
     name: string,
     email: string,
     password: string,
-    role: "customer" | "provider"
+    roles: SignupRoles
   ) => Promise<{ error?: string; redirect?: string }>;
   demoLogin: (
     role: "customer" | "provider" | "admin",
@@ -132,6 +151,8 @@ type MockAppContextValue = {
   ) => Promise<{ error?: string; redirect?: string }>;
   listAccounts: () => import("@/lib/accounts").AccountSummary[];
   switchAccount: (userId: string) => Promise<{ error?: string; redirect?: string }>;
+  switchMode: (mode: AppMode) => Promise<{ error?: string; redirect?: string }>;
+  enableProviderRole: () => Promise<{ error?: string; redirect?: string }>;
   logout: () => void;
   createBooking: (input: {
     providerId: string;
@@ -446,7 +467,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       dbRef.current = stored;
       setDb(stored);
-      setSession(nextSession);
+      const resolvedSession =
+        nextSession && stored.users.find((u) => u.id === nextSession.userId)
+          ? sessionForUser(
+              stored.users.find((u) => u.id === nextSession.userId)!,
+              nextSession
+            )
+          : nextSession;
+      setSession(resolvedSession);
+      if (resolvedSession) saveSession(resolvedSession);
       syncSessionCookie(Boolean(nextSession));
       setFavoriteIds(loadFavoriteIds());
       setReady(true);
@@ -596,6 +625,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     return db.users.find((u) => u.id === session.userId) ?? null;
   }, [db, session]);
 
+  const activeMode = useMemo(
+    () => resolveActiveMode(user, session),
+    [user, session]
+  );
+
   useEffect(() => {
     if (!ready || !session) return;
     reloadFromStorage();
@@ -625,12 +659,13 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         return { error: "Incorrect password." };
       }
       applyDb(source);
-      const sess = { userId: found.id };
+      const sess = sessionForUser(found, loadSession());
       setSession(sess);
       saveSession(sess);
       setLoading(false);
       if (redirectTo) return { redirect: redirectTo };
-      return { redirect: dashboardPathForRole(found.role) };
+      if (isAdmin(found)) return { redirect: "/admin" };
+      return { redirect: dashboardPathForMode(sess.activeMode ?? defaultModeForUser(found)) };
     },
     [syncDbBeforeSwitch, applyDb]
   );
@@ -640,9 +675,12 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       name: string,
       email: string,
       password: string,
-      role: "customer" | "provider"
+      roles: SignupRoles
     ) => {
       if (!db) return { error: "App not ready" };
+      if (!roles.customerRole && !roles.providerRole) {
+        return { error: "Choose at least one role: customer, provider, or both." };
+      }
       if (!name.trim() || !email.trim() || !password.trim()) {
         return { error: "Please fill all fields." };
       }
@@ -655,29 +693,37 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: "An account with this email already exists." };
       }
-      const guest = newGuestUser({ name, email, password, role });
-      const provider = role === "provider" ? newGuestProvider(guest) : undefined;
+      const guest = newGuestUser({ name, email, password, ...roles });
+      const provider = roles.providerRole ? newGuestProvider(guest) : undefined;
       const registered = registerUserRecord(db, guest, provider);
       if (registered.error) {
         setLoading(false);
         return { error: registered.error };
       }
       let next = registered.db;
+      const both = roles.customerRole && roles.providerRole;
       next = appendNotification(next, guest.id, {
         type: "system",
-        title: role === "provider" ? "Welcome to HomeServe Pro" : "Welcome to HomeServe",
-        message:
-          role === "provider"
+        title: both
+          ? "Welcome to HomeServe"
+          : roles.providerRole
+            ? "Welcome to HomeServe Pro"
+            : "Welcome to HomeServe",
+        message: both
+          ? "Your account can book services and receive job requests. Switch modes anytime from the header."
+          : roles.providerRole
             ? "Your profile is live and verified. Update services and availability to start receiving job requests."
             : "Your account is ready. Search for a service and book a verified professional in minutes.",
-        href: role === "provider" ? "/provider/dashboard" : "/customer/dashboard",
+        href: roles.providerRole && !roles.customerRole
+          ? "/provider/dashboard"
+          : "/customer/dashboard",
       });
       persistImmediate(next);
-      const sess = { userId: guest.id };
+      const sess = sessionForUser(guest);
       setSession(sess);
       saveSession(sess);
       setLoading(false);
-      return { redirect: dashboardPathForRole(role) };
+      return { redirect: dashboardPathForMode(sess.activeMode ?? defaultModeForUser(guest)) };
     },
     [db, persistImmediate, appendNotification]
   );
@@ -697,6 +743,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         name: u.name,
         email: u.email,
         role: u.role,
+        capabilities: capabilitySummary(u),
         isDemo: isDemoAccount(u),
         isActive: session?.userId === u.id,
       }));
@@ -711,14 +758,82 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       await simulateDelay(DEMO_MODE ? 80 : 200);
       applyDb(source);
-      const sess = { userId: found.id };
+      const sess = sessionForUser(found);
       setSession(sess);
       saveSession(sess);
       setLoading(false);
-      return { redirect: dashboardPathForRole(found.role) };
+      if (isAdmin(found)) return { redirect: "/admin" };
+      return { redirect: dashboardPathForMode(sess.activeMode ?? defaultModeForUser(found)) };
     },
     [syncDbBeforeSwitch, applyDb]
   );
+
+  const switchMode = useCallback(
+    async (mode: AppMode) => {
+      if (!user || !session) return { error: "Not signed in." };
+      if (mode === "customer" && !hasCustomerRole(user)) {
+        return { error: "Customer mode is not enabled on this account." };
+      }
+      if (mode === "provider" && !hasProviderRole(user)) {
+        return { error: "Provider mode is not enabled on this account." };
+      }
+      if (mode === "provider" && !db?.providers.some((p) => p.userId === user.id)) {
+        return { error: "Complete provider profile setup first." };
+      }
+      setLoading(true);
+      await simulateDelay(DEMO_MODE ? 80 : 150);
+      reloadFromStorage();
+      const sess: MockSession = { ...session, activeMode: mode };
+      setSession(sess);
+      saveSession(sess);
+      setLoading(false);
+      return { redirect: dashboardPathForMode(mode) };
+    },
+    [user, session, db, reloadFromStorage]
+  );
+
+  const enableProviderRole = useCallback(async () => {
+    if (!db || !user) return { error: "You must be logged in." };
+    if (!hasCustomerRole(user)) {
+      return { error: "This action is only available for customer accounts." };
+    }
+    if (hasProviderRole(user)) {
+      const sess = sessionForUser(
+        user,
+        session ?? { userId: user.id, activeMode: "provider" }
+      );
+      sess.activeMode = "provider";
+      setSession(sess);
+      saveSession(sess);
+      return { redirect: "/provider/dashboard" };
+    }
+    setLoading(true);
+    await simulateDelay(400);
+    const updatedUser: MockUser = {
+      ...user,
+      providerRole: true,
+      role: user.customerRole ? "customer" : "provider",
+    };
+    const provider = newGuestProvider(updatedUser);
+    let next: MockDatabase = {
+      ...db,
+      users: db.users.map((u) => (u.id === user.id ? updatedUser : u)),
+      providers: [...db.providers.filter((p) => p.userId !== user.id), provider],
+    };
+    next = appendNotification(next, user.id, {
+      type: "system",
+      title: "Welcome to HomeServe Pro",
+      message:
+        "Your provider profile is ready. Switch to Provider mode and complete your services and availability.",
+      href: "/provider/dashboard",
+    });
+    persistImmediate(next);
+    const sess: MockSession = { userId: user.id, activeMode: "provider" };
+    setSession(sess);
+    saveSession(sess);
+    setLoading(false);
+    return { redirect: "/provider/dashboard" };
+  }, [db, user, session, persistImmediate, appendNotification]);
 
   const demoLogin = useCallback(
     async (role: "customer" | "provider" | "admin", redirectTo?: string) => {
@@ -730,7 +845,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       await simulateDelay(DEMO_MODE ? 200 : 400);
       applyDb(source);
-      const sess = { userId: found.id };
+      const sess = sessionForUser(found);
       setSession(sess);
       saveSession(sess);
       setLoading(false);
@@ -753,9 +868,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       hours: number;
     }) => {
       if (!db || !user) return { error: "You must be logged in to book." };
-      if (user.role !== "customer") {
+      if (!hasCustomerRole(user)) {
         return {
-          error: "Only customer accounts can book services. Switch to a customer account.",
+          error: "Enable customer mode on your account to book services.",
+        };
+      }
+      if (activeMode !== "customer") {
+        return {
+          error: "Switch to Customer mode to book services.",
         };
       }
       if (user.banned) {
@@ -885,9 +1005,13 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
       const providerRecord = db.providers.find((p) => p.userId === user.id);
       const senderRole =
-        user.role === "provider" && providerRecord?.id === booking.providerId
+        providerRecord?.id === booking.providerId &&
+        hasProviderRole(user) &&
+        activeMode === "provider"
           ? "provider"
-          : user.role === "customer" && booking.customerId === user.id
+          : booking.customerId === user.id &&
+              hasCustomerRole(user) &&
+              activeMode === "customer"
             ? "customer"
             : null;
       if (!senderRole) return { error: "You cannot message on this booking." };
@@ -964,14 +1088,18 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "message",
         title: "New message",
         message: `${user.name}: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`,
-        href: user.role === "provider" ? "/provider/dashboard" : "/customer/dashboard",
+        href:
+          hasProviderRole(user) && activeMode === "provider"
+            ? "/provider/dashboard"
+            : "/customer/dashboard",
       });
       persistImmediate(next);
 
       const receiverProvider = db.providers.find((p) => p.userId === receiverId);
       if (
         receiverProvider &&
-        user.role === "customer" &&
+        hasCustomerRole(user) &&
+        activeMode === "customer" &&
         providerHasAutoReply(receiverProvider)
       ) {
         const replyDelay = getChatReplyDelayMs();
@@ -1473,8 +1601,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       autoReplyEnabled?: boolean;
     }) => {
       if (!db || !user) return { error: "You must be logged in." };
-      if (user.role !== "provider") {
-        return { error: "Only provider accounts can update a service profile." };
+      if (!hasProviderRole(user)) {
+        return { error: "Enable provider mode on your account to update your profile." };
       }
       const existing = db.providers.find((p) => p.userId === user.id);
       if (!existing) {
@@ -1827,12 +1955,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     dbRevision,
     session,
     user,
+    activeMode,
     loading,
     login,
     register,
     demoLogin,
     listAccounts,
     switchAccount,
+    switchMode,
+    enableProviderRole,
     logout,
     createBooking,
     completeBooking,

@@ -13,6 +13,7 @@ import { ReviewInsightsPanel } from "@/components/ProviderAIInsights";
 import { ProviderSummaryCard } from "@/components/provider/ProviderSummaryCard";
 import { ProviderEarningsChart } from "@/components/provider/ProviderEarningsChart";
 import { useMockApp } from "@/context/MockAppContext";
+import { hasProviderRole, isAdmin } from "@/lib/user-capabilities";
 import { useToast } from "@/components/Toast";
 import {
   getBookingAddress,
@@ -168,6 +169,7 @@ export function ProviderDashboardClient() {
     ready,
     db,
     dbRevision,
+    activeMode,
     getProviderForUser,
     getBookingsForProvider,
     getProviderReviews,
@@ -191,9 +193,10 @@ export function ProviderDashboardClient() {
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/login?redirect=/provider/dashboard");
-    else if (user.role === "customer") router.replace("/customer/dashboard");
-    else if (user.role === "admin") router.replace("/admin");
-  }, [ready, user, router]);
+    else if (isAdmin(user)) router.replace("/admin");
+    else if (!hasProviderRole(user)) router.replace("/customer/dashboard");
+    else if (activeMode !== "provider") router.replace("/customer/dashboard");
+  }, [ready, user, activeMode, router]);
 
   const provider = user ? getProviderForUser(user.id) : undefined;
   const bookings = useMemo(
@@ -269,7 +272,7 @@ export function ProviderDashboardClient() {
     );
   }
 
-  if (!user || user.role !== "provider") {
+  if (!user || !hasProviderRole(user) || activeMode !== "provider") {
     return (
       <div className="mx-auto max-w-7xl px-4 py-20 text-center text-gray-500">
         Redirecting…

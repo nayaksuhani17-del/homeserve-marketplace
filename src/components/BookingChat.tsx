@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useMockApp } from "@/context/MockAppContext";
 import { CHAT_QUICK_PROMPTS, providerHasAutoReply } from "@/lib/mock/simulation";
+import { hasCustomerRole, hasProviderRole } from "@/lib/user-capabilities";
 import type { MockBooking } from "@/lib/mock/types";
 
 type BookingChatProps = {
@@ -10,7 +11,7 @@ type BookingChatProps = {
 };
 
 export function BookingChat({ booking }: BookingChatProps) {
-  const { user, db, getChatMessages, sendChatMessage } = useMockApp();
+  const { user, db, activeMode, getChatMessages, sendChatMessage } = useMockApp();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -54,7 +55,7 @@ export function BookingChat({ booking }: BookingChatProps) {
         return;
       }
       setText("");
-      if (user?.role === "customer" && autoReplyOn) {
+      if (user && hasCustomerRole(user) && activeMode === "customer" && autoReplyOn) {
         setProviderTyping(true);
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
         typingTimerRef.current = setTimeout(() => setProviderTyping(false), 3500);
@@ -63,7 +64,9 @@ export function BookingChat({ booking }: BookingChatProps) {
   }
 
   const chatPartner =
-    user?.role === "provider" ? booking.customerName : booking.providerName;
+    user && hasProviderRole(user) && activeMode === "provider"
+      ? booking.customerName
+      : booking.providerName;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white">
@@ -80,8 +83,14 @@ export function BookingChat({ booking }: BookingChatProps) {
         )}
         {messages.map((msg) => {
           const isMine =
-            (user?.role === "customer" && msg.senderRole === "customer") ||
-            (user?.role === "provider" && msg.senderRole === "provider");
+            (user &&
+              hasCustomerRole(user) &&
+              activeMode === "customer" &&
+              msg.senderRole === "customer") ||
+            (user &&
+              hasProviderRole(user) &&
+              activeMode === "provider" &&
+              msg.senderRole === "provider");
           return (
             <div
               key={msg.id}
@@ -104,7 +113,11 @@ export function BookingChat({ booking }: BookingChatProps) {
             </div>
           );
         })}
-        {providerTyping && user?.role === "customer" && autoReplyOn && (
+        {providerTyping &&
+          user &&
+          hasCustomerRole(user) &&
+          activeMode === "customer" &&
+          autoReplyOn && (
           <div className="flex justify-start">
             <div className="rounded-2xl bg-gray-100 px-3 py-2 text-sm text-gray-500">
               {booking.providerName} is typing…

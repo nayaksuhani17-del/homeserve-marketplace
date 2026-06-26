@@ -4,8 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
-import { roleBadgeClass, roleLabel } from "@/lib/accounts";
-import type { UserRole } from "@/lib/constants";
+import { capabilitySummary, roleBadgeClass, type AccountSummary } from "@/lib/accounts";
+import type { SignupRoles } from "@/context/MockAppContext";
+
+type SignupChoice = "customer" | "provider" | "both";
+
+function rolesFromChoice(choice: SignupChoice): SignupRoles {
+  if (choice === "both") return { customerRole: true, providerRole: true };
+  if (choice === "provider") return { customerRole: false, providerRole: true };
+  return { customerRole: true, providerRole: false };
+}
 
 export function AccountSwitcher() {
   const router = useRouter();
@@ -21,7 +29,7 @@ export function AccountSwitcher() {
   const [createName, setCreateName] = useState("");
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
-  const [createRole, setCreateRole] = useState<Exclude<UserRole, "admin">>("customer");
+  const [createSignupChoice, setCreateSignupChoice] = useState<SignupChoice>("customer");
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -80,7 +88,12 @@ export function AccountSwitcher() {
     if (!ready || creating) return;
     setCreateError(null);
     setCreating(true);
-    const result = await register(createName, createEmail, createPassword, createRole);
+    const result = await register(
+      createName,
+      createEmail,
+      createPassword,
+      rolesFromChoice(createSignupChoice)
+    );
     setCreating(false);
     if (result.error) {
       setCreateError(result.error);
@@ -89,7 +102,7 @@ export function AccountSwitcher() {
     setCreateName("");
     setCreateEmail("");
     setCreatePassword("");
-    setCreateRole("customer");
+    setCreateSignupChoice("customer");
     setShowCreate(false);
     setOpen(false);
     setFilterQuery("");
@@ -265,19 +278,25 @@ export function AccountSwitcher() {
                       className="input-field text-sm"
                       placeholder="Password (6+ chars)"
                     />
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["customer", "provider"] as const).map((r) => (
+                    <div className="grid grid-cols-3 gap-2">
+                      {(
+                        [
+                          ["customer", "Customer"],
+                          ["provider", "Provider"],
+                          ["both", "Both"],
+                        ] as const
+                      ).map(([value, label]) => (
                         <button
-                          key={r}
+                          key={value}
                           type="button"
-                          onClick={() => setCreateRole(r)}
-                          className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
-                            createRole === r
+                          onClick={() => setCreateSignupChoice(value)}
+                          className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                            createSignupChoice === value
                               ? "border-green-600 bg-green-100 text-green-800"
                               : "border-gray-200 text-gray-600 hover:border-gray-300"
                           }`}
                         >
-                          {r === "customer" ? "Customer" : "Provider"}
+                          {label}
                         </button>
                       ))}
                     </div>
@@ -380,14 +399,7 @@ function AccountRow({
   busy,
   onSwitch,
 }: {
-  account: {
-    id: string;
-    name: string;
-    email: string;
-    role: "customer" | "provider" | "admin";
-    isActive: boolean;
-    isDemo: boolean;
-  };
+  account: AccountSummary;
   busy: boolean;
   onSwitch: () => void;
 }) {
@@ -418,7 +430,7 @@ function AccountRow({
         <span
           className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${roleBadgeClass(account.role)}`}
         >
-          {roleLabel(account.role)}
+          {account.capabilities}
         </span>
       </div>
       <button

@@ -11,6 +11,7 @@ import { Skeleton } from "./Skeleton";
 import { SmartSearchBar } from "./SmartSearchBar";
 import { SmartAssistant } from "./SmartAssistant";
 import { useMockApp } from "@/context/MockAppContext";
+import { hasCustomerRole } from "@/lib/user-capabilities";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { getServiceMeta, similarServices } from "@/lib/services";
 import type { ProviderFilters } from "@/lib/mock/types";
@@ -35,7 +36,7 @@ function filtersFromSearchParams(searchParams: URLSearchParams): ProviderFilters
 export function ProviderMarketplace({ showAssistant = false }: { showAssistant?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { filterProviders, ready, user } = useMockApp();
+  const { filterProviders, ready, user, activeMode } = useMockApp();
   const [pending, startTransition] = useTransition();
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -206,7 +207,11 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
                       key={provider.id}
                       provider={legacy}
                       selectedService={filters.service}
-                      showHire={!!user && user.role === "customer"}
+                      showHire={
+                        !!user &&
+                        hasCustomerRole(user) &&
+                        activeMode === "customer"
+                      }
                       isTopRated={rank !== undefined && !filters.sort}
                       rank={rank}
                       recommendationLabel={result.recommendationMap[provider.id]}
