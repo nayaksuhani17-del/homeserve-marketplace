@@ -1,20 +1,12 @@
+import { isTopRatedProvider } from "@/lib/provider-badges";
 import type { ProviderWithUser } from "./types";
 
-export type TrustBadgeKey =
-  | "verified"
-  | "jobs-100"
-  | "repeat-customers"
-  | "highly-recommended";
+export type TrustBadgeKey = "jobs-100" | "repeat-customers";
 
 export const TRUST_BADGE_CONFIG: Record<
   TrustBadgeKey,
   { label: string; icon: string; className: string }
 > = {
-  verified: {
-    label: "Verified",
-    icon: "✅",
-    className: "badge-verified",
-  },
   "jobs-100": {
     label: "100+ jobs",
     icon: "💼",
@@ -25,25 +17,29 @@ export const TRUST_BADGE_CONFIG: Record<
     icon: "🔁",
     className: "bg-purple-50 text-purple-800 ring-1 ring-purple-100",
   },
-  "highly-recommended": {
-    label: "Highly recommended",
-    icon: "⭐",
-    className: "bg-amber-50 text-amber-800 ring-1 ring-amber-100",
-  },
 };
 
-export function computeTrustBadges(provider: ProviderWithUser): TrustBadgeKey[] {
+/** Milestone badges (verified / top rated / new are handled by ProviderStatusBadges). */
+export function computeExtraTrustBadges(provider: ProviderWithUser): TrustBadgeKey[] {
   const badges: TrustBadgeKey[] = [];
-  if (provider.approved) badges.push("verified");
   const jobs = Number(provider.jobs_completed ?? 0);
   const rating = Number(provider.rating_avg);
   const reviews = Number(provider.review_count ?? 0);
 
   if (jobs >= 100) badges.push("jobs-100");
   if (jobs >= 40 && reviews >= 8 && rating >= 4.3) badges.push("repeat-customers");
-  if (rating >= 4.6 && reviews >= 5) badges.push("highly-recommended");
 
   return badges;
+}
+
+/** @deprecated Use ProviderStatusBadges + computeExtraTrustBadges */
+export function computeTrustBadges(provider: ProviderWithUser): string[] {
+  const keys: string[] = [];
+  if (provider.approved) keys.push("verified");
+  if (isTopRatedProvider(Number(provider.rating_avg), Number(provider.review_count ?? 0))) {
+    keys.push("top-rated");
+  }
+  return [...keys, ...computeExtraTrustBadges(provider)];
 }
 
 /** Demo-only activity estimate for marketplace cards (not live analytics). */

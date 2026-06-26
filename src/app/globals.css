@@ -101,6 +101,14 @@ body {
     @apply shrink-0 rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-medium text-white;
   }
 
+  .badge-top-rated {
+    @apply shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 font-semibold text-amber-950 shadow-sm ring-1 ring-amber-300/80;
+  }
+
+  .badge-new {
+    @apply shrink-0 rounded-full bg-sky-100 font-medium text-sky-800 ring-1 ring-sky-200;
+  }
+
   .badge-pending {
     @apply shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800;
   }

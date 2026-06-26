@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { StarRating } from "./StarRating";
+import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { RecommendationBadge } from "./RecommendationBadge";
 import type { ProviderCardData } from "@/lib/providers";
 import { formatProviderPrice } from "@/lib/pricing";
@@ -40,11 +41,11 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
               {provider.recommendationLabel && (
                 <RecommendationBadge label={provider.recommendationLabel} />
               )}
-              {provider.approved ? (
-                <span className="badge-verified">Verified</span>
-              ) : (
-                <span className="badge-pending">Pending</span>
-              )}
+              <ProviderStatusBadges
+                ratingAvg={provider.rating}
+                reviewCount={provider.reviewCount ?? 0}
+                approved={provider.approved}
+              />
             </div>
           </div>
           <StarRating rating={provider.rating} size="sm" />

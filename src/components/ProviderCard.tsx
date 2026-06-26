@@ -8,6 +8,7 @@ import Image from "next/image";
 import { StarRating } from "./StarRating";
 import { RecommendationBadge } from "./RecommendationBadge";
 import { TrustBadges } from "./TrustBadges";
+import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { FavoriteButton } from "./FavoriteButton";
 import { getProviderUser } from "@/lib/providers";
 import * as pricing from "@/lib/pricing";
@@ -151,6 +152,11 @@ export function ProviderCard({
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <StarRating rating={Number(provider.rating_avg)} size="sm" />
+          <ProviderStatusBadges
+            ratingAvg={Number(provider.rating_avg)}
+            reviewCount={reviewCount}
+            approved={Boolean(provider.approved)}
+          />
           <span className="text-gray-400">·</span>
           <span className="text-xs text-gray-500">{reviewCount} reviews</span>
           <span className="text-gray-400">·</span>

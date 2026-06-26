@@ -25,6 +25,7 @@ import {
   toggleProviderBlockedSlotRecord,
   deleteUserRecord,
 } from "../src/lib/mock/operations";
+import { isTopRatedProvider, isNewProvider } from "../src/lib/provider-badges";
 import { advancedSearch } from "../src/lib/search/unified";
 import { normalizeMockDatabase } from "../src/lib/mock/normalize";
 import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
@@ -664,6 +665,12 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   const declineDb = resolveBookingRecord(declineCreated.db, declineId, false);
   const declinedBooking = declineDb.bookings.find((b) => b.id === declineId);
   assert(declinedBooking?.status === "declined", "Provider reject sets status declined");
+
+  assert(isTopRatedProvider(4.5, 3), "Top Rated at 4.5 avg with 3 reviews");
+  assert(!isTopRatedProvider(4.4, 5), "Top Rated requires 4.5+ average");
+  assert(!isTopRatedProvider(4.9, 2), "Top Rated requires 3+ reviews");
+  assert(isNewProvider(1), "New badge when under 2 reviews");
+  assert(!isNewProvider(2), "Not new at 2+ reviews");
 
   const otherProvider = guardDb.providers.find((p) => p.id !== marcus!.id && p.approved);
   const confirmedBooking = guardDb.bookings.find(

@@ -10,6 +10,7 @@ import { HireModal } from "./HireModal";
 import { QuoteModal } from "./QuoteModal";
 import { ProviderAISummary, ReviewInsightsPanel, BehavioralInsightsPanel } from "./ProviderAIInsights";
 import { TrustBadges } from "./TrustBadges";
+import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { FavoriteButton } from "./FavoriteButton";
 import { getViewerCount } from "@/lib/trust";
 import { getServiceMeta } from "@/lib/services";
@@ -160,16 +161,8 @@ export function ProviderProfileClient({
                 providerName={user?.name ?? "Provider"}
                 className="!p-2"
               />
-              {provider.approved ? (
-                <span className="badge-verified px-3 py-1 text-sm">✓ Verified</span>
-              ) : (
+              {!provider.approved && (
                 <span className="badge-pending px-3 py-1 text-sm">Pending review</span>
-              )}
-              {tags.includes("Top Rated") && (
-                <span className="tag-pill bg-amber-500 font-semibold text-white">Top Rated</span>
-              )}
-              {tags.includes("Fast Responder") && (
-                <span className="tag-pill bg-green-600 font-semibold text-white">Fast Responder</span>
               )}
             </div>
           </div>
@@ -192,6 +185,12 @@ export function ProviderProfileClient({
 
           <div className="mt-4 flex flex-wrap items-center gap-4">
             <StarRating rating={Number(displayRating)} />
+            <ProviderStatusBadges
+              ratingAvg={Number(displayRating)}
+              reviewCount={reviewCount}
+              approved={Boolean(provider.approved)}
+              size="md"
+            />
             <span className="text-sm text-gray-500">
               {reviewCount} reviews · {provider.jobs_completed ?? 0} jobs completed
             </span>

@@ -7,6 +7,7 @@ import { HireModal } from "@/components/HireModal";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ReviewEligibilityPanel } from "@/components/ReviewEligibilityPanel";
 import { StarRating } from "@/components/StarRating";
+import { ProviderStatusBadges } from "@/components/ProviderStatusBadges";
 import { useMockApp } from "@/context/MockAppContext";
 import type { MockBooking, MockProvider } from "@/lib/mock/types";
 import { customerMessagesHref } from "@/lib/notification-links";
@@ -210,6 +211,11 @@ function ProviderResults({
                         {formatProviderPrice(p.pricingType, p.price)}
                       </span>
                       <StarRating rating={p.ratingAvg} size="sm" />
+                      <ProviderStatusBadges
+                        ratingAvg={p.ratingAvg}
+                        reviewCount={p.reviewCount}
+                        approved={p.approved}
+                      />
                       {p.reviewCount > 0 && (
                         <span className="text-xs text-gray-500">
                           {p.reviewCount} reviews

@@ -1,7 +1,7 @@
 "use client";
 
-import { computeTrustBadges } from "@/lib/trust";
-import { TRUST_BADGE_CONFIG } from "@/lib/trust";
+import { ProviderStatusBadges } from "@/components/ProviderStatusBadges";
+import { computeExtraTrustBadges, TRUST_BADGE_CONFIG } from "@/lib/trust";
 import type { ProviderWithUser } from "@/lib/types";
 
 export function TrustBadges({
@@ -11,24 +11,34 @@ export function TrustBadges({
   provider: ProviderWithUser;
   compact?: boolean;
 }) {
-  const badges = computeTrustBadges(provider);
+  const rating = Number(provider.rating_avg);
+  const reviews = Number(provider.review_count ?? 0);
+  const extra = computeExtraTrustBadges(provider);
 
   return (
-    <div className={`flex flex-wrap gap-1 ${compact ? "" : "mt-1"}`}>
-      {badges.map((key) => {
-        const cfg = TRUST_BADGE_CONFIG[key];
-        return (
-          <span
-            key={key}
-            className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-xs ${
-              key === "verified" ? cfg.className : `tag-pill ${cfg.className}`
-            }`}
-          >
-            <span aria-hidden>{cfg.icon}</span>
-            {key === "verified" ? `${cfg.label} ✅` : cfg.label}
-          </span>
-        );
-      })}
+    <div className={`flex flex-col gap-1 ${compact ? "" : "mt-1"}`}>
+      <ProviderStatusBadges
+        ratingAvg={rating}
+        reviewCount={reviews}
+        approved={Boolean(provider.approved)}
+        size={compact ? "sm" : "sm"}
+      />
+      {extra.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {extra.map((key) => {
+            const cfg = TRUST_BADGE_CONFIG[key];
+            return (
+              <span
+                key={key}
+                className={`tag-pill inline-flex items-center gap-0.5 text-[10px] font-semibold sm:text-xs ${cfg.className}`}
+              >
+                <span aria-hidden>{cfg.icon}</span>
+                {cfg.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

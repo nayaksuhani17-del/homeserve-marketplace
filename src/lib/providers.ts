@@ -10,11 +10,9 @@ export function getProviderUser(provider: ProviderWithUser) {
 export function computeProviderTags(provider: ProviderWithUser): string[] {
   const tags: string[] = [];
   const comparable = getComparablePrice(provider.pricing_type, Number(provider.price));
-  const rating = Number(provider.rating_avg);
   const years = Number(provider.years_experience ?? 0);
   const responseMins = Number(provider.response_time_mins ?? 999);
 
-  if (rating >= 4.5) tags.push("Top Rated");
   if (comparable <= 35) tags.push("Affordable");
   if (years >= 5) tags.push("Experienced");
   if (provider.available_today && responseMins <= 30) tags.push("Fast Responder");
@@ -22,6 +20,7 @@ export function computeProviderTags(provider: ProviderWithUser): string[] {
   // Merge seed tags without duplicates
   for (const t of provider.tags ?? []) {
     const normalized = t === "Highly Rated" ? "Top Rated" : t;
+    if (normalized === "Top Rated") continue;
     if (!tags.includes(normalized)) tags.push(normalized);
   }
 
