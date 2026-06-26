@@ -8,7 +8,7 @@ import { ReviewForm } from "@/components/ReviewForm";
 import { EmptyState } from "@/components/EmptyState";
 import { useToast } from "@/components/Toast";
 import { useMockApp } from "@/context/MockAppContext";
-import { hasReviewForBooking, canLeaveReview } from "@/lib/mock/operations";
+import { hasReviewForBooking, canLeaveReview, REVIEW_ALREADY_SUBMITTED_MESSAGE } from "@/lib/mock/operations";
 import type { MockBooking } from "@/lib/mock/types";
 
 type Tab = "upcoming" | "past";
@@ -245,7 +245,7 @@ export function CustomerBookingsPanel({
                   booking.status === "completed" &&
                   db != null &&
                   hasReviewForBooking(db, booking.id) && (
-                    <p className="mt-4 text-sm text-green-600">✓ You reviewed this job</p>
+                    <p className="mt-4 text-sm text-gray-600">{REVIEW_ALREADY_SUBMITTED_MESSAGE}</p>
                   )}
               </div>
             );

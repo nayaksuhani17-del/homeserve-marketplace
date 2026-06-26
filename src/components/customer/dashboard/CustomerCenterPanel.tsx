@@ -12,7 +12,7 @@ import type { MockBooking, MockProvider } from "@/lib/mock/types";
 import { customerMessagesHref } from "@/lib/notification-links";
 import { formatProviderPrice } from "@/lib/pricing";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
-import { canLeaveReview } from "@/lib/mock/operations";
+import { canLeaveReview, hasReviewForBooking, REVIEW_ALREADY_SUBMITTED_MESSAGE } from "@/lib/mock/operations";
 
 const EXAMPLE_PROMPTS = [
   "My sink is leaking",
@@ -358,8 +358,8 @@ function JobDetail({
         )}
 
         {booking.status === "completed" && hasReview && (
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Thanks — you already left a review for this job.
+          <p className="mt-6 text-center text-sm text-gray-600">
+            {REVIEW_ALREADY_SUBMITTED_MESSAGE}
           </p>
         )}
       </div>

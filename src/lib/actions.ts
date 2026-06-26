@@ -13,6 +13,7 @@ import {
 import { getDemoProviderById } from "@/lib/demo/providers";
 import { getProviderUser } from "@/lib/providers";
 import { estimateBookingCost } from "@/lib/pricing";
+import { REVIEW_ALREADY_SUBMITTED_MESSAGE } from "@/lib/mock/operations";
 
 export async function getCurrentUser() {
   const appUser = await getAppUser();
@@ -195,7 +196,7 @@ export async function createReview(formData: FormData) {
     .eq("booking_id", bookingId)
     .maybeSingle();
 
-  if (existing) return { error: "You already reviewed this booking." };
+  if (existing) return { error: REVIEW_ALREADY_SUBMITTED_MESSAGE };
 
   const { error } = await supabase.from("reviews").insert({
     customer_id: user.id,

@@ -371,8 +371,17 @@ export function removeReviewRecord(db: MockDatabase, reviewId: string): MockData
   return { ...db, reviews, providers };
 }
 
+export const REVIEW_ALREADY_SUBMITTED_MESSAGE = "You have already reviewed this job";
+
+export function findReviewForBooking(
+  db: MockDatabase,
+  bookingId: string
+): MockReview | undefined {
+  return db.reviews.find((r) => r.bookingId === bookingId);
+}
+
 export function hasReviewForBooking(db: MockDatabase, bookingId: string): boolean {
-  return db.reviews.some((r) => r.bookingId === bookingId);
+  return findReviewForBooking(db, bookingId) !== undefined;
 }
 
 export function validateReview(
@@ -393,8 +402,8 @@ export function validateReview(
   if (booking.status !== "completed") {
     return "You can leave a review after the job is completed.";
   }
-  if (db.reviews.some((r) => r.bookingId === input.bookingId)) {
-    return "You already reviewed this booking.";
+  if (findReviewForBooking(db, input.bookingId)) {
+    return REVIEW_ALREADY_SUBMITTED_MESSAGE;
   }
   return undefined;
 }

@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { StarRating } from "./StarRating";
 import { useToast } from "./Toast";
 import { useMockApp } from "@/context/MockAppContext";
-import { validateReview } from "@/lib/mock/operations";
+import { validateReview, findReviewForBooking, REVIEW_ALREADY_SUBMITTED_MESSAGE } from "@/lib/mock/operations";
 
 type ReviewFormProps = {
   providerId: string;
@@ -23,6 +23,8 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
   const eligibilityError = useMemo(() => {
     if (!user) return "You must be logged in.";
     if (!db) return "Loading…";
+    const existingReview = findReviewForBooking(db, bookingId);
+    if (existingReview) return REVIEW_ALREADY_SUBMITTED_MESSAGE;
     return validateReview(db, {
       customerId: user.id,
       bookingId,
