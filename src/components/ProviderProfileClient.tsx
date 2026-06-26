@@ -8,6 +8,7 @@ import { ProviderRatingDisplay } from "./ProviderRatingDisplay";
 import { StarRating } from "./StarRating";
 import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { TagBadge } from "./ChatProviderCard";
+import { isProviderVerified } from "@/lib/provider-verification";
 import { resolveProviderRating } from "@/lib/ratings";
 import { HireModal } from "./HireModal";
 import { QuoteModal } from "./QuoteModal";
@@ -134,6 +135,9 @@ export function ProviderProfileClient({
     liveProvider ? { ratingAvg: displayRating, reviewCount } : null,
     { ratingAvg: Number(provider.rating_avg), reviewCount: liveReviews.length }
   );
+  const verified = isProviderVerified(
+    liveProvider ?? { approved: Boolean(provider.approved) }
+  );
   const responseLabel = formatResponseTime(provider.response_time_mins);
   const priceDisplay = formatProviderPrice(provider.pricing_type, Number(provider.price));
   const viewers = getViewerCount(provider.id);
@@ -167,8 +171,8 @@ export function ProviderProfileClient({
                 providerName={user?.name ?? "Provider"}
                 className="!p-2"
               />
-              {!provider.approved && (
-                <span className="badge-pending px-3 py-1 text-sm">Pending review</span>
+              {!verified && (
+                <span className="badge-unverified px-3 py-1 text-sm">Unverified Provider</span>
               )}
             </div>
           </div>
@@ -198,7 +202,8 @@ export function ProviderProfileClient({
             <ProviderStatusBadges
               ratingAvg={ratingAvg}
               reviewCount={resolvedCount}
-              approved={Boolean(provider.approved)}
+              verified={verified}
+              approved={verified}
               size="md"
             />
             {resolvedCount > 0 && (
@@ -285,9 +290,13 @@ export function ProviderProfileClient({
             <p className="mt-2 leading-relaxed text-gray-600">{provider.description}</p>
           </div>
 
-          {provider.approved ? (
-            <div className="mt-8">
-              <div className="flex flex-wrap gap-3">
+          <div className="mt-8">
+            {!verified && (
+              <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                This provider has not been verified by HomeServe admin yet.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-3">
                 {isLoggedIn &&
                   liveProvider?.userId &&
                   sessionUser?.id !== liveProvider.userId && (
@@ -330,24 +339,19 @@ export function ProviderProfileClient({
                   >
                     Log in to Hire
                   </Link>
-                )}
-              </div>
-              <p className="mt-3 text-sm text-green-700">{availabilityHint}</p>
-              {isLoggedIn && canBookAsCustomer && (
-                <button
-                  type="button"
-                  onClick={() => setReportOpen(true)}
-                  className="mt-2 text-xs text-gray-500 underline hover:text-red-600"
-                >
-                  Report a safety concern
-                </button>
               )}
             </div>
-          ) : (
-            <p className="mt-8 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              This provider is not yet approved and cannot be booked.
-            </p>
-          )}
+            <p className="mt-3 text-sm text-green-700">{availabilityHint}</p>
+            {isLoggedIn && canBookAsCustomer && (
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                className="mt-2 text-xs text-gray-500 underline hover:text-red-600"
+              >
+                Report a safety concern
+              </button>
+            )}
+          </div>
         </div>
       </article>
 
@@ -380,7 +384,7 @@ export function ProviderProfileClient({
         </>
       )}
 
-      {isLoggedIn && provider.approved && reviewableBooking && (
+      {isLoggedIn && reviewableBooking && (
         <ReviewEligibilityPanel
           booking={reviewableBooking}
           providerId={provider.id}

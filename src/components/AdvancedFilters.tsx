@@ -142,9 +142,9 @@ function FilterFields(props: AdvancedFiltersProps) {
           <label htmlFor="status" className="mb-1 block text-sm font-medium text-gray-700">
             Verification
           </label>
-          <select id="status" name="status" defaultValue={props.status ?? "verified"} className="input-field">
-            <option value="verified">Verified only</option>
+          <select id="status" name="status" defaultValue={props.status ?? "all"} className="input-field">
             <option value="all">All providers</option>
+            <option value="verified">Verified only</option>
             <option value="pending">Pending review</option>
           </select>
         </div>

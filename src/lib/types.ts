@@ -26,6 +26,7 @@ export type Provider = {
   availability: string;
   rating_avg: number;
   approved: boolean;
+  verified?: boolean;
   distance_miles?: number | null;
   jobs_completed?: number | null;
   years_experience?: number | null;

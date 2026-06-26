@@ -136,8 +136,8 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
                 {signupChoice === "both"
                   ? "Book services and receive job requests on one account. Switch modes from the header."
                   : signupChoice === "provider"
-                    ? "Your provider profile is verified instantly and visible to customers."
-                    : "Book verified pros, track bookings, and leave reviews."}
+                    ? "Access your provider dashboard instantly. Admin verification adds the trusted badge."
+                    : "Book local pros, track bookings, and leave reviews."}
               </p>
             </div>
           </>

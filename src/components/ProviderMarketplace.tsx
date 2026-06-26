@@ -182,7 +182,7 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
             minRating={filters.minRating}
             maxDistance={filters.maxDistance}
             availability={filters.availability}
-            status={filters.status ?? "verified"}
+            status={filters.status ?? "all"}
             onApply={applyFiltersFromPanel}
           />
         </aside>

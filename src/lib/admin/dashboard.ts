@@ -22,11 +22,11 @@ export function getAdminActivitySeed(db: MockDatabase): AdminActivityItem[] {
     });
   }
 
-  for (const p of db.providers.filter((x) => x.approved).slice(0, 2)) {
+  for (const p of db.providers.filter((x) => x.verified ?? x.approved).slice(0, 2)) {
     items.push({
       id: `seed-approved-${p.id}`,
       icon: "✅",
-      message: `Provider approved: ${p.name}`,
+      message: `Provider verified: ${p.name}`,
       at: new Date(Date.now() - 86400000).toISOString(),
     });
   }
@@ -35,22 +35,22 @@ export function getAdminActivitySeed(db: MockDatabase): AdminActivityItem[] {
 }
 
 export function getProviderAdminStatus(
-  approved: boolean,
+  verified: boolean,
   rejected: boolean | undefined,
   userBanned: boolean
-): "Approved" | "Pending" | "Rejected" | "Banned" {
+): "Verified" | "Unverified" | "Rejected" | "Banned" {
   if (userBanned) return "Banned";
-  if (approved) return "Approved";
   if (rejected) return "Rejected";
-  return "Pending";
+  if (verified) return "Verified";
+  return "Unverified";
 }
 
 export const PROVIDER_STATUS_STYLES: Record<
   ReturnType<typeof getProviderAdminStatus>,
   string
 > = {
-  Approved: "bg-green-100 text-green-800",
-  Pending: "bg-amber-100 text-amber-800",
+  Verified: "bg-blue-100 text-blue-800",
+  Unverified: "bg-amber-100 text-amber-800",
   Rejected: "bg-red-100 text-red-700",
   Banned: "bg-gray-800 text-white",
 };

@@ -45,6 +45,8 @@ export type MockProvider = {
   description: string;
   availability: string;
   ratingAvg: number;
+  /** Admin-verified — trusted badge on marketplace. Synced with legacy `approved`. */
+  verified: boolean;
   approved: boolean;
   /** Admin rejected application — distinct from pending (never reviewed). */
   rejected?: boolean;

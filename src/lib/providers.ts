@@ -65,6 +65,7 @@ export type ProviderCardData = {
   location: string;
   distanceMiles?: number | null;
   approved: boolean;
+  verified?: boolean;
   tags: string[];
   description?: string;
   recommendationLabel?: RecommendationLabel;
@@ -89,6 +90,7 @@ export function toProviderCardData(
     location: p.location,
     distanceMiles: p.distance_miles,
     approved: p.approved,
+    verified: p.verified ?? p.approved,
     tags: computeProviderTags(p),
     description: p.description,
     recommendationLabel: extras?.recommendationLabel,

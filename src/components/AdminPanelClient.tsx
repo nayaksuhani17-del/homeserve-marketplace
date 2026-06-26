@@ -16,6 +16,7 @@ import {
   getProviderAdminStatus,
   PROVIDER_STATUS_STYLES,
 } from "@/lib/admin/dashboard";
+import { isProviderVerified } from "@/lib/provider-verification";
 import type { MockUser } from "@/lib/mock/types";
 
 type AdminTab = "overview" | "providers" | "users" | "bookings" | "reports" | "reviews";
@@ -360,7 +361,11 @@ export function AdminPanelClient() {
                   providers.map((p) => {
                     const providerUser = db.users.find((u) => u.id === p.userId);
                     const isBanned = providerUser?.banned ?? false;
-                    const status = getProviderAdminStatus(p.approved, p.rejected, isBanned);
+                    const status = getProviderAdminStatus(
+                      isProviderVerified(p),
+                      p.rejected,
+                      isBanned
+                    );
                     return (
                       <tr
                         key={p.id}
@@ -383,7 +388,7 @@ export function AdminPanelClient() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
-                            {!p.approved && !isBanned && (
+                            {!isProviderVerified(p) && !isBanned && !p.rejected && (
                               <>
                                 <button
                                   type="button"
@@ -391,12 +396,12 @@ export function AdminPanelClient() {
                                   onClick={() =>
                                     run(
                                       () => approveProvider(p.id, true),
-                                      `${p.name} approved — visible in search`
+                                      `${p.name} verified — badge visible to customers`
                                     )
                                   }
                                   className="btn-primary px-3 py-1 text-xs disabled:opacity-60"
                                 >
-                                  ✅ Approve
+                                  ✅ Approve Provider
                                 </button>
                                 <button
                                   type="button"
@@ -413,7 +418,7 @@ export function AdminPanelClient() {
                                 </button>
                               </>
                             )}
-                            {p.approved && !isBanned && (
+                            {isProviderVerified(p) && !isBanned && (
                               <button
                                 type="button"
                                 disabled={loading}

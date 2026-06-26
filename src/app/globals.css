@@ -98,7 +98,11 @@ body {
   }
 
   .badge-verified {
-    @apply shrink-0 rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-medium text-white;
+    @apply shrink-0 rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-medium text-white;
+  }
+
+  .badge-unverified {
+    @apply shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200;
   }
 
   .badge-top-rated {

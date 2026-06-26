@@ -11,6 +11,7 @@ import { RecommendationBadge } from "./RecommendationBadge";
 import { TrustBadges } from "./TrustBadges";
 import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { resolveProviderRating } from "@/lib/ratings";
+import { isProviderVerified } from "@/lib/provider-verification";
 import { FavoriteButton } from "./FavoriteButton";
 import { getProviderUser } from "@/lib/providers";
 import * as pricing from "@/lib/pricing";
@@ -69,6 +70,9 @@ export function ProviderCard({
     ratingAvg: Number(provider.rating_avg),
     reviewCount: Number(provider.review_count ?? 0),
   });
+  const verified = isProviderVerified(
+    liveProvider ?? { approved: Boolean(provider.approved) }
+  );
   const priceDisplay = pricing.formatProviderPriceAmount(
     provider.pricing_type,
     Number(provider.price)
@@ -161,7 +165,8 @@ export function ProviderCard({
           <ProviderStatusBadges
             ratingAvg={ratingAvg}
             reviewCount={reviewCount}
-            approved={Boolean(provider.approved)}
+            verified={verified}
+            approved={verified}
           />
           <span className="text-gray-400">·</span>
           <span className="text-xs text-green-600">{responseLabel}</span>
@@ -221,7 +226,7 @@ export function ProviderCard({
                   Message
                 </button>
               )}
-              {showHire && provider.approved && (
+              {showHire && (
                 <>
                   <button
                     type="button"

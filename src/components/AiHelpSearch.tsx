@@ -129,7 +129,7 @@ export function AiHelpSearch() {
     const result = filterProviders(
       unclear
         ? {
-            status: "verified",
+            status: "all",
             sort: parsed.intent.priceSensitive
               ? "price"
               : parsed.intent.qualityFocus
@@ -148,7 +148,7 @@ export function AiHelpSearch() {
             maxDistance: parsed.maxDistance ? String(parsed.maxDistance) : undefined,
             availability: parsed.intent.urgency ? "today" : parsed.availability,
             q: q,
-            status: "verified",
+            status: "all",
           }
     );
 

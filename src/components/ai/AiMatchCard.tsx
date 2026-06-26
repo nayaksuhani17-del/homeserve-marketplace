@@ -81,6 +81,7 @@ export function AiMatchCard({
               <ProviderStatusBadges
                 ratingAvg={ratingAvg}
                 reviewCount={reviewCount}
+                verified={provider.verified ?? provider.approved}
                 approved={provider.approved}
               />
             </div>

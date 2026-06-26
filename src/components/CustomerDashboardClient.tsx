@@ -116,7 +116,7 @@ export function CustomerDashboardClient() {
     const feed = filterProviders({
       q: query,
       service: parsed.service,
-      status: "verified",
+      status: "all",
       sort: parsed.sort ?? "rating",
       availability: parsed.availability,
       maxPrice: parsed.maxPrice ? String(parsed.maxPrice) : undefined,

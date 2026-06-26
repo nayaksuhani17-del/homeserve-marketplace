@@ -67,6 +67,7 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     description: p.description,
     availability: p.availability,
     ratingAvg: Number(p.rating_avg),
+    verified: Boolean(p.approved),
     approved: p.approved,
     distanceMiles: Number(p.distance_miles ?? 5),
     jobsCompleted: Number(p.jobs_completed ?? 0),

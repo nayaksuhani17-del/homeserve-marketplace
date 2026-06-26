@@ -1,4 +1,5 @@
 import { SERVICE_CATEGORIES } from "@/lib/constants";
+import { isProviderVerified } from "@/lib/provider-verification";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
 import type { MockDatabase, MockProvider, MockUser } from "@/lib/mock/types";
 
@@ -93,16 +94,16 @@ export function advancedSearch(
   const q = query.trim();
   if (!q) return [];
 
-  const verifiedOnly = opts?.verifiedOnly ?? true;
+  const verifiedOnly = opts?.verifiedOnly ?? false;
   const tokens = tokenize(q);
   const serviceHint = detectServiceInQuery(q);
   const activeUserIds = new Set(db.users.map((u) => u.id));
   const bannedUserIds = new Set(db.users.filter((u) => u.banned).map((u) => u.id));
 
   let providers = db.providers.filter(
-    (p) => activeUserIds.has(p.userId) && !bannedUserIds.has(p.userId)
+    (p) => activeUserIds.has(p.userId) && !bannedUserIds.has(p.userId) && !p.rejected
   );
-  if (verifiedOnly) providers = providers.filter((p) => p.approved && !p.rejected);
+  if (verifiedOnly) providers = providers.filter((p) => isProviderVerified(p));
 
   const results: UnifiedSearchResult[] = [];
   const seenUserIds = new Set<string>();

@@ -1,4 +1,4 @@
-import { isDemoAccount } from "@/lib/accounts";
+import { isProviderVerified } from "@/lib/provider-verification";
 import { buildAdminDemoReports } from "./admin-demo-reports";
 import type { MockBooking, MockDatabase, MockProvider, MockUser } from "./types";
 import { MOCK_DB_VERSION } from "./types";
@@ -40,9 +40,11 @@ function normalizeWeekAvailability(
 }
 
 function normalizeProvider(provider: MockProvider, users: MockUser[]): MockProvider {
-  const user = users.find((u) => u.id === provider.userId);
+  const verified = isProviderVerified(provider);
   const base = {
     ...provider,
+    verified,
+    approved: verified,
     services: provider.services ?? [],
     tags: provider.tags ?? [],
     responseSpeed:
@@ -56,9 +58,6 @@ function normalizeProvider(provider: MockProvider, users: MockUser[]): MockProvi
     reviewCount: provider.reviewCount ?? 0,
     jobsCompleted: provider.jobsCompleted ?? 0,
   };
-  if (user && !isDemoAccount(user) && !base.rejected) {
-    return { ...base, approved: true };
-  }
   return base;
 }
 

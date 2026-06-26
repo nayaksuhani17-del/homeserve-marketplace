@@ -740,8 +740,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         message: both
           ? "Your account can book services and receive job requests. Switch modes anytime from the header."
           : roles.providerRole
-            ? "Your profile is live and verified. Update services and availability to start receiving job requests."
-            : "Your account is ready. Search for a service and book a verified professional in minutes.",
+            ? "Your provider dashboard is ready. Complete your profile while admin verifies your account."
+            : "Your account is ready. Search for a service and book a local professional in minutes.",
         href: roles.providerRole && !roles.customerRole
           ? "/provider/dashboard"
           : "/customer/dashboard",
@@ -920,8 +920,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!provider) {
         return { error: "Provider not found." };
       }
-      if (!provider.approved) {
-        return { error: "This provider is not approved yet." };
+      if (provider.rejected) {
+        return { error: "This provider is no longer accepting bookings." };
       }
       const providerUser = db.users.find((u) => u.id === provider.userId);
       if (providerUser?.banned) {
@@ -1669,16 +1669,26 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       const provider = db.providers.find((p) => p.id === providerId);
       setLoading(true);
       await simulateDelay(400);
-      persist(approveProviderRecord(db, providerId, approved));
+      let next = approveProviderRecord(db, providerId, approved);
       if (provider && approved) {
+        const providerUser = next.users.find((u) => u.id === provider.userId);
+        if (providerUser) {
+          next = appendNotification(next, providerUser.id, {
+            type: "system",
+            title: "Account verified",
+            message: "🎉 Your provider account has been verified!",
+            href: "/provider/dashboard",
+          });
+        }
         emitSystemEvent({
           type: "booking_accepted",
-          message: `Provider approved: ${provider.name} — now visible in search`,
+          message: `Provider verified: ${provider.name}`,
         });
       }
+      persistImmediate(next);
       setLoading(false);
     },
-    [db, persist, emitSystemEvent]
+    [db, persistImmediate, appendNotification, emitSystemEvent]
   );
 
   const rejectProvider = useCallback(
@@ -1796,7 +1806,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       }
 
       const effectiveStatus =
-        filters.status === "all" ? "all" : filters.status ?? "verified";
+        filters.status === "all" ? "all" : filters.status ?? "all";
       const result = filterMockProviders(db, {
         ...filters,
         status: effectiveStatus,

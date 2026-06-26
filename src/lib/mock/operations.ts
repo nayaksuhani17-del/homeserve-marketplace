@@ -1,6 +1,7 @@
 import { DEMO_MODE, DEMO_PROVIDER_PAGE_SIZE } from "@/lib/demo/mode";
 import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
-import { computeProviderRatingStats, roundRatingAverage } from "@/lib/ratings";
+import { computeProviderRatingStats } from "@/lib/ratings";
+import { isProviderVerified } from "@/lib/provider-verification";
 import { rankProviders } from "@/lib/providers";
 import { detectUrgency } from "@/lib/smart";
 import { isSlotBlocked, isSlotTaken, slotKey } from "./simulation";
@@ -74,6 +75,7 @@ export function mockProviderToLegacy(p: MockProvider): ProviderWithUser {
     availability: p.availability,
     rating_avg: p.ratingAvg,
     approved: p.approved,
+    verified: p.verified,
     distance_miles: p.distanceMiles,
     jobs_completed: p.jobsCompleted,
     years_experience: p.yearsExperience,
@@ -102,11 +104,12 @@ export function applyProviderFilters(
 
   const bannedUserIds = new Set(db.users.filter((u) => u.banned).map((u) => u.id));
   list = list.filter((p) => !bannedUserIds.has(p.userId));
+  list = list.filter((p) => !p.rejected);
 
   if (filters.status === "pending") {
-    list = list.filter((p) => !p.approved);
+    list = list.filter((p) => !isProviderVerified(p));
   } else if (filters.status === "verified") {
-    list = list.filter((p) => p.approved);
+    list = list.filter((p) => isProviderVerified(p));
   }
 
   if (filters.service) {
@@ -536,7 +539,12 @@ export function approveProviderRecord(
     ...db,
     providers: db.providers.map((p) =>
       p.id === providerId
-        ? { ...p, approved, rejected: approved ? false : p.rejected }
+        ? {
+            ...p,
+            verified: approved,
+            approved,
+            rejected: approved ? false : p.rejected,
+          }
         : p
     ),
   };
@@ -549,7 +557,9 @@ export function rejectProviderRecord(
   return {
     ...db,
     providers: db.providers.map((p) =>
-      p.id === providerId ? { ...p, approved: false, rejected: true } : p
+      p.id === providerId
+        ? { ...p, verified: false, approved: false, rejected: true }
+        : p
     ),
   };
 }
@@ -625,7 +635,7 @@ export function registerUserRecord(
 }
 
 export function getStats(db: MockDatabase) {
-  const verified = db.providers.filter((p) => p.approved);
+  const verified = db.providers.filter((p) => isProviderVerified(p));
   const jobsCompleted = verified.reduce((s, p) => s + (p.jobsCompleted ?? 0), 0);
   const avgRating =
     verified.length > 0
@@ -636,7 +646,9 @@ export function getStats(db: MockDatabase) {
     totalUsers: db.users.length,
     totalProviders: db.providers.length,
     verifiedProviders: verified.length,
-    pendingProviders: db.providers.filter((p) => !p.approved && !p.rejected).length,
+    pendingProviders: db.providers.filter(
+      (p) => !isProviderVerified(p) && !p.rejected
+    ).length,
     totalBookings: db.bookings.length,
     activeJobs: db.bookings.filter((b) =>
       b.status === "pending" || b.status === "confirmed"

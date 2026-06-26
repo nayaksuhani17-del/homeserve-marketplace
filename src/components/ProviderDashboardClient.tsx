@@ -15,6 +15,7 @@ import { ProviderSummaryCard } from "@/components/provider/ProviderSummaryCard";
 import { ProviderEarningsChart } from "@/components/provider/ProviderEarningsChart";
 import { useMockApp } from "@/context/MockAppContext";
 import { hasProviderRole, isAdmin } from "@/lib/user-capabilities";
+import { isProviderVerified, VERIFIED_PROVIDER_LABEL } from "@/lib/provider-verification";
 import { useToast } from "@/components/Toast";
 import {
   getBookingAddress,
@@ -381,14 +382,14 @@ export function ProviderDashboardClient() {
       {provider && (
         <div
           className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
-            provider.approved
-              ? "border-green-200 bg-green-50 text-green-800"
-              : "border-amber-200 bg-amber-50 text-amber-800"
+            isProviderVerified(provider)
+              ? "border-blue-200 bg-blue-50 text-blue-900"
+              : "border-amber-200 bg-amber-50 text-amber-900"
           }`}
         >
-          {provider.approved
-            ? "✓ Verified provider — you're live and accepting bookings."
-            : "⏳ Profile pending approval — keep your listing up to date."}
+          {isProviderVerified(provider)
+            ? `${VERIFIED_PROVIDER_LABEL} — your profile shows the verified badge to customers.`
+            : "⚠️ Your account is not verified yet. You are awaiting admin approval."}
         </div>
       )}
 

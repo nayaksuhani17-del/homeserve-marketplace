@@ -361,9 +361,16 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
     "Demo accounts remain in same users list"
   );
   assert(
-    multiDb.providers.some((p) => p.userId === provider1.id && p.approved),
-    "New provider auto-approved like demo providers"
+    multiDb.providers.some(
+      (p) => p.userId === provider1.id && !p.verified && !p.approved
+    ),
+    "New provider starts unverified pending admin approval"
   );
+
+  const newProviderProfile = multiDb.providers.find((p) => p.userId === provider1.id)!;
+  const afterApprove = approveProviderRecord(multiDb, newProviderProfile.id, true);
+  const approvedProfile = afterApprove.providers.find((p) => p.id === newProviderProfile.id)!;
+  assert(approvedProfile.verified && approvedProfile.approved, "Admin approval sets verified=true");
 
   const totalBefore = multiDb.users.length;
   const customer2 = newGuestUser({
