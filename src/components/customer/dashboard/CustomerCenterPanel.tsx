@@ -5,14 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HireModal } from "@/components/HireModal";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
-import { ReviewForm } from "@/components/ReviewForm";
+import { ReviewEligibilityPanel } from "@/components/ReviewEligibilityPanel";
 import { StarRating } from "@/components/StarRating";
 import { useMockApp } from "@/context/MockAppContext";
 import type { MockBooking, MockProvider } from "@/lib/mock/types";
 import { customerMessagesHref } from "@/lib/notification-links";
 import { formatProviderPrice } from "@/lib/pricing";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
-import { canLeaveReview, hasReviewForBooking, REVIEW_ALREADY_SUBMITTED_MESSAGE } from "@/lib/mock/operations";
 
 const EXAMPLE_PROMPTS = [
   "My sink is leaking",
@@ -254,25 +253,13 @@ function ProviderResults({
 
 function JobDetail({
   booking,
-  hasReview,
   onNewRequest,
 }: {
   booking: MockBooking;
-  hasReview: boolean;
   onNewRequest: () => void;
 }) {
-  const { db, user } = useMockApp();
+  const { db } = useMockApp();
   const providerUserId = db?.providers.find((p) => p.id === booking.providerId)?.userId;
-  const showReview =
-    user != null &&
-    db != null &&
-    canLeaveReview(db, {
-      customerId: user.id,
-      bookingId: booking.id,
-      providerId: booking.providerId,
-    });
-  const awaitingReview =
-    booking.status === "pending" || booking.status === "confirmed";
   const canMessage =
     providerUserId &&
     (booking.status === "pending" ||
@@ -344,24 +331,11 @@ function JobDetail({
           )}
         </div>
 
-        {showReview && (
-          <div className="mt-6">
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">Leave Review</h3>
-            <ReviewForm providerId={booking.providerId} bookingId={booking.id} />
-          </div>
-        )}
-
-        {awaitingReview && (
-          <p className="mt-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-            You can leave a review after the job is completed.
-          </p>
-        )}
-
-        {booking.status === "completed" && hasReview && (
-          <p className="mt-6 text-center text-sm text-gray-600">
-            {REVIEW_ALREADY_SUBMITTED_MESSAGE}
-          </p>
-        )}
+        <ReviewEligibilityPanel
+          booking={booking}
+          providerId={booking.providerId}
+          className="mt-6"
+        />
       </div>
     </div>
   );
@@ -402,7 +376,6 @@ export function CustomerCenterPanel({
       <main className="flex min-h-[calc(100dvh-9rem)] flex-1 flex-col bg-white">
         <JobDetail
           booking={booking}
-          hasReview={hasReview(booking.id)}
           onNewRequest={onReset}
         />
       </main>

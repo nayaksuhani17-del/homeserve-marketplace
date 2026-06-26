@@ -13,7 +13,7 @@ import {
 import { getDemoProviderById } from "@/lib/demo/providers";
 import { getProviderUser } from "@/lib/providers";
 import { estimateBookingCost } from "@/lib/pricing";
-import { REVIEW_ALREADY_SUBMITTED_MESSAGE } from "@/lib/mock/operations";
+import { REVIEW_ALREADY_SUBMITTED_MESSAGE, REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE } from "@/lib/mock/operations";
 
 export async function getCurrentUser() {
   const appUser = await getAppUser();
@@ -187,7 +187,7 @@ export async function createReview(formData: FormData) {
     return { error: "This review does not match the provider for this booking." };
   }
   if (booking.status !== "completed") {
-    return { error: "You can leave a review after the job is completed." };
+    return { error: REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE };
   }
 
   const { data: existing } = await supabase

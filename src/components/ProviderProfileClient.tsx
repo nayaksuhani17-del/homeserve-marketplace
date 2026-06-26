@@ -13,11 +13,11 @@ import { TrustBadges } from "./TrustBadges";
 import { FavoriteButton } from "./FavoriteButton";
 import { getViewerCount } from "@/lib/trust";
 import { getServiceMeta } from "@/lib/services";
-import { ReviewForm } from "./ReviewForm";
+import { ReviewEligibilityPanel } from "./ReviewEligibilityPanel";
 import { ReportProviderModal } from "./ReportProviderModal";
 import { useMockApp } from "@/context/MockAppContext";
 import { customerMessagesHref } from "@/lib/notification-links";
-import { canLeaveReview } from "@/lib/mock/operations";
+import { canReviewBooking } from "@/lib/mock/operations";
 import { computeProviderTags } from "@/lib/providers";
 import { hasCustomerRole } from "@/lib/user-capabilities";
 import { formatProviderPrice, PRICING_TYPE_LABELS } from "@/lib/pricing";
@@ -119,11 +119,7 @@ export function ProviderProfileClient({
       ? getBookingsForCustomer(sessionUser.id).find(
           (b) =>
             b.providerId === provider.id &&
-            canLeaveReview(db, {
-              customerId: sessionUser.id,
-              bookingId: b.id,
-              providerId: provider.id,
-            })
+            canReviewBooking(db, b, sessionUser.id)
         )
       : undefined;
   const rebookPrefill = getRebookPrefill(provider.id);
@@ -374,12 +370,11 @@ export function ProviderProfileClient({
       )}
 
       {isLoggedIn && provider.approved && reviewableBooking && (
-        <div className="mt-8">
-          <ReviewForm
-            providerId={provider.id}
-            bookingId={reviewableBooking.id}
-          />
-        </div>
+        <ReviewEligibilityPanel
+          booking={reviewableBooking}
+          providerId={provider.id}
+          className="mt-8"
+        />
       )}
 
       <QuoteModal

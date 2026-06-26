@@ -373,6 +373,9 @@ export function removeReviewRecord(db: MockDatabase, reviewId: string): MockData
 
 export const REVIEW_ALREADY_SUBMITTED_MESSAGE = "You have already reviewed this job";
 
+export const REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE =
+  "Review available after job completion";
+
 export function findReviewForBooking(
   db: MockDatabase,
   bookingId: string
@@ -400,7 +403,7 @@ export function validateReview(
     return "This review does not match the provider for this booking.";
   }
   if (booking.status !== "completed") {
-    return "You can leave a review after the job is completed.";
+    return REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE;
   }
   if (findReviewForBooking(db, input.bookingId)) {
     return REVIEW_ALREADY_SUBMITTED_MESSAGE;
@@ -408,12 +411,27 @@ export function validateReview(
   return undefined;
 }
 
+/** Customer may leave a review for this booking (completed, owned, not yet reviewed). */
+export function canReviewBooking(
+  db: MockDatabase,
+  booking: MockBooking,
+  customerId: string
+): boolean {
+  return (
+    booking.status === "completed" &&
+    booking.customerId === customerId &&
+    !findReviewForBooking(db, booking.id)
+  );
+}
+
 /** True when the customer may submit a review for this booking + provider pair. */
 export function canLeaveReview(
   db: MockDatabase,
   input: { customerId: string; bookingId: string; providerId: string }
 ): boolean {
-  return validateReview(db, input) === undefined;
+  const booking = db.bookings.find((b) => b.id === input.bookingId);
+  if (!booking || booking.providerId !== input.providerId) return false;
+  return canReviewBooking(db, booking, input.customerId);
 }
 
 export function addReviewRecord(
