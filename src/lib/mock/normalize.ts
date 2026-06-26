@@ -62,25 +62,48 @@ function normalizeProvider(provider: MockProvider, users: MockUser[]): MockProvi
   return base;
 }
 
+function hasOrphanProviders(raw: MockDatabase): boolean {
+  const userIds = new Set((raw.users ?? []).map((u) => u.id));
+  return (raw.providers ?? []).some((p) => !userIds.has(p.userId));
+}
+
+function hasMissingRoleFlags(users: MockUser[]): boolean {
+  return users.some(
+    (u) =>
+      u.role !== "admin" &&
+      (typeof u.customerRole !== "boolean" || typeof u.providerRole !== "boolean")
+  );
+}
+
+function hasDuplicateUserEmails(users: MockUser[]): boolean {
+  const seen = new Set<string>();
+  for (const user of users) {
+    const key = user.email.toLowerCase();
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
+}
+
 /** Skip full re-normalize on refresh when localStorage already matches schema. */
 export function needsNormalization(raw: MockDatabase): boolean {
   if (raw.version !== MOCK_DB_VERSION) return true;
   const providers = raw.providers ?? [];
   if (providers.length === 0) return false;
-  return providers.some(
-    (p) =>
-      !p.responseSpeed ||
-      !Array.isArray(p.weekAvailability) ||
-      p.weekAvailability.length !== 7 ||
-      !Array.isArray(p.blockedSlots) ||
-      typeof p.rejected !== "boolean"
-  ) || !raw.reports?.length || hasDuplicateUserEmails(raw.users ?? []) ||
-    hasOrphanProviders(raw) || hasMissingRoleFlags(raw.users ?? []);
-}
-
-function hasOrphanProviders(raw: MockDatabase): boolean {
-  const userIds = new Set((raw.users ?? []).map((u) => u.id));
-  return (raw.providers ?? []).some((p) => !userIds.has(p.userId));
+  return (
+    providers.some(
+      (p) =>
+        !p.responseSpeed ||
+        !Array.isArray(p.weekAvailability) ||
+        p.weekAvailability.length !== 7 ||
+        !Array.isArray(p.blockedSlots) ||
+        typeof p.rejected !== "boolean"
+    ) ||
+    !raw.reports?.length ||
+    hasDuplicateUserEmails(raw.users ?? []) ||
+    hasOrphanProviders(raw) ||
+    hasMissingRoleFlags(raw.users ?? [])
+  );
 }
 
 /** Patch localStorage DBs to the current schema. */
@@ -120,24 +143,6 @@ function normalizeUser(user: MockUser): MockUser {
     providerRole,
     role: providerRole ? "provider" : "customer",
   };
-}
-
-function hasMissingRoleFlags(users: MockUser[]): boolean {
-  return users.some(
-    (u) =>
-      u.role !== "admin" &&
-      (typeof u.customerRole !== "boolean" || typeof u.providerRole !== "boolean")
-  );
-}
-
-function hasDuplicateUserEmails(users: MockUser[]): boolean {
-  const seen = new Set<string>();
-  for (const user of users) {
-    const key = user.email.toLowerCase();
-    if (seen.has(key)) return true;
-    seen.add(key);
-  }
-  return false;
 }
 
 export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
