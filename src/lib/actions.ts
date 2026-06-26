@@ -171,6 +171,9 @@ export async function createReview(formData: FormData) {
 
   if (!providerId || !rating) return { error: "Missing review details." };
   if (!bookingId) return { error: "A completed booking is required to leave a review." };
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+    return { error: "Please select a rating between 1 and 5." };
+  }
 
   const { data: booking, error: bookingError } = await supabase
     .from("bookings")

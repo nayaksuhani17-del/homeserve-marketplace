@@ -24,18 +24,29 @@ export function recalculateProviderRating(
   providers: MockProvider[],
   reviews: MockReview[]
 ): MockProvider[] {
-  const providerReviews = reviews.filter((r) => r.providerId === providerId);
+  const stats = computeProviderRatingStats(reviews, providerId);
   return providers.map((p) => {
     if (p.id !== providerId) return p;
-    if (providerReviews.length === 0) return p;
-    const avg =
-      providerReviews.reduce((s, r) => s + r.rating, 0) / providerReviews.length;
+    if (!stats) return p;
     return {
       ...p,
-      ratingAvg: Math.round(avg * 10) / 10,
-      reviewCount: providerReviews.length,
+      ratingAvg: stats.ratingAvg,
+      reviewCount: stats.reviewCount,
     };
   });
+}
+
+/** average = totalRating / numberOfReviews */
+export function computeProviderRatingStats(
+  reviews: MockReview[],
+  providerId: string
+): { ratingAvg: number; reviewCount: number } | null {
+  const providerReviews = reviews.filter((r) => r.providerId === providerId);
+  if (providerReviews.length === 0) return null;
+  const totalRating = providerReviews.reduce((sum, r) => sum + r.rating, 0);
+  const reviewCount = providerReviews.length;
+  const ratingAvg = Math.round((totalRating / reviewCount) * 10) / 10;
+  return { ratingAvg, reviewCount };
 }
 
 export function mockProviderToLegacy(p: MockProvider): ProviderWithUser {
@@ -389,7 +400,12 @@ export function hasReviewForBooking(db: MockDatabase, bookingId: string): boolea
 
 export function validateReview(
   db: MockDatabase,
-  input: { customerId: string; bookingId?: string; providerId?: string }
+  input: {
+    customerId: string;
+    bookingId?: string;
+    providerId?: string;
+    rating?: number;
+  }
 ): string | undefined {
   if (!input.bookingId) {
     return "A completed booking is required to leave a review.";
@@ -407,6 +423,11 @@ export function validateReview(
   }
   if (findReviewForBooking(db, input.bookingId)) {
     return REVIEW_ALREADY_SUBMITTED_MESSAGE;
+  }
+  if (input.rating != null) {
+    if (!Number.isFinite(input.rating) || input.rating < 1 || input.rating > 5) {
+      return "Please select a rating between 1 and 5.";
+    }
   }
   return undefined;
 }
@@ -434,27 +455,35 @@ export function canLeaveReview(
   return canReviewBooking(db, booking, input.customerId);
 }
 
+export type AddReviewRecordResult = {
+  db: MockDatabase;
+  review?: MockReview;
+  error?: string;
+};
+
 export function addReviewRecord(
   db: MockDatabase,
   input: {
     customerId: string;
     providerId: string;
-    bookingId?: string;
+    bookingId: string;
     rating: number;
     comment: string;
   },
   reviewId: string
-): MockDatabase {
+): AddReviewRecordResult {
   const validationError = validateReview(db, {
     customerId: input.customerId,
     bookingId: input.bookingId,
     providerId: input.providerId,
+    rating: input.rating,
   });
-  if (validationError) return db;
+  if (validationError) return { db, error: validationError };
 
   const customer = db.users.find((u) => u.id === input.customerId);
-  if (!customer) return db;
+  if (!customer) return { db, error: "Customer not found." };
 
+  const timestamp = new Date().toISOString();
   const review: MockReview = {
     id: reviewId,
     customerId: customer.id,
@@ -462,21 +491,14 @@ export function addReviewRecord(
     providerId: input.providerId,
     bookingId: input.bookingId,
     rating: input.rating,
-    comment: input.comment,
-    createdAt: new Date().toISOString(),
+    comment: input.comment.trim(),
+    createdAt: timestamp,
   };
 
   const reviews = [review, ...db.reviews];
   const providers = recalculateProviderRating(input.providerId, db.providers, reviews);
 
-  let bookings = db.bookings;
-  if (input.bookingId) {
-    bookings = bookings.map((b) =>
-      b.id === input.bookingId ? { ...b } : b
-    );
-  }
-
-  return { ...db, reviews, providers, bookings };
+  return { db: { ...db, reviews, providers }, review };
 }
 
 export function updateProviderRecord(

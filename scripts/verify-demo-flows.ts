@@ -11,6 +11,9 @@ import {
   addReviewRecord,
   validateReview,
   canLeaveReview,
+  computeProviderRatingStats,
+  REVIEW_ALREADY_SUBMITTED_MESSAGE,
+  REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE,
   rejectProviderRecord,
   resolveBookingRecord,
   dismissReportRecord,
@@ -70,6 +73,22 @@ function assert(cond: boolean, msg: string) {
   else fail(msg);
 }
 
+function commitReview(
+  database: ReturnType<typeof buildInitialDatabase>,
+  input: {
+    customerId: string;
+    providerId: string;
+    bookingId: string;
+    rating: number;
+    comment: string;
+  },
+  id: string
+) {
+  const result = addReviewRecord(database, input, id);
+  assert(!result.error && !!result.review, `Review saved for booking ${input.bookingId}`);
+  return result.db;
+}
+
 console.log("\n🏠 HomeServe — 3-Role Pre-Demo Check\n");
 
 let db = buildInitialDatabase();
@@ -114,7 +133,7 @@ console.log("👤 CUSTOMER FLOW");
   const completed = db.bookings.find((b) => b.id === bookingId);
   assert(completed?.status === "completed", "Booking completed (demo auto-complete path)");
 
-  db = addReviewRecord(
+  db = commitReview(
     db,
     {
       customerId: sarah!.id,
@@ -282,7 +301,7 @@ console.log("\n🔄 ACCOUNT SWITCH SYNC");
     "Customer sees completed after provider marks done"
   );
 
-  syncDb = addReviewRecord(
+  syncDb = commitReview(
     syncDb,
     {
       customerId: sarah!.id,
@@ -453,7 +472,7 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   guardDb = completeBookingRecord(guardDb, bookingId);
   const ratingBefore = guardDb.providers.find((p) => p.id === marcus!.id)!.ratingAvg;
   const countBefore = guardDb.providers.find((p) => p.id === marcus!.id)!.reviewCount;
-  guardDb = addReviewRecord(
+  guardDb = commitReview(
     guardDb,
     {
       customerId: sarah!.id,
@@ -665,7 +684,7 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
       providerId: confirmedBooking.providerId,
     });
     assert(
-      Boolean(reviewError?.includes("completed")),
+      reviewError === REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE,
       "Cannot review before job is completed"
     );
   }
@@ -694,16 +713,20 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
       },
       dupId
     );
+    guardDb = first.db;
+    assert(!!first.review, "First review stored for duplicate guard");
     assert(
-      canLeaveReview(first, {
+      canLeaveReview(guardDb, {
         customerId: sarah!.id,
         bookingId: completedBooking.id,
         providerId: marcus!.id,
       }) === false,
       "One review per booking — duplicate blocked"
     );
+    const stats = computeProviderRatingStats(guardDb.reviews, marcus!.id);
+    assert(!!stats && stats.reviewCount >= 1, "Provider rating stats recalculated");
     const blockedDup = addReviewRecord(
-      first,
+      guardDb,
       {
         customerId: sarah!.id,
         providerId: marcus!.id,
@@ -714,7 +737,11 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
       demoId("dup-review-2")
     );
     assert(
-      blockedDup.reviews.filter((r) => r.bookingId === completedBooking.id).length === 1,
+      blockedDup.error === REVIEW_ALREADY_SUBMITTED_MESSAGE,
+      "Duplicate submission returns already-reviewed message"
+    );
+    assert(
+      blockedDup.db.reviews.filter((r) => r.bookingId === completedBooking.id).length === 1,
       "Duplicate review record not stored"
     );
   }

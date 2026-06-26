@@ -10,6 +10,7 @@ async function main() {
   const {
     createBookingRecord,
     addReviewRecord,
+    completeBookingRecord,
     approveProviderRecord,
     filterMockProviders,
     getReviewsForProvider,
@@ -30,7 +31,8 @@ async function main() {
   if (hasPendingInVerified) throw new Error("Verified filter includes pending providers");
   console.log("✓ Verified filter excludes pending");
 
-  db = createBookingRecord(
+  const bookingId = newId("test-booking");
+  const created = createBookingRecord(
     db,
     {
       customerId: sarah.id,
@@ -40,17 +42,20 @@ async function main() {
       time: "14:00",
       hours: 3,
     },
-    newId("test-booking")
+    bookingId
   );
-  const booking = db.bookings[0];
+  db = created.db;
+  const booking = db.bookings.find((b) => b.id === bookingId);
+  if (!booking) throw new Error("Booking not created");
   const providerBookings = db.bookings.filter((b) => b.providerId === marcus.id);
   if (!providerBookings.some((b) => b.customerId === sarah.id && b.service === "Plumber")) {
     throw new Error("Booking not visible to provider");
   }
   console.log("✓ Booking created for customer + provider");
 
+  db = completeBookingRecord(db, booking.id);
   const beforeRating = db.providers.find((p) => p.id === marcus.id).ratingAvg;
-  db = addReviewRecord(
+  const reviewResult = addReviewRecord(
     db,
     {
       customerId: sarah.id,
@@ -61,6 +66,10 @@ async function main() {
     },
     newId("test-review")
   );
+  if (reviewResult.error || !reviewResult.review) {
+    throw new Error(reviewResult.error ?? "Review not saved");
+  }
+  db = reviewResult.db;
   const afterRating = db.providers.find((p) => p.id === marcus.id).ratingAvg;
   const reviews = getReviewsForProvider(db, marcus.id);
   if (reviews.length === 0) throw new Error("Review not saved");

@@ -38,7 +38,11 @@ export function ReviewEligibilityPanel({
             Leave Review
           </button>
         ) : (
-          <ReviewForm providerId={providerId} bookingId={booking.id} />
+          <ReviewForm
+            providerId={providerId}
+            bookingId={booking.id}
+            onSuccess={() => setFormOpen(false)}
+          />
         )}
       </div>
     );

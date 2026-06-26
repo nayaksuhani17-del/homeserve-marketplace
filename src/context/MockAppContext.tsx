@@ -42,6 +42,7 @@ import {
   toggleProviderBlockedSlotRecord,
   updateProviderRecord,
   validateReview,
+  REVIEW_ALREADY_SUBMITTED_MESSAGE,
 } from "@/lib/mock/operations";
 import { getMarketplaceAnalytics } from "@/lib/mock/analytics";
 import {
@@ -201,7 +202,7 @@ type MockAppContextValue = {
   systemEvents: SystemEvent[];
   addReview: (input: {
     providerId: string;
-    bookingId?: string;
+    bookingId: string;
     rating: number;
     comment: string;
   }) => Promise<{ error?: string }>;
@@ -1581,7 +1582,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const addReview = useCallback(
     async (input: {
       providerId: string;
-      bookingId?: string;
+      bookingId: string;
       rating: number;
       comment: string;
     }) => {
@@ -1591,17 +1592,25 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         customerId: user.id,
         bookingId: input.bookingId,
         providerId: input.providerId,
+        rating: input.rating,
       });
       if (validationError) {
         return { error: validationError };
       }
       await simulateDelay(DEMO_MODE ? 250 : 600);
       const id = newId("review");
-      let next = addReviewRecord(
+      const result = addReviewRecord(
         db,
-        { ...input, customerId: user.id },
+        {
+          ...input,
+          customerId: user.id,
+        },
         id
       );
+      if (result.error || !result.review) {
+        return { error: result.error ?? REVIEW_ALREADY_SUBMITTED_MESSAGE };
+      }
+      let next = result.db;
       const provider = db.providers.find((p) => p.id === input.providerId);
       const providerUser = provider
         ? db.users.find((u) => u.id === provider.userId)

@@ -90,7 +90,7 @@ export type MockReview = {
   customerId: string;
   customerName: string;
   providerId: string;
-  bookingId?: string | null;
+  bookingId: string;
   rating: number;
   comment: string;
   createdAt: string;

@@ -4,14 +4,19 @@ import { useMemo, useState, useTransition } from "react";
 import { StarRating } from "./StarRating";
 import { useToast } from "./Toast";
 import { useMockApp } from "@/context/MockAppContext";
-import { validateReview, findReviewForBooking, REVIEW_ALREADY_SUBMITTED_MESSAGE } from "@/lib/mock/operations";
+import {
+  validateReview,
+  findReviewForBooking,
+  REVIEW_ALREADY_SUBMITTED_MESSAGE,
+} from "@/lib/mock/operations";
 
 type ReviewFormProps = {
   providerId: string;
   bookingId: string;
+  onSuccess?: () => void;
 };
 
-export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
+export function ReviewForm({ providerId, bookingId, onSuccess }: ReviewFormProps) {
   const { addReview, user, db } = useMockApp();
   const { toast } = useToast();
   const [rating, setRating] = useState(5);
@@ -23,14 +28,14 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
   const eligibilityError = useMemo(() => {
     if (!user) return "You must be logged in.";
     if (!db) return "Loading…";
-    const existingReview = findReviewForBooking(db, bookingId);
-    if (existingReview) return REVIEW_ALREADY_SUBMITTED_MESSAGE;
+    if (findReviewForBooking(db, bookingId)) return REVIEW_ALREADY_SUBMITTED_MESSAGE;
     return validateReview(db, {
       customerId: user.id,
       bookingId,
       providerId,
+      rating,
     });
-  }, [user, db, bookingId, providerId]);
+  }, [user, db, bookingId, providerId, rating]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -59,6 +64,7 @@ export function ReviewForm({ providerId, bookingId }: ReviewFormProps) {
       }
       toast("Review submitted — provider rating updated", "success");
       setComment("");
+      onSuccess?.();
     });
   }
 

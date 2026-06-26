@@ -151,7 +151,7 @@ export function buildInitialDatabase(): MockDatabase {
   const allBookings = [...bookings, ...marcusWorkspaceBookings, ...sarahWorkspaceBookings];
 
   const linkedBookingIds = new Set<string>();
-  const reviews: MockReview[] = DEMO_REVIEWS.map((r, i) => {
+  const reviews: MockReview[] = DEMO_REVIEWS.flatMap((r, i) => {
     const cid = userId(r.customerKey);
     const pid = providerId(r.providerKey);
     const linkedBooking = allBookings.find(
@@ -161,18 +161,21 @@ export function buildInitialDatabase(): MockDatabase {
         b.status === "completed" &&
         !linkedBookingIds.has(b.id)
     );
-    if (linkedBooking) linkedBookingIds.add(linkedBooking.id);
+    if (!linkedBooking) return [];
+    linkedBookingIds.add(linkedBooking.id);
 
-    return {
-      id: reviewId(i),
-      customerId: cid,
-      customerName: userNameById.get(cid) ?? "Customer",
-      providerId: pid,
-      bookingId: linkedBooking?.id,
-      rating: r.rating,
-      comment: r.comment,
-      createdAt: new Date(Date.now() - i * 86400000 * 5).toISOString(),
-    };
+    return [
+      {
+        id: reviewId(i),
+        customerId: cid,
+        customerName: userNameById.get(cid) ?? "Customer",
+        providerId: pid,
+        bookingId: linkedBooking.id,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: new Date(Date.now() - i * 86400000 * 5).toISOString(),
+      },
+    ];
   });
 
   // Sync review counts + ratings for seed providers from review data
