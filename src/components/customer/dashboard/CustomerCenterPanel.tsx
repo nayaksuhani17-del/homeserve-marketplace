@@ -6,7 +6,8 @@ import { HireModal } from "@/components/HireModal";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ReviewForm } from "@/components/ReviewForm";
 import { StarRating } from "@/components/StarRating";
-import { DirectMessageModal } from "@/components/DirectMessagePanel";
+import { ChatView } from "@/components/chat/ChatView";
+import { ChatModal } from "@/components/chat/ChatModal";
 import { useMockApp } from "@/context/MockAppContext";
 import type { MockBooking, MockProvider } from "@/lib/mock/types";
 import { formatProviderPrice } from "@/lib/pricing";
@@ -21,7 +22,8 @@ const EXAMPLE_PROMPTS = [
 export type CenterView =
   | { type: "search" }
   | { type: "results"; query: string; providers: MockProvider[] }
-  | { type: "job"; bookingId: string };
+  | { type: "job"; bookingId: string }
+  | { type: "chat"; userId: string; userName: string };
 
 type HireTarget = {
   providerId: string;
@@ -42,6 +44,7 @@ type CustomerCenterPanelProps = {
   hasReview: (bookingId: string) => boolean;
   onSearch: (query: string) => void;
   onReset: () => void;
+  onCloseChat?: () => void;
 };
 
 function pickService(provider: MockProvider, query: string): string {
@@ -315,7 +318,7 @@ function JobDetail({
       </div>
 
       {providerUserId && (
-        <DirectMessageModal
+        <ChatModal
           open={messageOpen}
           otherUserId={providerUserId}
           otherUserName={booking.providerName}
@@ -334,6 +337,7 @@ export function CustomerCenterPanel({
   hasReview,
   onSearch,
   onReset,
+  onCloseChat,
 }: CustomerCenterPanelProps) {
   const [hireTarget, setHireTarget] = useState<HireTarget | null>(null);
 
@@ -354,6 +358,19 @@ export function CustomerCenterPanel({
       availableToday: provider.availableToday,
       defaultService: pickService(provider, query),
     });
+  }
+
+  if (view.type === "chat") {
+    return (
+      <main className="flex min-h-[calc(100dvh-9rem)] flex-1 flex-col bg-white">
+        <ChatView
+          otherUserId={view.userId}
+          otherUserName={view.userName}
+          onClose={onCloseChat ?? onReset}
+          layout="page"
+        />
+      </main>
+    );
   }
 
   if (view.type === "job" && booking) {

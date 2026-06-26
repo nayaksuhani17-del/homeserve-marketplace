@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ProviderProfileForm } from "@/components/ProviderProfileForm";
 import { ProviderWeekAvailability } from "@/components/provider/ProviderWeekAvailability";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
-import { BookingChat } from "@/components/BookingChat";
+import { ChatModal } from "@/components/chat/ChatModal";
 import { ProviderScheduleManager } from "@/components/ProviderScheduleManager";
 import { StarRating } from "@/components/StarRating";
 import { ReviewInsightsPanel } from "@/components/ProviderAIInsights";
@@ -22,10 +22,10 @@ import {
   getProviderInsights,
   getResponseSpeedLabel,
   getReviewForBooking,
-  getSmartAlerts,
   sortBookingsBySchedule,
 } from "@/lib/provider/dashboard-stats";
-import type { MockBooking, MockReview } from "@/lib/mock/types";
+import type { MockBooking, MockNotification, MockReview } from "@/lib/mock/types";
+import { chatHrefForDashboard, chatHrefForUser } from "@/lib/notification-links";
 
 type BookingTab = "requests" | "upcoming" | "completed";
 
@@ -46,8 +46,7 @@ function BookingCard({
   actionId,
   flashId,
   reviewRating,
-  chatOpen,
-  onToggleChat,
+  onMessage,
   onAccept,
   onReject,
   onComplete,
@@ -58,8 +57,7 @@ function BookingCard({
   actionId: string | null;
   flashId: string | null;
   reviewRating?: number | null;
-  chatOpen?: boolean;
-  onToggleChat?: () => void;
+  onMessage?: () => void;
   onAccept?: () => void;
   onReject?: () => void;
   onComplete?: () => void;
@@ -127,43 +125,35 @@ function BookingCard({
               </button>
             </>
           )}
-          {variant === "upcoming" && (
-            <>
-              {onComplete && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={onComplete}
-                  className="btn-primary px-4 py-2 text-sm active:scale-95 disabled:opacity-60"
-                >
-                  {busy ? "…" : "Mark completed"}
-                </button>
-              )}
-            </>
-          )}
-          {(variant === "upcoming" || variant === "completed") && onToggleChat && (
+          {variant === "upcoming" && onComplete && (
             <button
               type="button"
-              onClick={onToggleChat}
+              disabled={busy}
+              onClick={onComplete}
+              className="btn-primary px-4 py-2 text-sm active:scale-95 disabled:opacity-60"
+            >
+              {busy ? "…" : "Mark completed"}
+            </button>
+          )}
+          {onMessage && (
+            <button
+              type="button"
+              onClick={onMessage}
               className="btn-secondary px-4 py-2 text-sm active:scale-95"
             >
-              💬 {chatOpen ? "Hide chat" : "Message customer"}
+              💬 Message
             </button>
           )}
         </div>
       </div>
-
-      {(variant === "upcoming" || variant === "completed") && chatOpen && (
-        <div className="mt-4 animate-fade-in border-t border-gray-100 pt-4">
-          <BookingChat booking={booking} />
-        </div>
-      )}
     </article>
   );
 }
 
 export function ProviderDashboardClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const chatParam = searchParams.get("chat");
   const {
     user,
     ready,
@@ -186,7 +176,7 @@ export function ProviderDashboardClient() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const [earningsPulse, setEarningsPulse] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [openChatId, setOpenChatId] = useState<string | null>(null);
+  const [chatTarget, setChatTarget] = useState<{ id: string; name: string } | null>(null);
   const profileSectionRef = useRef<HTMLElement>(null);
   const prevPending = useRef(0);
 
@@ -197,6 +187,36 @@ export function ProviderDashboardClient() {
     else if (!hasProviderRole(user)) router.replace("/customer/dashboard");
     else if (activeMode !== "provider") router.replace("/customer/dashboard");
   }, [ready, user, activeMode, router]);
+
+  useEffect(() => {
+    if (!ready || !db || !chatParam) return;
+    const other = db.users.find((u) => u.id === chatParam);
+    if (other && !other.banned && other.id !== user?.id) {
+      setChatTarget({ id: other.id, name: other.name });
+    }
+  }, [ready, db, chatParam, user?.id]);
+
+  function openCustomerChat(customerId: string, customerName: string) {
+    setChatTarget({ id: customerId, name: customerName });
+    router.replace(chatHrefForDashboard("provider", customerId), { scroll: false });
+  }
+
+  function closeCustomerChat() {
+    setChatTarget(null);
+    const tab = searchParams.get("tab");
+    const next = tab ? `/provider/dashboard?tab=${tab}#bookings` : "/provider/dashboard#bookings";
+    router.replace(next, { scroll: false });
+  }
+
+  function openMessageNotification(n: MockNotification) {
+    if (!user) return;
+    const otherId = n.senderId;
+    if (!otherId) return;
+    const other = db?.users.find((u) => u.id === otherId);
+    if (!other) return;
+    markNotificationsRead([n.id]);
+    openCustomerChat(other.id, other.name);
+  }
 
   const provider = user ? getProviderForUser(user.id) : undefined;
   const bookings = useMemo(
@@ -230,10 +250,6 @@ export function ProviderDashboardClient() {
     [bookings, provider]
   );
   const insights = provider ? getProviderInsights(provider, bookings, earnings) : [];
-  const alerts = useMemo(
-    () => getSmartAlerts(bookings, rawReviews, notifications),
-    [bookings, rawReviews, notifications]
-  );
 
   useEffect(() => {
     if (grouped.pending.length > prevPending.current) setBookingTab("requests");
@@ -558,12 +574,8 @@ export function ProviderDashboardClient() {
                         ? getReviewForBooking(rawReviews, booking.id)?.rating ?? null
                         : undefined
                     }
-                    chatOpen={openChatId === booking.id}
-                    onToggleChat={
-                      bookingTab === "upcoming" || bookingTab === "completed"
-                        ? () =>
-                            setOpenChatId((id) => (id === booking.id ? null : booking.id))
-                        : undefined
+                    onMessage={() =>
+                      openCustomerChat(booking.customerId, booking.customerName)
                     }
                     onAccept={
                       booking.status === "pending"
@@ -731,25 +743,40 @@ export function ProviderDashboardClient() {
                 </button>
               )}
             </div>
-            {alerts.length === 0 ? (
+            {notifications.length === 0 ? (
               <p className="mt-4 text-sm text-gray-500">All caught up — no new alerts.</p>
             ) : (
               <ul className="mt-4 max-h-80 space-y-2 overflow-y-auto">
-                {alerts.map((alert) => (
+                {notifications.slice(0, 8).map((n) => (
                   <li
-                    key={alert.id}
+                    key={n.id}
                     className={`rounded-xl border p-3 text-sm transition hover:shadow-sm ${
-                      alert.urgent
-                        ? "border-amber-200 bg-amber-50"
+                      !n.read
+                        ? "border-green-200 bg-green-50/50"
                         : "border-gray-100 bg-gray-50"
                     }`}
                   >
-                    <p className="font-medium text-gray-900">
-                      {alert.icon} {alert.title}
-                    </p>
+                    <p className="font-medium text-gray-900">{n.title}</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
-                      {alert.message}
+                      {n.message}
                     </p>
+                    {(n.type === "message" || n.href) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          n.type === "message"
+                            ? openMessageNotification(n)
+                            : router.push(
+                                n.senderId && user
+                                  ? chatHrefForUser(user, n.senderId)
+                                  : (n.href ?? "/provider/dashboard")
+                              )
+                        }
+                        className="mt-1 text-xs font-medium text-green-700 hover:underline"
+                      >
+                        View →
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -768,6 +795,15 @@ export function ProviderDashboardClient() {
           )}
         </aside>
       </div>
+
+      {chatTarget && (
+        <ChatModal
+          open
+          otherUserId={chatTarget.id}
+          otherUserName={chatTarget.name}
+          onClose={closeCustomerChat}
+        />
+      )}
     </div>
   );
 }

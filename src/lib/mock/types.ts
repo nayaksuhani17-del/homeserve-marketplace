@@ -122,6 +122,8 @@ export type MockNotification = {
   message: string;
   read: boolean;
   href?: string;
+  /** User who triggered the notification (e.g. message sender). */
+  senderId?: string;
   createdAt: string;
 };
 

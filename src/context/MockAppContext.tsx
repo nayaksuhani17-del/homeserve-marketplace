@@ -102,7 +102,7 @@ import {
   trackRecentProvider,
 } from "@/lib/smart";
 import type { RecommendationLabel } from "@/lib/recommendations";
-import { customerBookingsHref, providerDashboardHref } from "@/lib/notification-links";
+import { customerBookingsHref, messageNotificationHref, providerDashboardHref } from "@/lib/notification-links";
 import { advancedSearch, type UnifiedSearchResult } from "@/lib/search/unified";
 import {
   dashboardPathForMode,
@@ -1112,10 +1112,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "message",
         title: "New message",
         message: `${user.name}: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`,
-        href:
-          hasProviderRole(user) && activeMode === "provider"
-            ? "/provider/dashboard"
-            : "/customer/dashboard",
+        href: messageNotificationHref(receiver, user.id),
+        senderId: user.id,
       });
       persistImmediate(next);
 
@@ -1139,11 +1137,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           bumpMessagesRevision();
           const source = getSharedDb();
           if (!source) return;
+          const customerAccount = source.users.find((u) => u.id === customerId);
           const withNotif = appendNotification(source, customerId, {
             type: "message",
             title: "Reply from " + receiver.name,
             message: reply.slice(0, 100),
-            href: "/customer/dashboard",
+            href: customerAccount
+              ? messageNotificationHref(customerAccount, receiverId)
+              : `/customer/dashboard?chat=${encodeURIComponent(receiverId)}`,
+            senderId: receiverId,
           });
           persistImmediate(withNotif);
         }, replyDelay);

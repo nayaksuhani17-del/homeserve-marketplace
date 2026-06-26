@@ -18,6 +18,7 @@ import {
 export function CustomerDashboardClient() {
   const searchParams = useSearchParams();
   const bookingsTabParam = searchParams.get("bookings");
+  const chatParam = searchParams.get("chat");
   const router = useRouter();
 
   const {
@@ -94,6 +95,20 @@ export function CustomerDashboardClient() {
     }
   }, [ready, isCustomerMode, bookingsTabParam, bookings, completed, active, pending]);
 
+  useEffect(() => {
+    if (!ready || !isCustomerMode || !db || !chatParam) return;
+    const other = db.users.find((u) => u.id === chatParam);
+    if (other && !other.banned) {
+      setSelectedJobId(null);
+      setCenterView({ type: "chat", userId: other.id, userName: other.name });
+    }
+  }, [ready, isCustomerMode, db, chatParam]);
+
+  function handleCloseChat() {
+    setCenterView({ type: "search" });
+    router.replace("/customer/dashboard", { scroll: false });
+  }
+
   function handleNewRequest() {
     setSelectedJobId(null);
     setCenterView({ type: "search" });
@@ -165,6 +180,7 @@ export function CustomerDashboardClient() {
         hasReview={hasReview}
         onSearch={handleSearch}
         onReset={handleNewRequest}
+        onCloseChat={handleCloseChat}
       />
     </div>
   );

@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
+import type { MockNotification } from "@/lib/mock/types";
 import {
+  chatHrefForUser,
   resolveNotificationHref,
   scrollToNotificationTarget,
 } from "@/lib/notification-links";
@@ -30,24 +32,37 @@ export function NotificationBell() {
   void dbRevision;
   const notifications = getNotifications();
 
-  function navigateFromNotification(href: string, notificationId: string, message: string) {
-    const target = resolveNotificationHref(href, message);
+  function navigateFromNotification(n: MockNotification) {
+    let target: string;
+
+    if (n.type === "message") {
+      const otherUserId = n.senderId;
+      target = otherUserId
+        ? chatHrefForUser(user!, otherUserId)
+        : n.href
+          ? resolveNotificationHref(n.href, n.message)
+          : chatHrefForUser(user!, "");
+    } else {
+      target = resolveNotificationHref(n.href ?? "/", n.message);
+    }
+
     setOpen(false);
-    markNotificationsRead([notificationId]);
+    markNotificationsRead([n.id]);
 
     const url = new URL(target, window.location.origin);
-    const sameLocation =
+    const samePath =
       window.location.pathname === url.pathname &&
-      window.location.search === url.search &&
-      window.location.hash === url.hash;
+      window.location.search === url.search;
 
-    if (sameLocation) {
+    if (samePath && !url.searchParams.has("chat")) {
       scrollToNotificationTarget(target);
       return;
     }
 
     router.push(target);
-    window.setTimeout(() => scrollToNotificationTarget(target), 200);
+    if (!url.searchParams.has("chat")) {
+      window.setTimeout(() => scrollToNotificationTarget(target), 200);
+    }
   }
 
   return (
@@ -73,7 +88,7 @@ export function NotificationBell() {
         <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="font-semibold text-gray-900">Notifications</p>
-            <p className="text-xs text-gray-500">Bookings, payments & platform updates</p>
+            <p className="text-xs text-gray-500">Bookings, messages & platform updates</p>
           </div>
           <div className="max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
@@ -90,10 +105,10 @@ export function NotificationBell() {
                 >
                   <p className="font-medium text-gray-900">{n.title}</p>
                   <p className="mt-0.5 text-gray-600">{n.message}</p>
-                  {n.href && (
+                  {(n.href || n.type === "message") && (
                     <button
                       type="button"
-                      onClick={() => navigateFromNotification(n.href!, n.id, n.message)}
+                      onClick={() => navigateFromNotification(n)}
                       className="mt-1 inline-block text-xs font-medium text-green-700 hover:underline"
                     >
                       View →
