@@ -13,13 +13,27 @@ export function providerDashboardHref(tab?: "requests" | "upcoming" | "completed
   return tab ? `/provider/dashboard?tab=${tab}#bookings` : "/provider/dashboard#bookings";
 }
 
+export function customerMessagesHref(otherUserId?: string) {
+  const base = "/customer/messages";
+  return otherUserId
+    ? `${base}?chat=${encodeURIComponent(otherUserId)}`
+    : base;
+}
+
+export function providerMessagesHref(otherUserId?: string) {
+  const base = "/provider/messages";
+  return otherUserId
+    ? `${base}?chat=${encodeURIComponent(otherUserId)}`
+    : base;
+}
+
 export function chatHrefForDashboard(
   dashboard: "customer" | "provider",
   otherUserId: string
 ) {
-  const base =
-    dashboard === "customer" ? "/customer/dashboard" : "/provider/dashboard";
-  return `${base}?chat=${encodeURIComponent(otherUserId)}`;
+  return dashboard === "customer"
+    ? customerMessagesHref(otherUserId)
+    : providerMessagesHref(otherUserId);
 }
 
 /** Deep link to open a DM thread with another user. */
@@ -39,7 +53,17 @@ export function messageNotificationHref(receiver: MockUser, senderId: string): s
 
 /** Normalize legacy notification links and infer tab from message text. */
 export function resolveNotificationHref(href: string, message: string): string {
-  if (href.includes("chat=")) return href;
+  if (href.includes("chat=")) {
+    if (href.startsWith("/customer/dashboard")) {
+      const id = new URL(href, "http://local").searchParams.get("chat");
+      return id ? customerMessagesHref(id) : customerMessagesHref();
+    }
+    if (href.startsWith("/provider/dashboard")) {
+      const id = new URL(href, "http://local").searchParams.get("chat");
+      return id ? providerMessagesHref(id) : providerMessagesHref();
+    }
+    return href;
+  }
   if (href.includes("bookings=") || href.includes("#your-bookings")) return href;
   if (!href.startsWith("/customer/dashboard")) return href;
 

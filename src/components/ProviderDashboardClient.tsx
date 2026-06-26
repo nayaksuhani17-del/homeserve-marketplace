@@ -6,7 +6,6 @@ import Link from "next/link";
 import { ProviderProfileForm } from "@/components/ProviderProfileForm";
 import { ProviderWeekAvailability } from "@/components/provider/ProviderWeekAvailability";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
-import { ChatModal } from "@/components/chat/ChatModal";
 import { ProviderScheduleManager } from "@/components/ProviderScheduleManager";
 import { StarRating } from "@/components/StarRating";
 import { ReviewInsightsPanel } from "@/components/ProviderAIInsights";
@@ -25,7 +24,7 @@ import {
   sortBookingsBySchedule,
 } from "@/lib/provider/dashboard-stats";
 import type { MockBooking, MockNotification, MockReview } from "@/lib/mock/types";
-import { chatHrefForDashboard, chatHrefForUser } from "@/lib/notification-links";
+import { chatHrefForUser, providerMessagesHref } from "@/lib/notification-links";
 
 type BookingTab = "requests" | "upcoming" | "completed";
 
@@ -176,7 +175,6 @@ export function ProviderDashboardClient() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const [earningsPulse, setEarningsPulse] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [chatTarget, setChatTarget] = useState<{ id: string; name: string } | null>(null);
   const profileSectionRef = useRef<HTMLElement>(null);
   const prevPending = useRef(0);
 
@@ -189,23 +187,12 @@ export function ProviderDashboardClient() {
   }, [ready, user, activeMode, router]);
 
   useEffect(() => {
-    if (!ready || !db || !chatParam) return;
-    const other = db.users.find((u) => u.id === chatParam);
-    if (other && !other.banned && other.id !== user?.id) {
-      setChatTarget({ id: other.id, name: other.name });
-    }
-  }, [ready, db, chatParam, user?.id]);
+    if (!ready || !chatParam) return;
+    router.replace(providerMessagesHref(chatParam));
+  }, [ready, chatParam, router]);
 
-  function openCustomerChat(customerId: string, customerName: string) {
-    setChatTarget({ id: customerId, name: customerName });
-    router.replace(chatHrefForDashboard("provider", customerId), { scroll: false });
-  }
-
-  function closeCustomerChat() {
-    setChatTarget(null);
-    const tab = searchParams.get("tab");
-    const next = tab ? `/provider/dashboard?tab=${tab}#bookings` : "/provider/dashboard#bookings";
-    router.replace(next, { scroll: false });
+  function openCustomerChat(customerId: string) {
+    router.push(providerMessagesHref(customerId));
   }
 
   function openMessageNotification(n: MockNotification) {
@@ -215,7 +202,7 @@ export function ProviderDashboardClient() {
     const other = db?.users.find((u) => u.id === otherId);
     if (!other) return;
     markNotificationsRead([n.id]);
-    openCustomerChat(other.id, other.name);
+    openCustomerChat(other.id);
   }
 
   const provider = user ? getProviderForUser(user.id) : undefined;
@@ -574,9 +561,7 @@ export function ProviderDashboardClient() {
                         ? getReviewForBooking(rawReviews, booking.id)?.rating ?? null
                         : undefined
                     }
-                    onMessage={() =>
-                      openCustomerChat(booking.customerId, booking.customerName)
-                    }
+                    onMessage={() => openCustomerChat(booking.customerId)}
                     onAccept={
                       booking.status === "pending"
                         ? () =>
@@ -795,15 +780,6 @@ export function ProviderDashboardClient() {
           )}
         </aside>
       </div>
-
-      {chatTarget && (
-        <ChatModal
-          open
-          otherUserId={chatTarget.id}
-          otherUserName={chatTarget.name}
-          onClose={closeCustomerChat}
-        />
-      )}
     </div>
   );
 }

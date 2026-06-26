@@ -9,6 +9,7 @@ import {
 } from "@/components/customer/dashboard/CustomerCenterPanel";
 import { useMockApp } from "@/context/MockAppContext";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
+import { customerMessagesHref } from "@/lib/notification-links";
 import {
   hasCustomerRole,
   hasProviderRole,
@@ -96,18 +97,9 @@ export function CustomerDashboardClient() {
   }, [ready, isCustomerMode, bookingsTabParam, bookings, completed, active, pending]);
 
   useEffect(() => {
-    if (!ready || !isCustomerMode || !db || !chatParam) return;
-    const other = db.users.find((u) => u.id === chatParam);
-    if (other && !other.banned) {
-      setSelectedJobId(null);
-      setCenterView({ type: "chat", userId: other.id, userName: other.name });
-    }
-  }, [ready, isCustomerMode, db, chatParam]);
-
-  function handleCloseChat() {
-    setCenterView({ type: "search" });
-    router.replace("/customer/dashboard", { scroll: false });
-  }
+    if (!ready || !chatParam) return;
+    router.replace(customerMessagesHref(chatParam));
+  }, [ready, chatParam, router]);
 
   function handleNewRequest() {
     setSelectedJobId(null);
@@ -180,7 +172,6 @@ export function CustomerDashboardClient() {
         hasReview={hasReview}
         onSearch={handleSearch}
         onReset={handleNewRequest}
-        onCloseChat={handleCloseChat}
       />
     </div>
   );

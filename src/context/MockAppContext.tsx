@@ -52,6 +52,7 @@ import {
   removeMessagesForUser,
   type StoredMessage,
 } from "@/lib/messages/store";
+import { listConversationsForUser, type ConversationPreview } from "@/lib/messages/conversations";
 import type {
   MarketplaceAnalytics,
   MockBooking,
@@ -102,7 +103,7 @@ import {
   trackRecentProvider,
 } from "@/lib/smart";
 import type { RecommendationLabel } from "@/lib/recommendations";
-import { customerBookingsHref, messageNotificationHref, providerDashboardHref } from "@/lib/notification-links";
+import { customerBookingsHref, customerMessagesHref, messageNotificationHref, providerDashboardHref } from "@/lib/notification-links";
 import { advancedSearch, type UnifiedSearchResult } from "@/lib/search/unified";
 import {
   dashboardPathForMode,
@@ -172,6 +173,7 @@ type MockAppContextValue = {
   sendChatMessage: (bookingId: string, text: string) => Promise<{ error?: string }>;
   getChatMessages: (bookingId: string) => MockDatabase["chatMessages"];
   getDirectMessages: (otherUserId: string) => StoredMessage[];
+  listConversations: () => ConversationPreview[];
   sendDirectMessage: (receiverId: string, text: string) => Promise<{ error?: string }>;
   advancedSearch: (query: string) => UnifiedSearchResult[];
   removeReview: (reviewId: string) => Promise<void>;
@@ -1080,17 +1082,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!user) return [];
       const other = db?.users.find((u) => u.id === otherUserId);
       if (!other || other.banned) return [];
-      const messages = getConversationMessages(user.id, otherUserId);
-      console.log("[messages] load conversation", {
-        currentUserId: user.id,
-        otherUserId,
-        count: messages.length,
-        messages,
-      });
-      return messages;
+      return getConversationMessages(user.id, otherUserId);
     },
     [db, user, messagesRevision]
   );
+
+  const listConversations = useCallback((): ConversationPreview[] => {
+    if (!user || !db) return [];
+    return listConversationsForUser(user.id, db.users);
+  }, [user, db, messagesRevision]);
 
   const sendDirectMessage = useCallback(
     async (receiverId: string, text: string) => {
@@ -1100,18 +1100,17 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!receiver) return { error: "This user is no longer available." };
       if (receiver.banned) return { error: "This user is not available." };
 
-      const saved = appendMessage({
+      appendMessage({
         sender_id: user.id,
         receiver_id: receiverId,
         text,
       });
-      console.log("[messages] sent", saved);
       bumpMessagesRevision();
 
       let next = appendNotification(db, receiverId, {
         type: "message",
-        title: "New message",
-        message: `${user.name}: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`,
+        title: `New message from ${user.name}`,
+        message: text.slice(0, 80) + (text.length > 80 ? "…" : ""),
         href: messageNotificationHref(receiver, user.id),
         senderId: user.id,
       });
@@ -1128,23 +1127,22 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         const customerId = user.id;
         setTimeout(() => {
           const reply = generateProviderChatReply(text);
-          const replyMsg = appendMessage({
+          appendMessage({
             sender_id: receiverId,
             receiver_id: customerId,
             text: reply,
           });
-          console.log("[messages] auto-reply sent", replyMsg);
           bumpMessagesRevision();
           const source = getSharedDb();
           if (!source) return;
           const customerAccount = source.users.find((u) => u.id === customerId);
           const withNotif = appendNotification(source, customerId, {
             type: "message",
-            title: "Reply from " + receiver.name,
+            title: `New message from ${receiver.name}`,
             message: reply.slice(0, 100),
             href: customerAccount
               ? messageNotificationHref(customerAccount, receiverId)
-              : `/customer/dashboard?chat=${encodeURIComponent(receiverId)}`,
+              : customerMessagesHref(receiverId),
             senderId: receiverId,
           });
           persistImmediate(withNotif);
@@ -2008,6 +2006,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     sendChatMessage,
     getChatMessages,
     getDirectMessages,
+    listConversations,
     sendDirectMessage,
     advancedSearch: advancedSearchFn,
     removeReview,

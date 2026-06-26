@@ -6,10 +6,9 @@ import { HireModal } from "@/components/HireModal";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ReviewForm } from "@/components/ReviewForm";
 import { StarRating } from "@/components/StarRating";
-import { ChatView } from "@/components/chat/ChatView";
-import { ChatModal } from "@/components/chat/ChatModal";
 import { useMockApp } from "@/context/MockAppContext";
 import type { MockBooking, MockProvider } from "@/lib/mock/types";
+import { customerMessagesHref } from "@/lib/notification-links";
 import { formatProviderPrice } from "@/lib/pricing";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
 
@@ -22,8 +21,7 @@ const EXAMPLE_PROMPTS = [
 export type CenterView =
   | { type: "search" }
   | { type: "results"; query: string; providers: MockProvider[] }
-  | { type: "job"; bookingId: string }
-  | { type: "chat"; userId: string; userName: string };
+  | { type: "job"; bookingId: string };
 
 type HireTarget = {
   providerId: string;
@@ -44,7 +42,6 @@ type CustomerCenterPanelProps = {
   hasReview: (bookingId: string) => boolean;
   onSearch: (query: string) => void;
   onReset: () => void;
-  onCloseChat?: () => void;
 };
 
 function pickService(provider: MockProvider, query: string): string {
@@ -228,7 +225,6 @@ function JobDetail({
   onNewRequest: () => void;
 }) {
   const { db } = useMockApp();
-  const [messageOpen, setMessageOpen] = useState(false);
   const providerUserId = db?.providers.find((p) => p.id === booking.providerId)?.userId;
   const showReview = booking.status === "completed" && !hasReview;
   const canMessage =
@@ -255,14 +251,13 @@ function JobDetail({
           <h2 className="mt-2 text-2xl font-semibold text-gray-900">{booking.service}</h2>
           <p className="mt-1 text-gray-600">{booking.providerName}</p>
 
-          {canMessage && (
-            <button
-              type="button"
-              onClick={() => setMessageOpen(true)}
-              className="mt-4 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+          {canMessage && providerUserId && (
+            <Link
+              href={customerMessagesHref(providerUserId)}
+              className="mt-4 inline-block rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
             >
               Message {booking.providerName}
-            </button>
+            </Link>
           )}
 
           <dl className="mt-6 space-y-3 text-sm">
@@ -316,15 +311,6 @@ function JobDetail({
           </p>
         )}
       </div>
-
-      {providerUserId && (
-        <ChatModal
-          open={messageOpen}
-          otherUserId={providerUserId}
-          otherUserName={booking.providerName}
-          onClose={() => setMessageOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -337,7 +323,6 @@ export function CustomerCenterPanel({
   hasReview,
   onSearch,
   onReset,
-  onCloseChat,
 }: CustomerCenterPanelProps) {
   const [hireTarget, setHireTarget] = useState<HireTarget | null>(null);
 
@@ -358,19 +343,6 @@ export function CustomerCenterPanel({
       availableToday: provider.availableToday,
       defaultService: pickService(provider, query),
     });
-  }
-
-  if (view.type === "chat") {
-    return (
-      <main className="flex min-h-[calc(100dvh-9rem)] flex-1 flex-col bg-white">
-        <ChatView
-          otherUserId={view.userId}
-          otherUserName={view.userName}
-          onClose={onCloseChat ?? onReset}
-          layout="page"
-        />
-      </main>
-    );
   }
 
   if (view.type === "job" && booking) {

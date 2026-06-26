@@ -15,8 +15,8 @@ import { getViewerCount } from "@/lib/trust";
 import { getServiceMeta } from "@/lib/services";
 import { ReviewForm } from "./ReviewForm";
 import { ReportProviderModal } from "./ReportProviderModal";
-import { DirectMessageModal } from "./DirectMessagePanel";
 import { useMockApp } from "@/context/MockAppContext";
+import { customerMessagesHref } from "@/lib/notification-links";
 import { computeProviderTags } from "@/lib/providers";
 import { hasCustomerRole } from "@/lib/user-capabilities";
 import { formatProviderPrice, PRICING_TYPE_LABELS } from "@/lib/pricing";
@@ -73,7 +73,6 @@ export function ProviderProfileClient({
   const [hireOpen, setHireOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [messageOpen, setMessageOpen] = useState(false);
   const autoHireOpened = useRef(false);
   const {
     user: sessionUser,
@@ -280,13 +279,12 @@ export function ProviderProfileClient({
                 {isLoggedIn &&
                   liveProvider?.userId &&
                   sessionUser?.id !== liveProvider.userId && (
-                    <button
-                      type="button"
-                      onClick={() => setMessageOpen(true)}
+                    <Link
+                      href={customerMessagesHref(liveProvider.userId)}
                       className="btn-secondary px-8 py-3 text-base"
                     >
                       Message
-                    </button>
+                    </Link>
                   )}
                 <button
                   type="button"
@@ -416,15 +414,6 @@ export function ProviderProfileClient({
         providerId={provider.id}
         providerName={user?.name ?? "Provider"}
       />
-
-      {liveProvider?.userId && (
-        <DirectMessageModal
-          open={messageOpen}
-          onClose={() => setMessageOpen(false)}
-          otherUserId={liveProvider.userId}
-          otherUserName={user?.name ?? "Provider"}
-        />
-      )}
     </>
   );
 }

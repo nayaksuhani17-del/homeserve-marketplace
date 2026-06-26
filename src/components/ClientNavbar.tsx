@@ -48,12 +48,28 @@ export function ClientNavbar() {
                 Saved
               </Link>
             )}
+            {showSaved && (
+              <Link
+                href="/customer/messages"
+                className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 md:inline"
+              >
+                Messages
+              </Link>
+            )}
             {showProviderDash && (
               <Link
                 href="/provider/dashboard"
                 className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 md:inline"
               >
                 Dashboard
+              </Link>
+            )}
+            {showProviderDash && (
+              <Link
+                href="/provider/messages"
+                className="hidden rounded-lg px-2.5 py-1.5 transition hover:bg-gray-50 hover:text-green-700 md:inline"
+              >
+                Messages
               </Link>
             )}
             {showAdmin && (

@@ -9,8 +9,8 @@ type ChatViewProps = {
   otherUserId: string;
   otherUserName: string;
   onClose?: () => void;
-  /** embedded = card/modal, page = full dashboard panel */
-  layout?: "embedded" | "page";
+  /** embedded = card/modal, page = full dashboard panel, panel = messaging hub right pane */
+  layout?: "embedded" | "page" | "panel";
 };
 
 export function ChatView({
@@ -95,11 +95,14 @@ export function ChatView({
   }
 
   const isPage = layout === "page";
-  const shellClass = isPage
-    ? "flex h-full min-h-[calc(100dvh-9rem)] flex-col bg-white"
-    : "flex flex-col rounded-xl border border-gray-200 bg-white";
+  const isPanel = layout === "panel";
+  const shellClass = isPanel
+    ? "flex h-full min-h-0 flex-1 flex-col bg-white"
+    : isPage
+      ? "flex h-full min-h-[calc(100dvh-9rem)] flex-col bg-white"
+      : "flex flex-col rounded-xl border border-gray-200 bg-white";
 
-  const listClass = isPage
+  const listClass = isPanel || isPage
     ? "flex-1 space-y-2 overflow-y-auto px-4 py-4"
     : "max-h-72 space-y-2 overflow-y-auto px-4 py-3";
 
@@ -108,9 +111,11 @@ export function ChatView({
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-gray-900">{otherUserName}</p>
-          <p className="text-xs text-gray-500">Direct messages</p>
+          {!isPanel && (
+            <p className="text-xs text-gray-500">Direct messages</p>
+          )}
         </div>
-        {onClose && (
+        {onClose && !isPanel && (
           <button
             type="button"
             onClick={onClose}
