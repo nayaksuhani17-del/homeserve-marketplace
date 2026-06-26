@@ -16,6 +16,12 @@ import {
   REVIEW_AVAILABLE_AFTER_COMPLETION_MESSAGE,
   validateReview,
 } from "../src/lib/mock/operations";
+import {
+  formatRatingSummary,
+  NO_REVIEWS_LABEL,
+  roundRatingAverage,
+} from "../src/lib/ratings";
+import { isNewProvider, isTopRatedProvider } from "../src/lib/provider-badges";
 import { demoId } from "../src/lib/demo/ids";
 import { normalizeMockDatabase } from "../src/lib/mock/normalize";
 import type { MockBooking, MockDatabase } from "../src/lib/mock/types";
@@ -336,6 +342,27 @@ console.log("\n7. localStorage tamper protection");
       "Strips reviews for non-completed bookings"
     );
   }
+}
+
+// ─── 8. Badge & display rules ───
+console.log("\n8. Badge and display rules");
+{
+  assert(isTopRatedProvider(4.5, 3), "Top Rated at 4.5 with 3 reviews");
+  assert(!isTopRatedProvider(4.4, 5), "Top Rated requires 4.5+ average");
+  assert(!isTopRatedProvider(4.9, 2), "Top Rated blocked with only 2 reviews");
+  assert(isNewProvider(0), "New Provider when 0 reviews");
+  assert(isNewProvider(1), "New Provider when 1 review");
+  assert(!isNewProvider(2), "Not new at 2 reviews");
+  assert(
+    !isTopRatedProvider(4.5, 1) && isNewProvider(1),
+    "New provider cannot be Top Rated"
+  );
+  assert(roundRatingAverage(4.666) === 4.7, "Average rounds to 1 decimal");
+  assert(
+    formatRatingSummary(4.7, 12) === "4.7 • 12 reviews",
+    "Rating summary format"
+  );
+  assert(NO_REVIEWS_LABEL === "No reviews yet", "Empty state label");
 }
 
 // ─── Summary ───

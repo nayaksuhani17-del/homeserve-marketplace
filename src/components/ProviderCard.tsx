@@ -6,9 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { StarRating } from "./StarRating";
+import { ProviderRatingDisplay } from "./ProviderRatingDisplay";
 import { RecommendationBadge } from "./RecommendationBadge";
 import { TrustBadges } from "./TrustBadges";
 import { ProviderStatusBadges } from "./ProviderStatusBadges";
+import { resolveProviderRating } from "@/lib/ratings";
 import { FavoriteButton } from "./FavoriteButton";
 import { getProviderUser } from "@/lib/providers";
 import * as pricing from "@/lib/pricing";
@@ -62,7 +64,11 @@ export function ProviderCard({
   const defaultService = selectedService || provider.services[0] || "General";
   const providerUser = getProviderUser(provider);
   const responseLabel = formatResponseTime(provider.response_time_mins);
-  const reviewCount = provider.review_count ?? Math.floor((provider.jobs_completed ?? 20) / 8);
+  const liveProvider = db?.providers.find((p) => p.id === provider.id);
+  const { ratingAvg, reviewCount } = resolveProviderRating(liveProvider, {
+    ratingAvg: Number(provider.rating_avg),
+    reviewCount: Number(provider.review_count ?? 0),
+  });
   const priceDisplay = pricing.formatProviderPriceAmount(
     provider.pricing_type,
     Number(provider.price)
@@ -151,14 +157,12 @@ export function ProviderCard({
         )}
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          <StarRating rating={Number(provider.rating_avg)} size="sm" />
+          <ProviderRatingDisplay ratingAvg={ratingAvg} reviewCount={reviewCount} size="sm" />
           <ProviderStatusBadges
-            ratingAvg={Number(provider.rating_avg)}
+            ratingAvg={ratingAvg}
             reviewCount={reviewCount}
             approved={Boolean(provider.approved)}
           />
-          <span className="text-gray-400">·</span>
-          <span className="text-xs text-gray-500">{reviewCount} reviews</span>
           <span className="text-gray-400">·</span>
           <span className="text-xs text-green-600">{responseLabel}</span>
         </div>

@@ -7,7 +7,9 @@ import { ProviderProfileForm } from "@/components/ProviderProfileForm";
 import { ProviderWeekAvailability } from "@/components/provider/ProviderWeekAvailability";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ProviderScheduleManager } from "@/components/ProviderScheduleManager";
+import { ProviderRatingDisplay } from "@/components/ProviderRatingDisplay";
 import { StarRating } from "@/components/StarRating";
+import { formatRatingSummary, NO_REVIEWS_LABEL } from "@/lib/ratings";
 import { ReviewInsightsPanel } from "@/components/ProviderAIInsights";
 import { ProviderSummaryCard } from "@/components/provider/ProviderSummaryCard";
 import { ProviderEarningsChart } from "@/components/provider/ProviderEarningsChart";
@@ -450,9 +452,21 @@ export function ProviderDashboardClient() {
           <ProviderSummaryCard
             icon="⭐"
             label="Average rating"
-            value={provider.ratingAvg.toFixed(1)}
-            detail={<StarRating rating={provider.ratingAvg} size="sm" />}
-            sub={`${provider.reviewCount} reviews`}
+            value={
+              provider.reviewCount > 0
+                ? provider.ratingAvg.toFixed(1)
+                : NO_REVIEWS_LABEL
+            }
+            detail={
+              provider.reviewCount > 0 ? (
+                <StarRating rating={provider.ratingAvg} size="sm" showNumeric={false} />
+              ) : undefined
+            }
+            sub={
+              provider.reviewCount > 0
+                ? formatRatingSummary(provider.ratingAvg, provider.reviewCount)
+                : "Complete jobs to earn reviews"
+            }
           />
           <ProviderSummaryCard
             icon="📅"
@@ -665,10 +679,11 @@ export function ProviderDashboardClient() {
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-bold text-gray-900">⭐ Reviews & reputation</h2>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">{provider.ratingAvg.toFixed(1)}</p>
-                  <p className="text-xs text-gray-500">{provider.reviewCount} total reviews</p>
-                </div>
+                <ProviderRatingDisplay
+                  ratingAvg={provider.ratingAvg}
+                  reviewCount={provider.reviewCount}
+                  size="md"
+                />
               </div>
 
               {rawReviews.length > 0 ? (

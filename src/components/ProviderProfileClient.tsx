@@ -4,13 +4,15 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { ProviderRatingDisplay } from "./ProviderRatingDisplay";
 import { StarRating } from "./StarRating";
+import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { TagBadge } from "./ChatProviderCard";
+import { resolveProviderRating } from "@/lib/ratings";
 import { HireModal } from "./HireModal";
 import { QuoteModal } from "./QuoteModal";
 import { ProviderAISummary, ReviewInsightsPanel, BehavioralInsightsPanel } from "./ProviderAIInsights";
 import { TrustBadges } from "./TrustBadges";
-import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { FavoriteButton } from "./FavoriteButton";
 import { getViewerCount } from "@/lib/trust";
 import { getServiceMeta } from "@/lib/services";
@@ -128,6 +130,10 @@ export function ProviderProfileClient({
   const tags = computeProviderTags(provider as Parameters<typeof computeProviderTags>[0]);
   const reviewCount = liveProvider?.reviewCount ?? liveReviews.length;
   const displayRating = liveProvider?.ratingAvg ?? provider.rating_avg ?? 0;
+  const { ratingAvg, reviewCount: resolvedCount } = resolveProviderRating(
+    liveProvider ? { ratingAvg: displayRating, reviewCount } : null,
+    { ratingAvg: Number(provider.rating_avg), reviewCount: liveReviews.length }
+  );
   const responseLabel = formatResponseTime(provider.response_time_mins);
   const priceDisplay = formatProviderPrice(provider.pricing_type, Number(provider.price));
   const viewers = getViewerCount(provider.id);
@@ -184,16 +190,22 @@ export function ProviderProfileClient({
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-4">
-            <StarRating rating={Number(displayRating)} />
+            <ProviderRatingDisplay
+              ratingAvg={ratingAvg}
+              reviewCount={resolvedCount}
+              size="md"
+            />
             <ProviderStatusBadges
-              ratingAvg={Number(displayRating)}
-              reviewCount={reviewCount}
+              ratingAvg={ratingAvg}
+              reviewCount={resolvedCount}
               approved={Boolean(provider.approved)}
               size="md"
             />
-            <span className="text-sm text-gray-500">
-              {reviewCount} reviews · {provider.jobs_completed ?? 0} jobs completed
-            </span>
+            {resolvedCount > 0 && (
+              <span className="text-sm text-gray-500">
+                {provider.jobs_completed ?? 0} jobs completed
+              </span>
+            )}
             <span className="text-sm font-medium text-green-600">{responseLabel}</span>
           </div>
 

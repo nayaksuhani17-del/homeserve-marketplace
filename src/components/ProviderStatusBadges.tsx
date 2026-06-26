@@ -39,7 +39,7 @@ export function ProviderStatusBadges({
       )}
       {isNew && !topRated && (
         <span className={`badge-new inline-flex items-center gap-0.5 font-semibold ${pad}`}>
-          New
+          New Provider
         </span>
       )}
     </div>

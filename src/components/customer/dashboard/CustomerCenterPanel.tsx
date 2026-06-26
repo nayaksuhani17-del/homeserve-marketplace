@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { HireModal } from "@/components/HireModal";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ReviewEligibilityPanel } from "@/components/ReviewEligibilityPanel";
-import { StarRating } from "@/components/StarRating";
+import { ProviderRatingDisplay } from "@/components/ProviderRatingDisplay";
 import { ProviderStatusBadges } from "@/components/ProviderStatusBadges";
 import { useMockApp } from "@/context/MockAppContext";
 import type { MockBooking, MockProvider } from "@/lib/mock/types";
@@ -210,17 +210,16 @@ function ProviderResults({
                       <span className="font-medium text-gray-800">
                         {formatProviderPrice(p.pricingType, p.price)}
                       </span>
-                      <StarRating rating={p.ratingAvg} size="sm" />
+                      <ProviderRatingDisplay
+                        ratingAvg={p.ratingAvg}
+                        reviewCount={p.reviewCount}
+                        size="sm"
+                      />
                       <ProviderStatusBadges
                         ratingAvg={p.ratingAvg}
                         reviewCount={p.reviewCount}
                         approved={p.approved}
                       />
-                      {p.reviewCount > 0 && (
-                        <span className="text-xs text-gray-500">
-                          {p.reviewCount} reviews
-                        </span>
-                      )}
                     </div>
                   </div>
                   {canBook && isLoggedIn ? (

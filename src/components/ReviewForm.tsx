@@ -105,7 +105,7 @@ export function ReviewForm({ providerId, bookingId, onSuccess }: ReviewFormProps
           ))}
           <span className="ml-2 text-sm text-gray-600">{display} / 5</span>
         </div>
-        <StarRating rating={display} size="sm" />
+        <StarRating rating={display} size="sm" showNumeric={false} />
       </div>
 
       <div className="mt-4">

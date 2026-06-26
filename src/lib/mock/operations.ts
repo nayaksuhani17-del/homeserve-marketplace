@@ -1,5 +1,6 @@
 import { DEMO_MODE, DEMO_PROVIDER_PAGE_SIZE } from "@/lib/demo/mode";
 import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
+import { computeProviderRatingStats, roundRatingAverage } from "@/lib/ratings";
 import { rankProviders } from "@/lib/providers";
 import { detectUrgency } from "@/lib/smart";
 import { isSlotBlocked, isSlotTaken, slotKey } from "./simulation";
@@ -56,18 +57,7 @@ export function recalculateProviderRating(
   });
 }
 
-/** average = totalRating / numberOfReviews */
-export function computeProviderRatingStats(
-  reviews: MockReview[],
-  providerId: string
-): { ratingAvg: number; reviewCount: number } | null {
-  const providerReviews = reviews.filter((r) => r.providerId === providerId);
-  if (providerReviews.length === 0) return null;
-  const totalRating = providerReviews.reduce((sum, r) => sum + r.rating, 0);
-  const reviewCount = providerReviews.length;
-  const ratingAvg = Math.round((totalRating / reviewCount) * 10) / 10;
-  return { ratingAvg, reviewCount };
-}
+export { computeProviderRatingStats, roundRatingAverage } from "@/lib/ratings";
 
 export function mockProviderToLegacy(p: MockProvider): ProviderWithUser {
   return {

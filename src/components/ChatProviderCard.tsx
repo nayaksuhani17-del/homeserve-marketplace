@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { StarRating } from "./StarRating";
+import { ProviderRatingDisplay } from "./ProviderRatingDisplay";
 import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { RecommendationBadge } from "./RecommendationBadge";
 import type { ProviderCardData } from "@/lib/providers";
@@ -48,11 +48,14 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
               />
             </div>
           </div>
-          <StarRating rating={provider.rating} size="sm" />
+          <ProviderRatingDisplay
+            ratingAvg={provider.rating}
+            reviewCount={provider.reviewCount ?? 0}
+            size="sm"
+          />
           <p className="mt-0.5 text-xs text-gray-500">
             {provider.services[0]}
             {provider.distanceMiles != null && ` · ${provider.distanceMiles.toFixed(1)} mi`}
-            {provider.reviewCount != null && ` · ${provider.reviewCount} reviews`}
           </p>
           <p className="mt-0.5 text-xs font-medium text-green-600">{responseLabel}</p>
           {provider.tags.length > 0 && (

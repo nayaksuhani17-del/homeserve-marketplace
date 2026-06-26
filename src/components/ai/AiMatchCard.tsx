@@ -3,8 +3,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { StarRating } from "@/components/StarRating";
+import { ProviderRatingDisplay } from "@/components/ProviderRatingDisplay";
 import { ProviderStatusBadges } from "@/components/ProviderStatusBadges";
+import { resolveProviderRating } from "@/lib/ratings";
 import { RecommendationBadge } from "@/components/RecommendationBadge";
 import { formatProviderPriceAmount } from "@/lib/pricing";
 import { formatResponseTime, type RecommendationLabel } from "@/lib/recommendations";
@@ -31,6 +32,7 @@ export function AiMatchCard({
   const price = formatProviderPriceAmount(provider.pricingType, provider.price);
   const responseLabel = formatResponseTime(provider.responseTimeMins);
   const showFast = provider.tags?.includes("Fast Responder") || provider.availableToday;
+  const { ratingAvg, reviewCount } = resolveProviderRating(provider, {});
 
   function openProfile() {
     router.push(profileHref);
@@ -77,19 +79,19 @@ export function AiMatchCard({
                 <RecommendationBadge label={recommendationLabel} />
               )}
               <ProviderStatusBadges
-                ratingAvg={provider.ratingAvg}
-                reviewCount={provider.reviewCount}
+                ratingAvg={ratingAvg}
+                reviewCount={reviewCount}
                 approved={provider.approved}
               />
             </div>
             <h4 className="mt-1.5 truncate text-base font-semibold text-gray-900">
               {provider.name}
             </h4>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <StarRating rating={provider.ratingAvg} size="sm" />
+            <div className="mt-1">
+              <ProviderRatingDisplay ratingAvg={ratingAvg} reviewCount={reviewCount} size="sm" />
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {provider.reviewCount} reviews · {provider.distanceMiles?.toFixed(1)} mi
+              {provider.distanceMiles?.toFixed(1)} mi · {responseLabel}
             </p>
           </div>
         </div>

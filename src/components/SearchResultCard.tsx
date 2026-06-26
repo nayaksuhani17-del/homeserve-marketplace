@@ -82,11 +82,15 @@ export function SearchResultCard({
             >
               {role === "provider" ? "Provider" : "Customer"}
             </span>
-            {role === "provider" && ratingAvg > 0 && (
-              <span className="text-amber-600">
-                ★ {ratingAvg.toFixed(1)} ({reviewCount})
-              </span>
-            )}
+            {role === "provider" &&
+              (reviewCount > 0 ? (
+                <span className="text-amber-600">
+                  ★ {ratingAvg.toFixed(1)} • {reviewCount}{" "}
+                  {reviewCount === 1 ? "review" : "reviews"}
+                </span>
+              ) : (
+                <span className="text-gray-500">No reviews yet</span>
+              ))}
             {location && <span className="text-gray-500">{location}</span>}
           </div>
         </div>
