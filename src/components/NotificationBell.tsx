@@ -10,7 +10,7 @@ import {
 
 export function NotificationBell() {
   const router = useRouter();
-  const { user, getNotifications, unreadNotificationCount, markNotificationsRead } =
+  const { user, getNotifications, unreadNotificationCount, markNotificationsRead, dbRevision } =
     useMockApp();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -27,6 +27,7 @@ export function NotificationBell() {
 
   if (!user) return null;
 
+  void dbRevision;
   const notifications = getNotifications();
 
   function navigateFromNotification(href: string, notificationId: string, message: string) {

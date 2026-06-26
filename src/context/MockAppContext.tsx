@@ -278,6 +278,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const resumedPending = useRef(new Set<string>());
   const saveDbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDbRef = useRef<MockDatabase | null>(null);
+  const dbRef = useRef<MockDatabase | null>(null);
   const filterCacheRef = useRef<{
     db: MockDatabase;
     key: string;
@@ -427,6 +428,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           }
 
           saveDb(next);
+          setDbRevision((r) => r + 1);
 
           return next;
         });
@@ -442,6 +444,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
     function finishBootstrap(stored: MockDatabase, nextSession: MockSession | null) {
       if (cancelled) return;
+      dbRef.current = stored;
       setDb(stored);
       setSession(nextSession);
       syncSessionCookie(Boolean(nextSession));
@@ -516,6 +519,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const applyDb = useCallback((next: MockDatabase, bumpRevision = true) => {
     const normalized = normalizeMockDatabase(next);
     filterCacheRef.current = null;
+    dbRef.current = normalized;
     setDb(normalized);
     if (bumpRevision) setDbRevision((r) => r + 1);
     return normalized;
@@ -531,12 +535,22 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   );
 
   /** Write in-memory DB to disk before account switch / login reload. */
+  const getSharedDb = useCallback((): MockDatabase | null => {
+    flushPendingSave();
+    const fromDisk = loadDb();
+    if (fromDisk) return fromDisk;
+    return dbRef.current ? normalizeMockDatabase(dbRef.current) : null;
+  }, [flushPendingSave]);
+
   const syncDbBeforeSwitch = useCallback((): MockDatabase | null => {
-    discardPendingSave();
-    const latest = db ? normalizeMockDatabase(db) : loadDb();
-    if (latest) saveDb(latest);
-    return loadDb() ?? latest;
-  }, [db, discardPendingSave]);
+    return getSharedDb();
+  }, [getSharedDb]);
+
+  const reloadFromStorage = useCallback(() => {
+    const fresh = getSharedDb();
+    if (fresh) applyDb(fresh);
+    return fresh;
+  }, [getSharedDb, applyDb]);
 
   const persist = useCallback(
     (next: MockDatabase) => {
@@ -582,6 +596,13 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     return db.users.find((u) => u.id === session.userId) ?? null;
   }, [db, session]);
 
+  useEffect(() => {
+    if (!ready || !session) return;
+    reloadFromStorage();
+    // Only re-sync when the active account changes — not when db state updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadFromStorage is stable; db must not retrigger this
+  }, [session?.userId, ready]);
+
   const login = useCallback(
     async (email: string, password: string, redirectTo?: string) => {
       const source = syncDbBeforeSwitch();
@@ -603,7 +624,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: "Incorrect password." };
       }
-      setDb(source);
+      applyDb(source);
       const sess = { userId: found.id };
       setSession(sess);
       saveSession(sess);
@@ -611,7 +632,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (redirectTo) return { redirect: redirectTo };
       return { redirect: dashboardPathForRole(found.role) };
     },
-    [syncDbBeforeSwitch]
+    [syncDbBeforeSwitch, applyDb]
   );
 
   const register = useCallback(
@@ -708,14 +729,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!found) return { error: "Demo user not found." };
       setLoading(true);
       await simulateDelay(DEMO_MODE ? 200 : 400);
-      setDb(source);
+      applyDb(source);
       const sess = { userId: found.id };
       setSession(sess);
       saveSession(sess);
       setLoading(false);
       return { redirect: redirectTo ?? DEMO_ROLE_REDIRECT[role] };
     },
-    [syncDbBeforeSwitch]
+    [syncDbBeforeSwitch, applyDb]
   );
 
   const logout = useCallback(() => {
@@ -1130,77 +1151,63 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       await simulateDelay(400);
       clearScheduledResponse(bookingId);
 
-      let error: string | undefined;
-      let providerName = "Provider";
-
-      setDb((prev) => {
-        if (!prev) {
-          error = "App not ready.";
-          return prev;
-        }
-        const booking = prev.bookings.find((b) => b.id === bookingId);
-        if (!booking) {
-          error = "Booking not found.";
-          return prev;
-        }
-        if (booking.status !== "pending") {
-          error = "This request was already handled.";
-          return prev;
-        }
-
-        const provider = prev.providers.find((p) => p.id === booking.providerId);
-        if (!provider || provider.userId !== user.id) {
-          error = "Only the assigned provider can respond.";
-          return prev;
-        }
-        providerName = provider.name;
-
-        let next = resolveBookingRecord(prev, bookingId, accepted);
-        if (accepted) {
-          next = notifyBookingParties(
-            next,
-            { ...booking, status: "confirmed", paymentStatus: "authorized" },
-            {
-              type: "booking",
-              title: "Booking accepted",
-              message: "Your booking has been accepted ✅",
-              href: customerBookingsHref("upcoming"),
-            },
-            user.id,
-            {
-              type: "booking",
-              title: "Job confirmed",
-              message: `You accepted ${booking.customerName}'s ${booking.service} booking.`,
-              href: providerDashboardHref("upcoming"),
-            }
-          );
-        } else {
-          next = appendNotification(next, booking.customerId, {
-            type: "booking",
-            title: "Booking declined",
-            message: "Your booking was declined ❌",
-            href: customerBookingsHref("past"),
-          });
-        }
-
-        filterCacheRef.current = null;
-        discardPendingSave();
-        const normalized = normalizeMockDatabase(next);
-        saveDb(normalized);
-        setDbRevision((r) => r + 1);
-        return normalized;
-      });
-
-      if (error) {
+      const source = getSharedDb();
+      if (!source) {
         setLoading(false);
-        return { error };
+        return { error: "App not ready." };
       }
+
+      const booking = source.bookings.find((b) => b.id === bookingId);
+      if (!booking) {
+        setLoading(false);
+        return { error: "Booking not found." };
+      }
+      if (booking.status !== "pending") {
+        setLoading(false);
+        return { error: "This request was already handled." };
+      }
+
+      const provider = source.providers.find((p) => p.id === booking.providerId);
+      if (!provider || provider.userId !== user.id) {
+        setLoading(false);
+        return { error: "Only the assigned provider can respond." };
+      }
+
+      let next = resolveBookingRecord(source, bookingId, accepted);
+      if (accepted) {
+        next = notifyBookingParties(
+          next,
+          { ...booking, status: "confirmed", paymentStatus: "authorized" },
+          {
+            type: "booking",
+            title: "Booking accepted",
+            message: "Your booking has been accepted ✅",
+            href: customerBookingsHref("upcoming"),
+          },
+          user.id,
+          {
+            type: "booking",
+            title: "Job confirmed",
+            message: `You accepted ${booking.customerName}'s ${booking.service} booking.`,
+            href: providerDashboardHref("upcoming"),
+          }
+        );
+      } else {
+        next = appendNotification(next, booking.customerId, {
+          type: "booking",
+          title: "Booking declined",
+          message: "Your booking was declined ❌",
+          href: customerBookingsHref("past"),
+        });
+      }
+
+      persistImmediate(next);
 
       emitSystemEvent({
         type: accepted ? "booking_accepted" : "booking_declined",
         message: accepted
-          ? `${providerName} accepted a booking`
-          : `${providerName} declined a request`,
+          ? `${provider.name} accepted a booking`
+          : `${provider.name} declined a request`,
       });
       setLoading(false);
       return {};
@@ -1208,10 +1215,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     [
       user,
       clearScheduledResponse,
+      getSharedDb,
       notifyBookingParties,
       appendNotification,
+      persistImmediate,
       emitSystemEvent,
-      discardPendingSave,
     ]
   );
 
@@ -1313,13 +1321,13 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-  }, [db, user]);
+  }, [db, user, dbRevision]);
 
   const unreadNotificationCount = useMemo(() => {
     if (!db || !user) return 0;
     return (db.notifications ?? []).filter((n) => n.userId === user.id && !n.read)
       .length;
-  }, [db, user]);
+  }, [db, user, dbRevision]);
 
   const markNotificationsRead = useCallback(
     (ids?: string[]) => {

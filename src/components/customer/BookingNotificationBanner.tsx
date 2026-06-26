@@ -10,10 +10,11 @@ import {
 
 export function BookingNotificationBanner() {
   const router = useRouter();
-  const { user, db, getNotifications, markNotificationsRead } = useMockApp();
+  const { user, db, dbRevision, getNotifications, markNotificationsRead } = useMockApp();
 
   if (!user || !db) return null;
 
+  void dbRevision;
   const latest = getNotifications().find(
     (n) =>
       !n.read &&
