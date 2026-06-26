@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import Link from "next/link";
 import { HireModal } from "@/components/HireModal";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ReviewForm } from "@/components/ReviewForm";
 import { StarRating } from "@/components/StarRating";
+import { DirectMessageModal } from "@/components/DirectMessagePanel";
+import { useMockApp } from "@/context/MockAppContext";
 import type { MockBooking, MockProvider } from "@/lib/mock/types";
 import { formatProviderPrice } from "@/lib/pricing";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
@@ -222,7 +224,15 @@ function JobDetail({
   hasReview: boolean;
   onNewRequest: () => void;
 }) {
+  const { db } = useMockApp();
+  const [messageOpen, setMessageOpen] = useState(false);
+  const providerUserId = db?.providers.find((p) => p.id === booking.providerId)?.userId;
   const showReview = booking.status === "completed" && !hasReview;
+  const canMessage =
+    providerUserId &&
+    (booking.status === "pending" ||
+      booking.status === "confirmed" ||
+      booking.status === "completed");
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-8">
@@ -241,6 +251,16 @@ function JobDetail({
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-gray-900">{booking.service}</h2>
           <p className="mt-1 text-gray-600">{booking.providerName}</p>
+
+          {canMessage && (
+            <button
+              type="button"
+              onClick={() => setMessageOpen(true)}
+              className="mt-4 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              Message {booking.providerName}
+            </button>
+          )}
 
           <dl className="mt-6 space-y-3 text-sm">
             <div className="flex justify-between gap-4">
@@ -293,6 +313,15 @@ function JobDetail({
           </p>
         )}
       </div>
+
+      {providerUserId && (
+        <DirectMessageModal
+          open={messageOpen}
+          otherUserId={providerUserId}
+          otherUserName={booking.providerName}
+          onClose={() => setMessageOpen(false)}
+        />
+      )}
     </div>
   );
 }

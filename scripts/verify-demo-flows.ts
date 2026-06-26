@@ -18,7 +18,6 @@ import {
   countAdmins,
   addNotificationRecord,
   toggleProviderBlockedSlotRecord,
-  addDirectMessageRecord,
   deleteUserRecord,
 } from "../src/lib/mock/operations";
 import { advancedSearch } from "../src/lib/search/unified";
@@ -26,6 +25,30 @@ import { normalizeMockDatabase } from "../src/lib/mock/normalize";
 import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
 import { getMarketplaceAnalytics } from "../src/lib/mock/analytics";
 import { demoId } from "../src/lib/demo/ids";
+import {
+  appendMessage,
+  getConversationMessages,
+  removeMessagesForUser,
+} from "../src/lib/messages/store";
+
+const messageStoreMem = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", {
+  value: {
+    getItem: (key: string) => messageStoreMem.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      messageStoreMem.set(key, value);
+    },
+    removeItem: (key: string) => {
+      messageStoreMem.delete(key);
+    },
+    clear: () => messageStoreMem.clear(),
+    get length() {
+      return messageStoreMem.size;
+    },
+    key: () => null,
+  },
+  configurable: true,
+});
 
 const failures: string[] = [];
 const passes: string[] = [];
@@ -482,19 +505,22 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     "Service search finds plumbers"
   );
 
-  let dmDb = addDirectMessageRecord(guardDb, {
+  messageStoreMem.clear();
+  appendMessage({
     id: demoId("dm-test"),
-    senderId: sarah!.id,
-    receiverId: marcusUser!.id,
-    senderName: sarah!.name,
+    sender_id: sarah!.id,
+    receiver_id: marcusUser!.id,
     text: "Hello Marcus",
   });
+  const sarahThread = getConversationMessages(sarah!.id, marcusUser!.id);
   assert(
-    dmDb.directMessages.some(
-      (m) => m.senderId === sarah!.id && m.receiverId === marcusUser!.id
-    ),
+    sarahThread.length === 1 &&
+      sarahThread[0]!.sender_id === sarah!.id &&
+      sarahThread[0]!.receiver_id === marcusUser!.id,
     "Direct messages persist sender and receiver"
   );
+  const marcusThread = getConversationMessages(marcusUser!.id, sarah!.id);
+  assert(marcusThread.length === 1, "Receiver sees the same conversation thread");
 
   const guestUser = newGuestUser({
     name: "Guest Delete",
@@ -503,10 +529,15 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     customerRole: true,
     providerRole: false,
   });
-  dmDb = {
-    ...dmDb,
-    users: [...dmDb.users, guestUser],
+  let dmDb = {
+    ...guardDb,
+    users: [...guardDb.users, guestUser],
   };
+  appendMessage({
+    sender_id: guestUser.id,
+    receiver_id: sarah!.id,
+    text: "guest ping",
+  });
   const deleted = deleteUserRecord(dmDb, guestUser.id);
   assert(!deleted.error, "Delete user succeeds for non-admin");
   assert(
@@ -521,10 +552,9 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     advancedSearch(deleted.db, "guest.delete").length === 0,
     "Deleted user email absent from search"
   );
+  removeMessagesForUser(guestUser.id);
   assert(
-    deleted.db.directMessages.every(
-      (m) => m.senderId !== guestUser.id && m.receiverId !== guestUser.id
-    ),
+    getConversationMessages(guestUser.id, sarah!.id).length === 0,
     "Deleted user direct messages removed"
   );
 

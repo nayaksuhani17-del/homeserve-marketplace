@@ -35,7 +35,6 @@ import {
   resolveBookingRecord,
   resolveReportRecord,
   addChatMessageRecord,
-  addDirectMessageRecord,
   removeReviewRecord,
   deleteUserRecord,
   simulateDelay,
@@ -45,11 +44,18 @@ import {
   validateReview,
 } from "@/lib/mock/operations";
 import { getMarketplaceAnalytics } from "@/lib/mock/analytics";
+import {
+  appendMessage,
+  getConversationMessages,
+  migrateDirectMessages,
+  MESSAGES_UPDATED_EVENT,
+  removeMessagesForUser,
+  type StoredMessage,
+} from "@/lib/messages/store";
 import type {
   MarketplaceAnalytics,
   MockBooking,
   MockDatabase,
-  MockDirectMessage,
   MockNotification,
   MockProvider,
   MockSession,
@@ -165,7 +171,7 @@ type MockAppContextValue = {
   getAvailableSlots: (providerId: string, date: string) => string[];
   sendChatMessage: (bookingId: string, text: string) => Promise<{ error?: string }>;
   getChatMessages: (bookingId: string) => MockDatabase["chatMessages"];
-  getDirectMessages: (otherUserId: string) => MockDirectMessage[];
+  getDirectMessages: (otherUserId: string) => StoredMessage[];
   sendDirectMessage: (receiverId: string, text: string) => Promise<{ error?: string }>;
   advancedSearch: (query: string) => UnifiedSearchResult[];
   removeReview: (reviewId: string) => Promise<void>;
@@ -291,6 +297,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [db, setDb] = useState<MockDatabase | null>(null);
   const [dbRevision, setDbRevision] = useState(0);
+  const [messagesRevision, setMessagesRevision] = useState(0);
   const [session, setSession] = useState<MockSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
@@ -305,6 +312,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     key: string;
     result: ReturnType<MockAppContextValue["filterProviders"]>;
   } | null>(null);
+
+  const bumpMessagesRevision = useCallback(() => {
+    setMessagesRevision((r) => r + 1);
+  }, []);
 
   const clearScheduledResponse = useCallback((bookingId: string) => {
     const existing = responseTimeouts.current.get(bookingId);
@@ -478,6 +489,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (resolvedSession) saveSession(resolvedSession);
       syncSessionCookie(Boolean(nextSession));
       setFavoriteIds(loadFavoriteIds());
+      migrateDirectMessages(stored.directMessages ?? []);
+      setMessagesRevision((r) => r + 1);
       setReady(true);
     }
 
@@ -633,9 +646,21 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready || !session) return;
     reloadFromStorage();
+    if (dbRef.current) {
+      migrateDirectMessages(dbRef.current.directMessages ?? []);
+    }
+    bumpMessagesRevision();
     // Only re-sync when the active account changes — not when db state updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadFromStorage is stable; db must not retrigger this
   }, [session?.userId, ready]);
+
+  useEffect(() => {
+    function onMessagesUpdated() {
+      bumpMessagesRevision();
+    }
+    window.addEventListener(MESSAGES_UPDATED_EVENT, onMessagesUpdated);
+    return () => window.removeEventListener(MESSAGES_UPDATED_EVENT, onMessagesUpdated);
+  }, [bumpMessagesRevision]);
 
   const login = useCallback(
     async (email: string, password: string, redirectTo?: string) => {
@@ -1052,21 +1077,19 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const getDirectMessages = useCallback(
     (otherUserId: string) => {
-      if (!db || !user) return [];
-      const other = db.users.find((u) => u.id === otherUserId);
+      if (!user) return [];
+      const other = db?.users.find((u) => u.id === otherUserId);
       if (!other || other.banned) return [];
-      return (db.directMessages ?? [])
-        .filter(
-          (m) =>
-            (m.senderId === user.id && m.receiverId === otherUserId) ||
-            (m.senderId === otherUserId && m.receiverId === user.id)
-        )
-        .sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
+      const messages = getConversationMessages(user.id, otherUserId);
+      console.log("[messages] load conversation", {
+        currentUserId: user.id,
+        otherUserId,
+        count: messages.length,
+        messages,
+      });
+      return messages;
     },
-    [db, user]
+    [db, user, messagesRevision]
   );
 
   const sendDirectMessage = useCallback(
@@ -1077,14 +1100,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!receiver) return { error: "This user is no longer available." };
       if (receiver.banned) return { error: "This user is not available." };
 
-      let next = addDirectMessageRecord(db, {
-        id: newId("dm"),
-        senderId: user.id,
-        receiverId,
-        senderName: user.name,
+      const saved = appendMessage({
+        sender_id: user.id,
+        receiver_id: receiverId,
         text,
       });
-      next = appendNotification(next, receiverId, {
+      console.log("[messages] sent", saved);
+      bumpMessagesRevision();
+
+      let next = appendNotification(db, receiverId, {
         type: "message",
         title: "New message",
         message: `${user.name}: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`,
@@ -1103,32 +1127,39 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         providerHasAutoReply(receiverProvider)
       ) {
         const replyDelay = getChatReplyDelayMs();
+        const customerId = user.id;
         setTimeout(() => {
-          setDb((prev) => {
-            if (!prev) return prev;
-            const reply = generateProviderChatReply(text);
-            let withReply = addDirectMessageRecord(prev, {
-              id: newId("dm"),
-              senderId: receiverId,
-              receiverId: user.id,
-              senderName: receiver.name,
-              text: reply,
-            });
-            withReply = appendNotification(withReply, user.id, {
-              type: "message",
-              title: "Reply from " + receiver.name,
-              message: reply.slice(0, 100),
-              href: "/customer/dashboard",
-            });
-            saveDb(withReply);
-            return withReply;
+          const reply = generateProviderChatReply(text);
+          const replyMsg = appendMessage({
+            sender_id: receiverId,
+            receiver_id: customerId,
+            text: reply,
           });
+          console.log("[messages] auto-reply sent", replyMsg);
+          bumpMessagesRevision();
+          const source = getSharedDb();
+          if (!source) return;
+          const withNotif = appendNotification(source, customerId, {
+            type: "message",
+            title: "Reply from " + receiver.name,
+            message: reply.slice(0, 100),
+            href: "/customer/dashboard",
+          });
+          persistImmediate(withNotif);
         }, replyDelay);
       }
 
       return {};
     },
-    [db, user, persistImmediate, appendNotification]
+    [
+      db,
+      user,
+      activeMode,
+      persistImmediate,
+      appendNotification,
+      bumpMessagesRevision,
+      getSharedDb,
+    ]
   );
 
   const advancedSearchFn = useCallback(
@@ -1174,12 +1205,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return { error: result.error };
       }
+      removeMessagesForUser(userId);
+      bumpMessagesRevision();
       finalizeAccountDeletion(result);
       emitSystemEvent({ type: "report", message: "Account deleted permanently" });
       setLoading(false);
       return {};
     },
-    [db, user, finalizeAccountDeletion, emitSystemEvent]
+    [db, user, finalizeAccountDeletion, emitSystemEvent, bumpMessagesRevision]
   );
 
   const deleteMyAccount = useCallback(async () => {
@@ -1195,12 +1228,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { error: result.error };
     }
+    removeMessagesForUser(user.id);
+    bumpMessagesRevision();
     finalizeAccountDeletion(result);
     saveSession(null);
     setSession(null);
     setLoading(false);
     return {};
-  }, [db, user, finalizeAccountDeletion]);
+  }, [db, user, finalizeAccountDeletion, bumpMessagesRevision]);
 
   const removeReview = useCallback(
     async (reviewId: string) => {

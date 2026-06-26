@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useMockApp } from "@/context/MockAppContext";
 import { CHAT_QUICK_PROMPTS, providerHasAutoReply } from "@/lib/mock/simulation";
-import type { MockDirectMessage } from "@/lib/mock/types";
+import type { StoredMessage } from "@/lib/messages/store";
 
 type DirectMessagePanelProps = {
   otherUserId: string;
@@ -30,6 +30,14 @@ export function DirectMessagePanel({
   const otherUser = db?.users.find((u) => u.id === otherUserId);
   const otherProvider = db?.providers.find((p) => p.userId === otherUserId);
   const autoReplyOn = providerHasAutoReply(otherProvider);
+
+  const senderNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const u of db?.users ?? []) {
+      map.set(u.id, u.name);
+    }
+    return map;
+  }, [db?.users]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -118,8 +126,9 @@ export function DirectMessagePanel({
             Say hello — your message is saved and visible when they switch accounts.
           </p>
         )}
-        {messages.map((msg: MockDirectMessage) => {
-          const isMine = msg.senderId === user.id;
+        {messages.map((msg: StoredMessage) => {
+          const isMine = msg.sender_id === user.id;
+          const senderLabel = senderNames.get(msg.sender_id) ?? otherUserName;
           return (
             <div
               key={msg.id}
@@ -133,13 +142,13 @@ export function DirectMessagePanel({
                 }`}
               >
                 {!isMine && (
-                  <p className="mb-0.5 text-[10px] font-medium opacity-70">{msg.senderName}</p>
+                  <p className="mb-0.5 text-[10px] font-medium opacity-70">{senderLabel}</p>
                 )}
                 <p>{msg.text}</p>
                 <p
                   className={`mt-1 text-[10px] ${isMine ? "text-green-100" : "text-gray-400"}`}
                 >
-                  {new Date(msg.createdAt).toLocaleTimeString([], {
+                  {new Date(msg.timestamp).toLocaleTimeString([], {
                     hour: "numeric",
                     minute: "2-digit",
                   })}
