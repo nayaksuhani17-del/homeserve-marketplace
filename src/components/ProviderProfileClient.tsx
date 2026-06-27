@@ -169,9 +169,6 @@ export function ProviderProfileClient({
                 providerName={user?.name ?? "Provider"}
                 className="!p-2"
               />
-              {!verified && (
-                <span className="badge-unverified px-3 py-1 text-sm">Unverified</span>
-              )}
             </div>
           </div>
 

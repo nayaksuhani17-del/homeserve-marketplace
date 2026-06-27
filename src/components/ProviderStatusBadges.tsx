@@ -21,7 +21,7 @@ export function ProviderStatusBadges({
   className = "",
   size = "sm",
 }: ProviderStatusBadgesProps) {
-  const isVerified = isProviderVerified({ verified: verified ?? approved });
+  const isVerified = isProviderVerified({ verified });
   const topRated = isVerified && isTopRatedProvider(ratingAvg, reviewCount);
   const isNew = isNewProvider(reviewCount);
   const pad = size === "md" ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-[10px] sm:text-xs";

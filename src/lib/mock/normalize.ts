@@ -92,8 +92,7 @@ export function needsNormalization(raw: MockDatabase): boolean {
   return (
     providers.some(
       (p) =>
-        p.verified === true ||
-        p.approved === true ||
+        typeof p.verified !== "boolean" ||
         !p.responseSpeed ||
         !Array.isArray(p.weekAvailability) ||
         p.weekAvailability.length !== 7 ||

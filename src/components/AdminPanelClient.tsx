@@ -84,7 +84,15 @@ export function AdminPanelClient() {
     [db]
   );
 
-  const providers = db?.providers ?? [];
+  const providers = useMemo(() => {
+    if (!db) return [];
+    return [...db.providers].sort((a, b) => {
+      const aUnverified = isProviderVerified(a) ? 1 : 0;
+      const bUnverified = isProviderVerified(b) ? 1 : 0;
+      if (aUnverified !== bUnverified) return aUnverified - bUnverified;
+      return a.name.localeCompare(b.name);
+    });
+  }, [db]);
   const allUsers = useMemo(() => {
     if (!db) return [];
     return [...db.users].sort((a, b) => {
@@ -401,7 +409,7 @@ export function AdminPanelClient() {
                                   }
                                   className="btn-primary px-3 py-1 text-xs disabled:opacity-60"
                                 >
-                                  Approve
+                                  Approve Provider
                                 </button>
                                 <button
                                   type="button"

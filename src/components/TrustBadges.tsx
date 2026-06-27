@@ -20,7 +20,7 @@ export function TrustBadges({
       <ProviderStatusBadges
         ratingAvg={rating}
         reviewCount={reviews}
-        approved={Boolean(provider.approved)}
+        verified={provider.verified === true}
         size={compact ? "sm" : "sm"}
       />
       {extra.length > 0 && (

@@ -8,7 +8,8 @@
     "start": "next start -p 3001",
     "lint": "eslint",
     "verify:reviews": "tsx scripts/verify-review-system.ts",
-    "verify:demo": "tsx scripts/verify-demo-flows.ts"
+    "verify:demo": "tsx scripts/verify-demo-flows.ts",
+    "verify:providers": "tsx scripts/verify-provider-verification.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

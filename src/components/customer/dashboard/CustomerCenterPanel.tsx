@@ -218,7 +218,7 @@ function ProviderResults({
                       <ProviderStatusBadges
                         ratingAvg={p.ratingAvg}
                         reviewCount={p.reviewCount}
-                        approved={p.approved}
+                        verified={p.verified === true}
                       />
                     </div>
                   </div>

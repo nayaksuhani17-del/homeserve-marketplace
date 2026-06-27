@@ -48,7 +48,7 @@ export function ProviderNameWithVerification({
   className = "",
   nameClassName = "",
   size = "sm",
-  showUnverifiedLabel = true,
+  showUnverifiedLabel = false,
 }: ProviderNameWithVerificationProps) {
   const isVerified = isProviderVerified({ verified });
 
