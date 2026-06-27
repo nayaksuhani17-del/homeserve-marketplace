@@ -193,7 +193,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Licensed master plumber with 12 years of experience in residential repairs and installations. I specialize in leak detection, pipe replacement, and emergency call-outs. Clean work and honest quotes every time.",
     availability: "Mon-Fri: 8am-6pm, Sat: 9am-1pm",
-    approved: true,
+    approved: false,
     distanceMiles: 1.8,
     jobsCompleted: 127,
     yearsExperience: 12,
@@ -217,7 +217,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Detail-oriented cleaning professional serving Austin homes for over 8 years. Eco-friendly products available on request. Deep cleans, move-in/move-out, and recurring weekly service.",
     availability: "Mon-Sat: 9am-5pm",
-    approved: true,
+    approved: false,
     distanceMiles: 2.3,
     jobsCompleted: 89,
     yearsExperience: 8,
@@ -234,7 +234,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Interior and exterior painting specialist with an eye for color and finish. I handle prep, patching, and full room makeovers. Fully insured and references available upon request.",
     availability: "Tue-Sat: 7am-4pm",
-    approved: true,
+    approved: false,
     distanceMiles: 3.1,
     jobsCompleted: 64,
     yearsExperience: 9,
@@ -251,7 +251,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Personal chef offering meal prep, dinner parties, and special occasion catering. Trained in Mediterranean and Latin cuisine. I bring fresh ingredients and leave your kitchen spotless.",
     availability: "Wed-Sun: 10am-8pm",
-    approved: true,
+    approved: false,
     distanceMiles: 4.2,
     jobsCompleted: 52,
     yearsExperience: 7,
@@ -268,7 +268,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "IT technician and licensed electrician for home office setups and smart home wiring. Virus removal, data recovery, network troubleshooting, and outlet upgrades. Same-day appointments often available.",
     availability: "Mon-Fri: 9am-6pm",
-    approved: true,
+    approved: false,
     distanceMiles: 1.2,
     jobsCompleted: 98,
     yearsExperience: 10,
@@ -285,7 +285,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Reliable lawn care for Portland neighborhoods including mowing, edging, and seasonal cleanup. I treat every yard like my own and offer flexible weekly or bi-weekly schedules.",
     availability: "Mon-Sat: 7am-3pm",
-    approved: true,
+    approved: false,
     distanceMiles: 5.6,
     jobsCompleted: 156,
     yearsExperience: 6,
@@ -302,7 +302,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Mobile mechanic with dealership training on domestic and import vehicles. Oil changes, brake work, diagnostics, and pre-purchase inspections at your home or office.",
     availability: "Mon-Fri: 8am-5pm, Sat: 8am-12pm",
-    approved: true,
+    approved: false,
     distanceMiles: 2.9,
     jobsCompleted: 112,
     yearsExperience: 11,
@@ -323,7 +323,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Affordable and thorough house cleaning for busy Chicago families. Kitchens, bathrooms, and whole-home refreshes. Pet-friendly and flexible scheduling with no long-term contracts required.",
     availability: "Mon-Fri: 9am-5pm, Sat: 10am-2pm",
-    approved: true,
+    approved: false,
     distanceMiles: 3.7,
     jobsCompleted: 203,
     yearsExperience: 5,
@@ -340,7 +340,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Full-service moving crew for local relocations and furniture delivery. Careful packing, loading, and unloading with dollies and blankets included. Free estimates for jobs over 3 hours.",
     availability: "Mon-Sat: 7am-7pm",
-    approved: true,
+    approved: false,
     distanceMiles: 6.4,
     jobsCompleted: 78,
     yearsExperience: 8,
@@ -357,7 +357,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Versatile home services pro combining painting and post-renovation cleaning. Perfect for landlords and homeowners refreshing a rental or listing. Fast turnaround and competitive rates.",
     availability: "Mon-Thu: 8am-5pm, Fri: 8am-2pm",
-    approved: true,
+    approved: false,
     distanceMiles: 2.1,
     jobsCompleted: 71,
     yearsExperience: 6,

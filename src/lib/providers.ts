@@ -90,7 +90,7 @@ export function toProviderCardData(
     location: p.location,
     distanceMiles: p.distance_miles,
     approved: p.approved,
-    verified: p.verified ?? p.approved,
+    verified: p.verified === true,
     tags: computeProviderTags(p),
     description: p.description,
     recommendationLabel: extras?.recommendationLabel,

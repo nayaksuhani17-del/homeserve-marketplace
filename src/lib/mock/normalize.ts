@@ -1,4 +1,4 @@
-import { isProviderVerified } from "@/lib/provider-verification";
+import { resetAllProviderVerification } from "@/lib/provider-verification";
 import { buildAdminDemoReports } from "./admin-demo-reports";
 import type { MockBooking, MockDatabase, MockProvider, MockUser } from "./types";
 import { MOCK_DB_VERSION } from "./types";
@@ -39,8 +39,8 @@ function normalizeWeekAvailability(
   });
 }
 
-function normalizeProvider(provider: MockProvider, users: MockUser[]): MockProvider {
-  const verified = isProviderVerified(provider);
+function normalizeProvider(provider: MockProvider, _users: MockUser[]): MockProvider {
+  const verified = provider.verified === true;
   const base = {
     ...provider,
     verified,
@@ -92,6 +92,8 @@ export function needsNormalization(raw: MockDatabase): boolean {
   return (
     providers.some(
       (p) =>
+        p.verified === true ||
+        p.approved === true ||
         !p.responseSpeed ||
         !Array.isArray(p.weekAvailability) ||
         p.weekAvailability.length !== 7 ||
@@ -146,12 +148,19 @@ function normalizeUser(user: MockUser): MockUser {
 
 export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
   const users = dedupeUsers(raw.users ?? []).map(normalizeUser);
+  const fromVersion = raw.version ?? 0;
+  let providers = (raw.providers ?? [])
+    .filter((p) => users.some((u) => u.id === p.userId))
+    .map((p) => normalizeProvider(p, users));
+
+  if (fromVersion < MOCK_DB_VERSION) {
+    providers = resetAllProviderVerification(providers);
+  }
+
   const normalized: MockDatabase = {
     version: MOCK_DB_VERSION,
     users,
-    providers: (raw.providers ?? [])
-      .filter((p) => users.some((u) => u.id === p.userId))
-      .map((p) => normalizeProvider(p, users)),
+    providers,
     bookings: (raw.bookings ?? []).map(normalizeBooking),
     reviews: raw.reviews ?? [],
     chatMessages: raw.chatMessages ?? [],

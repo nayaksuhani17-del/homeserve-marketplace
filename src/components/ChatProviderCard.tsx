@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ProviderRatingDisplay } from "./ProviderRatingDisplay";
+import { ProviderNameWithVerification } from "./ProviderVerifiedBadge";
 import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { RecommendationBadge } from "./RecommendationBadge";
 import type { ProviderCardData } from "@/lib/providers";
@@ -36,7 +37,12 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className="min-w-0 truncate font-semibold text-gray-900">{provider.name}</p>
+            <ProviderNameWithVerification
+              name={provider.name}
+              verified={provider.verified === true}
+              nameClassName="min-w-0 truncate font-semibold text-gray-900"
+              className="min-w-0 flex-1"
+            />
             <div className="flex shrink-0 flex-col items-end gap-1">
               {provider.recommendationLabel && (
                 <RecommendationBadge label={provider.recommendationLabel} />
@@ -44,7 +50,7 @@ export function ChatProviderCard({ provider, compact }: { provider: ProviderCard
               <ProviderStatusBadges
                 ratingAvg={provider.rating}
                 reviewCount={provider.reviewCount ?? 0}
-                approved={provider.approved}
+                verified={provider.verified === true}
               />
             </div>
           </div>

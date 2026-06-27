@@ -1,4 +1,5 @@
 import type { MockDatabase } from "@/lib/mock/types";
+import { isProviderVerified } from "@/lib/provider-verification";
 
 export type AdminActivityItem = {
   id: string;
@@ -22,7 +23,7 @@ export function getAdminActivitySeed(db: MockDatabase): AdminActivityItem[] {
     });
   }
 
-  for (const p of db.providers.filter((x) => x.verified ?? x.approved).slice(0, 2)) {
+  for (const p of db.providers.filter((x) => isProviderVerified(x)).slice(0, 2)) {
     items.push({
       id: `seed-approved-${p.id}`,
       icon: "✅",
@@ -38,19 +39,19 @@ export function getProviderAdminStatus(
   verified: boolean,
   rejected: boolean | undefined,
   userBanned: boolean
-): "Verified" | "Unverified" | "Rejected" | "Banned" {
+): "Verified ✅" | "Unverified ⚠️" | "Rejected" | "Banned" {
   if (userBanned) return "Banned";
   if (rejected) return "Rejected";
-  if (verified) return "Verified";
-  return "Unverified";
+  if (verified) return "Verified ✅";
+  return "Unverified ⚠️";
 }
 
 export const PROVIDER_STATUS_STYLES: Record<
   ReturnType<typeof getProviderAdminStatus>,
   string
 > = {
-  Verified: "bg-blue-100 text-blue-800",
-  Unverified: "bg-amber-100 text-amber-800",
+  "Verified ✅": "bg-blue-100 text-blue-800",
+  "Unverified ⚠️": "bg-amber-100 text-amber-800",
   Rejected: "bg-red-100 text-red-700",
   Banned: "bg-gray-800 text-white",
 };

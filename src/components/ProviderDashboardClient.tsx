@@ -15,7 +15,7 @@ import { ProviderSummaryCard } from "@/components/provider/ProviderSummaryCard";
 import { ProviderEarningsChart } from "@/components/provider/ProviderEarningsChart";
 import { useMockApp } from "@/context/MockAppContext";
 import { hasProviderRole, isAdmin } from "@/lib/user-capabilities";
-import { isProviderVerified, VERIFIED_PROVIDER_LABEL } from "@/lib/provider-verification";
+import { isProviderVerified } from "@/lib/provider-verification";
 import { useToast } from "@/components/Toast";
 import {
   getBookingAddress,
@@ -388,7 +388,7 @@ export function ProviderDashboardClient() {
           }`}
         >
           {isProviderVerified(provider)
-            ? `${VERIFIED_PROVIDER_LABEL} — your profile shows the verified badge to customers.`
+            ? "Verified — your blue checkmark is visible to customers."
             : "⚠️ Your account is not verified yet. You are awaiting admin approval."}
         </div>
       )}

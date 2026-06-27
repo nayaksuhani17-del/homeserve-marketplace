@@ -100,11 +100,16 @@ console.log("👤 CUSTOMER FLOW");
   const sarah = db.users.find((u) => u.email === "sarah.mitchell@demo.com");
   assert(!!sarah, "Demo customer Sarah Mitchell exists");
 
+  const marcus = db.providers.find((p) => p.email === "marcus.reed@demo.com");
+  assert(!!marcus && marcus.verified !== true, "Demo providers start unverified");
+  db = approveProviderRecord(db, marcus!.id, true);
+  const marcusVerified = db.providers.find((p) => p.id === marcus!.id);
+  assert(marcusVerified?.verified === true, "Admin approval sets verified=true");
+
   const plumbers = applyProviderFilters(db, { service: "Plumber", status: "verified" });
   assert(plumbers.length > 0, `Find plumbers in search (${plumbers.length} results)`);
 
-  const marcus = db.providers.find((p) => p.email === "marcus.reed@demo.com");
-  assert(!!marcus && marcus.approved, "Target provider Marcus Reed is approved & bookable");
+  assert(!!marcusVerified?.verified, "Target provider Marcus Reed is verified & bookable");
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 3);
@@ -362,7 +367,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
   );
   assert(
     multiDb.providers.some(
-      (p) => p.userId === provider1.id && !p.verified && !p.approved
+      (p) => p.userId === provider1.id && p.verified !== true && !p.approved
     ),
     "New provider starts unverified pending admin approval"
   );
@@ -370,7 +375,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
   const newProviderProfile = multiDb.providers.find((p) => p.userId === provider1.id)!;
   const afterApprove = approveProviderRecord(multiDb, newProviderProfile.id, true);
   const approvedProfile = afterApprove.providers.find((p) => p.id === newProviderProfile.id)!;
-  assert(approvedProfile.verified && approvedProfile.approved, "Admin approval sets verified=true");
+  assert(approvedProfile.verified === true, "Admin approval sets verified=true");
 
   const totalBefore = multiDb.users.length;
   const customer2 = newGuestUser({

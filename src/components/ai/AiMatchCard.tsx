@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { ProviderNameWithVerification } from "@/components/ProviderVerifiedBadge";
 import { ProviderRatingDisplay } from "@/components/ProviderRatingDisplay";
 import { ProviderStatusBadges } from "@/components/ProviderStatusBadges";
 import { resolveProviderRating } from "@/lib/ratings";
@@ -32,6 +33,8 @@ export function AiMatchCard({
   const price = formatProviderPriceAmount(provider.pricingType, provider.price);
   const responseLabel = formatResponseTime(provider.responseTimeMins);
   const showFast = provider.tags?.includes("Fast Responder") || provider.availableToday;
+  const verified = provider.verified === true;
+
   const { ratingAvg, reviewCount } = resolveProviderRating(provider, {});
 
   function openProfile() {
@@ -81,13 +84,15 @@ export function AiMatchCard({
               <ProviderStatusBadges
                 ratingAvg={ratingAvg}
                 reviewCount={reviewCount}
-                verified={provider.verified ?? provider.approved}
-                approved={provider.approved}
+                verified={verified}
               />
             </div>
-            <h4 className="mt-1.5 truncate text-base font-semibold text-gray-900">
-              {provider.name}
-            </h4>
+            <ProviderNameWithVerification
+              name={provider.name}
+              verified={verified}
+              nameClassName="mt-1.5 truncate text-base font-semibold text-gray-900"
+              className="min-w-0"
+            />
             <div className="mt-1">
               <ProviderRatingDisplay ratingAvg={ratingAvg} reviewCount={reviewCount} size="sm" />
             </div>

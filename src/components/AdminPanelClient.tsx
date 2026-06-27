@@ -401,7 +401,7 @@ export function AdminPanelClient() {
                                   }
                                   className="btn-primary px-3 py-1 text-xs disabled:opacity-60"
                                 >
-                                  ✅ Approve Provider
+                                  Approve
                                 </button>
                                 <button
                                   type="button"

@@ -11,7 +11,7 @@ import { RecommendationBadge } from "./RecommendationBadge";
 import { TrustBadges } from "./TrustBadges";
 import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { resolveProviderRating } from "@/lib/ratings";
-import { isProviderVerified } from "@/lib/provider-verification";
+import { ProviderNameWithVerification } from "./ProviderVerifiedBadge";
 import { FavoriteButton } from "./FavoriteButton";
 import { getProviderUser } from "@/lib/providers";
 import * as pricing from "@/lib/pricing";
@@ -70,9 +70,7 @@ export function ProviderCard({
     ratingAvg: Number(provider.rating_avg),
     reviewCount: Number(provider.review_count ?? 0),
   });
-  const verified = isProviderVerified(
-    liveProvider ?? { approved: Boolean(provider.approved) }
-  );
+  const verified = liveProvider?.verified === true;
   const priceDisplay = pricing.formatProviderPriceAmount(
     provider.pricing_type,
     Number(provider.price)
@@ -133,9 +131,12 @@ export function ProviderCard({
               </div>
             )}
             <div className="min-w-0 flex-1 pb-1">
-              <h3 className="truncate font-semibold text-gray-900 group-hover:text-green-700">
-                {providerUser?.name ?? "Provider"}
-              </h3>
+              <ProviderNameWithVerification
+                name={providerUser?.name ?? "Provider"}
+                verified={verified}
+                nameClassName="truncate font-semibold text-gray-900 group-hover:text-green-700"
+                className="min-w-0"
+              />
               {provider.distance_miles != null && (
                 <p className="text-xs font-medium text-green-600">
                   {Number(provider.distance_miles).toFixed(1)} miles away
@@ -166,7 +167,6 @@ export function ProviderCard({
             ratingAvg={ratingAvg}
             reviewCount={reviewCount}
             verified={verified}
-            approved={verified}
           />
           <span className="text-gray-400">·</span>
           <span className="text-xs text-green-600">{responseLabel}</span>

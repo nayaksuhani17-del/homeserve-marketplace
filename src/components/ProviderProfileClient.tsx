@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { ProviderNameWithVerification } from "./ProviderVerifiedBadge";
 import { ProviderRatingDisplay } from "./ProviderRatingDisplay";
 import { StarRating } from "./StarRating";
 import { ProviderStatusBadges } from "./ProviderStatusBadges";
 import { TagBadge } from "./ChatProviderCard";
-import { isProviderVerified } from "@/lib/provider-verification";
 import { resolveProviderRating } from "@/lib/ratings";
 import { HireModal } from "./HireModal";
 import { QuoteModal } from "./QuoteModal";
@@ -135,9 +135,7 @@ export function ProviderProfileClient({
     liveProvider ? { ratingAvg: displayRating, reviewCount } : null,
     { ratingAvg: Number(provider.rating_avg), reviewCount: liveReviews.length }
   );
-  const verified = isProviderVerified(
-    liveProvider ?? { approved: Boolean(provider.approved) }
-  );
+  const verified = liveProvider?.verified === true;
   const responseLabel = formatResponseTime(provider.response_time_mins);
   const priceDisplay = formatProviderPrice(provider.pricing_type, Number(provider.price));
   const viewers = getViewerCount(provider.id);
@@ -172,7 +170,7 @@ export function ProviderProfileClient({
                 className="!p-2"
               />
               {!verified && (
-                <span className="badge-unverified px-3 py-1 text-sm">Unverified Provider</span>
+                <span className="badge-unverified px-3 py-1 text-sm">Unverified</span>
               )}
             </div>
           </div>
@@ -184,7 +182,12 @@ export function ProviderProfileClient({
           </p>
 
           <div className="mt-4">
-            <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">{user?.name ?? "Provider"}</h1>
+            <ProviderNameWithVerification
+              name={user?.name ?? "Provider"}
+              verified={verified}
+              size="md"
+              nameClassName="text-3xl font-bold text-gray-900 sm:text-4xl"
+            />
             <p className="mt-1 text-lg text-gray-500">{provider.location}</p>
             {provider.distance_miles != null && (
               <p className="mt-1 text-sm font-medium text-green-600">
@@ -203,7 +206,6 @@ export function ProviderProfileClient({
               ratingAvg={ratingAvg}
               reviewCount={resolvedCount}
               verified={verified}
-              approved={verified}
               size="md"
             />
             {resolvedCount > 0 && (
