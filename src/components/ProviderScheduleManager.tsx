@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { DEFAULT_SLOTS } from "@/lib/mock/simulation";
 import { useMockApp } from "@/context/MockAppContext";
 import { useToast } from "./Toast";
+import { formatTimeDisplay, getScheduleSlotsForDate } from "@/lib/availability";
 
 export function ProviderScheduleManager() {
   const { user, getProviderForUser, getAvailableSlots, toggleBlockedSlot, loading } =
@@ -30,6 +30,7 @@ export function ProviderScheduleManager() {
 
   if (!provider) return null;
 
+  const daySlots = getScheduleSlotsForDate(provider, selectedDate);
   const available = getAvailableSlots(provider.id, selectedDate);
 
   function toggleSlot(time: string) {
@@ -45,11 +46,22 @@ export function ProviderScheduleManager() {
     });
   }
 
+  if (daySlots.length === 0) {
+    return (
+      <section className="card bg-white p-5">
+        <h2 className="text-lg font-bold text-gray-900">Block specific slots</h2>
+        <p className="mt-2 text-sm text-gray-500">
+          You are not available on this day based on your weekly schedule.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section className="card bg-white p-5">
-      <h2 className="text-lg font-bold text-gray-900">Schedule & availability</h2>
+      <h2 className="text-lg font-bold text-gray-900">Block specific slots</h2>
       <p className="mt-1 text-sm text-gray-500">
-        Block time slots you&apos;re unavailable — customers won&apos;t be able to book them.
+        Block individual hours on days you work. Confirmed bookings are blocked automatically.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -69,8 +81,8 @@ export function ProviderScheduleManager() {
         ))}
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {DEFAULT_SLOTS.map((time) => {
+      <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {daySlots.map((time) => {
           const key = `${selectedDate}:${time}`;
           const isBlocked = blocked.includes(key);
           const isBooked = !available.includes(time) && !isBlocked;
@@ -88,7 +100,7 @@ export function ProviderScheduleManager() {
                     : "border-green-200 bg-green-50 text-green-800 hover:border-green-400"
               }`}
             >
-              {time}
+              {formatTimeDisplay(time)}
               <span className="mt-0.5 block text-[10px] font-normal">
                 {isBlocked ? "Blocked" : isBooked ? "Booked" : "Open"}
               </span>

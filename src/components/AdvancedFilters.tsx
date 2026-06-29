@@ -1,6 +1,7 @@
 "use client";
 
 import { SERVICE_CATEGORIES } from "@/lib/constants";
+import { DEFAULT_DISTANCE_RADIUS, DISTANCE_RANGE_OPTIONS } from "@/lib/location";
 
 type AdvancedFiltersProps = {
   service?: string;
@@ -128,13 +129,19 @@ function FilterFields(props: AdvancedFiltersProps) {
 
         <div>
           <label htmlFor="maxDistance" className="mb-1 block text-sm font-medium text-gray-700">
-            Max distance (miles)
+            Distance range
           </label>
-          <select id="maxDistance" name="maxDistance" defaultValue={props.maxDistance ?? ""} className="input-field">
-            <option value="">Any distance</option>
-            <option value="3">Within 3 mi</option>
-            <option value="5">Within 5 mi</option>
-            <option value="10">Within 10 mi</option>
+          <select
+            id="maxDistance"
+            name="maxDistance"
+            defaultValue={props.maxDistance ?? String(DEFAULT_DISTANCE_RADIUS)}
+            className="input-field"
+          >
+            {DISTANCE_RANGE_OPTIONS.map((miles) => (
+              <option key={miles} value={miles}>
+                {miles} miles{miles === DEFAULT_DISTANCE_RADIUS ? " (default)" : ""}
+              </option>
+            ))}
           </select>
         </div>
 

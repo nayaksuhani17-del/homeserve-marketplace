@@ -26,8 +26,11 @@ export function AccountSwitcher() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [filterQuery, setFilterQuery] = useState("");
-  const [createName, setCreateName] = useState("");
+  const [createFirstName, setCreateFirstName] = useState("");
+  const [createLastName, setCreateLastName] = useState("");
   const [createEmail, setCreateEmail] = useState("");
+  const [createPhone, setCreatePhone] = useState("");
+  const [createAddress, setCreateAddress] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createSignupChoice, setCreateSignupChoice] = useState<SignupChoice>("customer");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -89,9 +92,14 @@ export function AccountSwitcher() {
     setCreateError(null);
     setCreating(true);
     const result = await register(
-      createName,
-      createEmail,
-      createPassword,
+      {
+        firstName: createFirstName,
+        lastName: createLastName,
+        email: createEmail,
+        phoneNumber: createPhone,
+        address: createAddress,
+        password: createPassword,
+      },
       rolesFromChoice(createSignupChoice)
     );
     setCreating(false);
@@ -99,8 +107,11 @@ export function AccountSwitcher() {
       setCreateError(result.error);
       return;
     }
-    setCreateName("");
+    setCreateFirstName("");
+    setCreateLastName("");
     setCreateEmail("");
+    setCreatePhone("");
+    setCreateAddress("");
     setCreatePassword("");
     setCreateSignupChoice("customer");
     setShowCreate(false);
@@ -253,14 +264,24 @@ export function AccountSwitcher() {
                 {showCreate ? (
                   <form onSubmit={handleCreate} className="space-y-3">
                     <p className="text-sm font-semibold text-gray-900">Create new account</p>
-                    <input
-                      type="text"
-                      required
-                      value={createName}
-                      onChange={(e) => setCreateName(e.target.value)}
-                      className="input-field text-sm"
-                      placeholder="Full name"
-                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        required
+                        value={createFirstName}
+                        onChange={(e) => setCreateFirstName(e.target.value)}
+                        className="input-field text-sm"
+                        placeholder="First name"
+                      />
+                      <input
+                        type="text"
+                        required
+                        value={createLastName}
+                        onChange={(e) => setCreateLastName(e.target.value)}
+                        className="input-field text-sm"
+                        placeholder="Last name"
+                      />
+                    </div>
                     <input
                       type="email"
                       required
@@ -268,6 +289,22 @@ export function AccountSwitcher() {
                       onChange={(e) => setCreateEmail(e.target.value)}
                       className="input-field text-sm"
                       placeholder="Email"
+                    />
+                    <input
+                      type="tel"
+                      required
+                      value={createPhone}
+                      onChange={(e) => setCreatePhone(e.target.value)}
+                      className="input-field text-sm"
+                      placeholder="Phone number"
+                    />
+                    <input
+                      type="text"
+                      required
+                      value={createAddress}
+                      onChange={(e) => setCreateAddress(e.target.value)}
+                      className="input-field text-sm"
+                      placeholder="Address"
                     />
                     <input
                       type="password"

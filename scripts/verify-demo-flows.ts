@@ -28,7 +28,25 @@ import {
 import { isTopRatedProvider, isNewProvider } from "../src/lib/provider-badges";
 import { advancedSearch } from "../src/lib/search/unified";
 import { normalizeMockDatabase } from "../src/lib/mock/normalize";
-import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
+import { getAvailableDates, getAvailableSlotsForDate } from "../src/lib/availability";
+import { newGuestProvider, newGuestUserFromName } from "../src/lib/mock/guest";
+
+function pickBookableSlot(
+  db: ReturnType<typeof buildInitialDatabase>,
+  providerId: string,
+  index = 0
+): { date: string; time: string } {
+  const dates = getAvailableDates(db, providerId, 21);
+  const date = dates[index] ?? dates[0];
+  if (!date) {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() + 3);
+    return { date: fallback.toISOString().split("T")[0]!, time: "10:00" };
+  }
+  const slots = getAvailableSlotsForDate(db, providerId, date);
+  return { date, time: slots[0] ?? "10:00" };
+}
+
 import { getMarketplaceAnalytics } from "../src/lib/mock/analytics";
 import { demoId } from "../src/lib/demo/ids";
 import {
@@ -90,7 +108,7 @@ function commitReview(
   return result.db;
 }
 
-console.log("\n🏠 HomeServe — 3-Role Pre-Demo Check\n");
+console.log("\n🏠 the hausfix — 3-Role Pre-Demo Check\n");
 
 let db = buildInitialDatabase();
 
@@ -111,9 +129,7 @@ console.log("👤 CUSTOMER FLOW");
 
   assert(!!marcusVerified?.verified, "Target provider Marcus Reed is verified & bookable");
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 3);
-  const date = tomorrow.toISOString().split("T")[0]!;
+  const { date, time } = pickBookableSlot(db, marcus!.id, 1);
 
   const created = createBookingRecord(
     db,
@@ -122,7 +138,7 @@ console.log("👤 CUSTOMER FLOW");
       providerId: marcus!.id,
       service: "Plumber",
       date,
-      time: "14:00",
+      time,
       hours: 2,
     },
     demoId("verify-booking")
@@ -262,9 +278,7 @@ console.log("\n🔄 ACCOUNT SWITCH SYNC");
   const marcus = syncDb.providers.find((p) => p.email === "marcus.reed@demo.com");
   assert(!!sarah && !!marcus, "Customer and provider demo accounts exist");
 
-  const syncDate = new Date();
-  syncDate.setDate(syncDate.getDate() + 5);
-  const date = syncDate.toISOString().split("T")[0]!;
+  const { date, time: syncTime } = pickBookableSlot(syncDb, marcus!.id, 2);
   const syncBookingId = demoId("sync-booking");
 
   const created = createBookingRecord(
@@ -274,7 +288,7 @@ console.log("\n🔄 ACCOUNT SWITCH SYNC");
       providerId: marcus!.id,
       service: "Electrician",
       date,
-      time: "10:00",
+      time: syncTime,
       hours: 2,
     },
     syncBookingId
@@ -334,7 +348,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
 {
   let multiDb = buildInitialDatabase();
 
-  const customer1 = newGuestUser({
+  const customer1 = newGuestUserFromName({
     name: "Alex Customer",
     email: "alex.test@example.com",
     password: "test1234",
@@ -343,7 +357,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
   });
   multiDb = registerUserRecord(multiDb, customer1).db;
 
-  const provider1 = newGuestUser({
+  const provider1 = newGuestUserFromName({
     name: "Jamie Provider",
     email: "jamie.test@example.com",
     password: "test1234",
@@ -378,7 +392,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
   assert(approvedProfile.verified === true, "Admin approval sets verified=true");
 
   const totalBefore = multiDb.users.length;
-  const customer2 = newGuestUser({
+  const customer2 = newGuestUserFromName({
     name: "Alex Customer Two",
     email: "alex2.test@example.com",
     password: "test1234",
@@ -389,7 +403,7 @@ console.log("\n👥 MULTI-ACCOUNT SYSTEM");
   assert(multiDb.users.length === totalBefore + 1, "Unlimited accounts — second customer added");
 
   const dupeAttempt = {
-    ...newGuestUser({
+    ...newGuestUserFromName({
       name: "Alex Duplicate",
       email: "alex2.test@example.com",
       password: "test1234",
@@ -438,9 +452,7 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   assert(!!sarah && !!marcus && !!marcusUser, "Guard fixtures exist");
 
   const bookingId = demoId("guard-booking");
-  const syncDate = new Date();
-  syncDate.setDate(syncDate.getDate() + 12);
-  const date = syncDate.toISOString().split("T")[0]!;
+  const { date, time: guardTime } = pickBookableSlot(guardDb, marcus!.id, 3);
 
   const created = createBookingRecord(
     guardDb,
@@ -449,7 +461,7 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
       providerId: marcus!.id,
       service: "Plumber",
       date,
-      time: "23:30",
+      time: guardTime,
       hours: 2,
     },
     bookingId
@@ -506,7 +518,16 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     "Provider rating updates after review"
   );
 
-  const blocked = toggleProviderBlockedSlotRecord(guardDb, marcusUser!.id, date, "15:00");
+  const blockSlot =
+    getAvailableSlotsForDate(guardDb, marcus!.id, date).find((t) => t !== guardTime) ??
+    getAvailableSlotsForDate(guardDb, marcus!.id, date)[0] ??
+    guardTime;
+  const blocked = toggleProviderBlockedSlotRecord(
+    guardDb,
+    marcusUser!.id,
+    date,
+    blockSlot
+  );
   assert(!blocked.error, "Availability block toggles without error");
   assert(
     blocked.db.providers
@@ -556,7 +577,7 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   const marcusThread = getConversationMessages(marcusUser!.id, sarah!.id);
   assert(marcusThread.length === 1, "Receiver sees the same conversation thread");
 
-  const guestUser = newGuestUser({
+  const guestUser = newGuestUserFromName({
     name: "Guest Delete",
     email: "guest.delete@test.com",
     password: "test123",
@@ -592,7 +613,7 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
     "Deleted user direct messages removed"
   );
 
-  const guestProviderUser = newGuestUser({
+  const guestProviderUser = newGuestUserFromName({
     name: "Zoe WipeTest",
     email: "zoe.wipe@test.com",
     password: "test123",
@@ -626,14 +647,15 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   );
 
   const acceptBookingId = demoId("accept-booking");
+  const acceptSlot = pickBookableSlot(guardDb, marcus!.id, 4);
   const acceptCreated = createBookingRecord(
     guardDb,
     {
       customerId: sarah!.id,
       providerId: marcus!.id,
       service: "Painting",
-      date,
-      time: "21:00",
+      date: acceptSlot.date,
+      time: acceptSlot.time,
       hours: 2,
     },
     acceptBookingId
@@ -662,14 +684,15 @@ console.log("\n🛡️ CRITICAL REGRESSION GUARDS");
   );
 
   const declineId = demoId("decline-booking");
+  const declineSlot = pickBookableSlot(guardDb, marcus!.id, 5);
   const declineCreated = createBookingRecord(
     guardDb,
     {
       customerId: sarah!.id,
       providerId: marcus!.id,
       service: "Electrician",
-      date,
-      time: "22:00",
+      date: declineSlot.date,
+      time: declineSlot.time,
       hours: 1,
     },
     declineId

@@ -1,9 +1,25 @@
+import { getAvailableSlotsForDate, isDayEnabled } from "@/lib/availability";
+import { resolveMaxDistance, withCustomerDistances } from "@/lib/location";
+import {
+  enrichCustomerLocation,
+  locationMatchingKey,
+  normalizeLocation,
+  parseLocationInput,
+} from "@/lib/location";
+import type { CustomerLocation } from "@/lib/location";
 import { DEMO_MODE, DEMO_PROVIDER_PAGE_SIZE } from "@/lib/demo/mode";
-import { estimateBookingCost, getComparablePrice } from "@/lib/pricing";
+import { getComparablePrice, estimateBookingCost } from "@/lib/pricing";
+import { PRICE_TIER_BOUNDS, type PriceCategory } from "@/lib/search/refinement-filters";
 import { computeProviderRatingStats } from "@/lib/ratings";
 import { isProviderVerified } from "@/lib/provider-verification";
+import {
+  buildFullName,
+  ensureUserProfileFields,
+  publicDisplayName,
+} from "@/lib/user-profile";
 import { rankProviders } from "@/lib/providers";
 import { detectUrgency } from "@/lib/smart";
+import { effectiveSearchQuery } from "@/lib/ai/parse-search";
 import { isSlotBlocked, isSlotTaken, slotKey } from "./simulation";
 import type { ProviderWithUser } from "@/lib/types";
 import type {
@@ -39,6 +55,12 @@ export function simulateDelay(ms = 600): Promise<void> {
   if (DEMO_MODE) return Promise.resolve();
   const jitter = Math.floor(Math.random() * 400);
   return new Promise((resolve) => setTimeout(resolve, ms + jitter));
+}
+
+/** Short, intentional delay for user-visible async actions (booking, messages, search). */
+export function actionDelay(ms: number): Promise<void> {
+  const capped = DEMO_MODE ? Math.min(ms, 500) : ms;
+  return new Promise((resolve) => setTimeout(resolve, capped));
 }
 
 export function recalculateProviderRating(
@@ -86,7 +108,6 @@ export function mockProviderToLegacy(p: MockProvider): ProviderWithUser {
     review_count: p.reviewCount,
     users: {
       name: p.name,
-      email: p.email,
       avatar_url: p.avatarUrl,
     },
   };
@@ -106,6 +127,16 @@ export function applyProviderFilters(
   list = list.filter((p) => !bannedUserIds.has(p.userId));
   list = list.filter((p) => !p.rejected);
 
+  list = withCustomerDistances(
+    list.map((p) => ({
+      ...p,
+      address: p.address ?? normalizeLocation(p.location),
+    })),
+    filters.customerAddress
+  );
+
+  const maxDistance = resolveMaxDistance(filters.maxDistance);
+
   if (filters.status === "pending") {
     list = list.filter((p) => !isProviderVerified(p));
   } else if (filters.status === "verified") {
@@ -117,21 +148,26 @@ export function applyProviderFilters(
   }
 
   if (filters.q) {
-    const q = filters.q.toLowerCase();
-    const tokens = q.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean);
-    const matchesProvider = (p: (typeof list)[0]) =>
-      p.location.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.name.toLowerCase().includes(q) ||
-      p.services.some((s) => s.toLowerCase().includes(q)) ||
-      tokens.some(
-        (t) =>
-          t.length >= 2 &&
-          (p.name.toLowerCase().includes(t) ||
-            p.services.some((s) => s.toLowerCase().includes(t)))
-      );
+    const effectiveQ = effectiveSearchQuery(filters.q, filters.service);
+    if (effectiveQ) {
+      const q = effectiveQ.toLowerCase();
+      const tokens = q.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean);
+      const matchesProvider = (p: (typeof list)[0]) =>
+        p.location.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.name.toLowerCase().includes(q) ||
+        p.services.some((s) => s.toLowerCase().includes(q)) ||
+        tokens.some(
+          (t) =>
+            t.length >= 2 &&
+            (p.name.toLowerCase().includes(t) ||
+              p.description.toLowerCase().includes(t) ||
+              p.location.toLowerCase().includes(t) ||
+              p.services.some((s) => s.toLowerCase().includes(t)))
+        );
 
-    list = list.filter(matchesProvider);
+      list = list.filter(matchesProvider);
+    }
   }
 
   if (filters.minPrice) {
@@ -144,11 +180,25 @@ export function applyProviderFilters(
       (p) => getComparablePrice(p.pricingType, p.price) <= Number(filters.maxPrice)
     );
   }
+  if (filters.priceCategory) {
+    const tier = filters.priceCategory as PriceCategory;
+    const bounds = PRICE_TIER_BOUNDS[tier];
+    if (bounds) {
+      list = list.filter((p) => {
+        const comparable = getComparablePrice(p.pricingType, p.price);
+        if (tier === "$") return comparable <= bounds.max;
+        if (tier === "$$$") return comparable > bounds.min;
+        return comparable > bounds.min && comparable <= bounds.max;
+      });
+    }
+  }
   if (filters.minRating) {
     list = list.filter((p) => p.ratingAvg >= Number(filters.minRating));
   }
-  if (filters.maxDistance) {
-    list = list.filter((p) => p.distanceMiles <= Number(filters.maxDistance));
+
+  const hasCustomerLocation = Boolean(filters.customerAddress?.trim());
+  if (hasCustomerLocation) {
+    list = list.filter((p) => p.distanceMiles <= Number(maxDistance));
   }
   if (filters.availability === "today") {
     list = list.filter((p) => p.availableToday);
@@ -172,10 +222,28 @@ export function applyProviderFilters(
     );
   } else if (filters.sort === "distance") {
     list.sort((a, b) => a.distanceMiles - b.distanceMiles);
-  } else {
+  } else if (filters.sort === "rating") {
     const ranked = rankProviders(legacy, filters.service, urgent);
     const order = new Map(ranked.map((p, i) => [p.id, i]));
     list.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
+  } else {
+    const prioritizePrice =
+      filters.priceCategory === "$" || filters.sort === "price";
+    list.sort((a, b) => {
+      if (hasCustomerLocation && a.distanceMiles !== b.distanceMiles) {
+        return a.distanceMiles - b.distanceMiles;
+      }
+      if (a.ratingAvg !== b.ratingAvg) {
+        return b.ratingAvg - a.ratingAvg;
+      }
+      if (prioritizePrice) {
+        return (
+          getComparablePrice(a.pricingType, a.price) -
+          getComparablePrice(b.pricingType, b.price)
+        );
+      }
+      return 0;
+    });
   }
 
   return list;
@@ -197,7 +265,7 @@ export function filterMockProviders(
       maxDistance: undefined,
       availability: undefined,
       q: undefined,
-      status: "verified",
+      status: filters.status === "all" ? "all" : "verified",
     });
     list =
       relaxed.length > 0
@@ -248,18 +316,23 @@ export function createBookingRecord(
   const provider = db.providers.find((p) => p.id === input.providerId);
   if (!customer || !provider) return { db, error: "Provider not found." };
 
-  if (input.time && isSlotTaken(db, input.providerId, input.date, input.time)) {
+  if (!isDayEnabled(provider, input.date)) {
     return {
       db,
-      error: "This provider is no longer available at that time. Please choose another slot.",
+      error: "This provider is not available on that day.",
     };
   }
 
-  if (input.time && isSlotBlocked(provider, input.date, input.time)) {
-    return {
-      db,
-      error: "This time slot is blocked by the provider. Please choose another slot.",
-    };
+  if (input.time) {
+    const openSlots = getAvailableSlotsForDate(db, input.providerId, input.date);
+    if (!openSlots.includes(input.time)) {
+      return {
+        db,
+        error: "This provider is no longer available at that time. Please choose another slot.",
+      };
+    }
+  } else {
+    return { db, error: "Please select an available time slot." };
   }
 
   const booking: MockBooking = {
@@ -517,6 +590,8 @@ export function updateProviderRecord(
       | "availableToday"
       | "availableTomorrow"
       | "weekAvailability"
+      | "weeklySchedule"
+      | "availabilityConfig"
       | "blockedSlots"
       | "autoReplyEnabled"
     >
@@ -587,6 +662,96 @@ export function banUserRecord(
 
 export function countAdmins(db: MockDatabase): number {
   return db.users.filter((u) => u.role === "admin").length;
+}
+
+export function updateUserAddressRecord(
+  db: MockDatabase,
+  userId: string,
+  addressInput: string
+): { db: MockDatabase; error?: string } {
+  const trimmed = addressInput.trim();
+  if (!trimmed) {
+    return { db, error: "Please enter your location to see nearby providers." };
+  }
+
+  const location = enrichCustomerLocation(trimmed);
+  const matchingAddress = locationMatchingKey(location);
+  const target = db.users.find((u) => u.id === userId);
+  if (!target) return { db, error: "User not found." };
+
+  return {
+    db: {
+      ...db,
+      users: db.users.map((u) =>
+        u.id === userId
+          ? { ...u, address: matchingAddress, location }
+          : u
+      ),
+    },
+  };
+}
+
+export function updateUserProfileRecord(
+  db: MockDatabase,
+  userId: string,
+  patch: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phoneNumber?: string;
+    address?: string;
+  }
+): { db: MockDatabase; error?: string } {
+  const target = db.users.find((u) => u.id === userId);
+  if (!target) return { db, error: "User not found." };
+
+  const firstName = (patch.firstName ?? target.firstName).trim();
+  const lastName = (patch.lastName ?? target.lastName).trim();
+  const email = (patch.email ?? target.email).trim().toLowerCase();
+  const phoneNumber = (patch.phoneNumber ?? target.phoneNumber).trim();
+  const address = (patch.address ?? target.address).trim();
+
+  if (!firstName || !lastName) {
+    return { db, error: "First and last name are required." };
+  }
+  if (!email) return { db, error: "Email is required." };
+  if (!phoneNumber) return { db, error: "Phone number is required." };
+  if (!address) return { db, error: "Address is required." };
+
+  const duplicate = db.users.find(
+    (u) => u.id !== userId && u.email.toLowerCase() === email
+  );
+  if (duplicate) {
+    return { db, error: "An account with this email already exists." };
+  }
+
+  const location = enrichCustomerLocation(address);
+  const updatedUser = ensureUserProfileFields({
+    ...target,
+    firstName,
+    lastName,
+    name: buildFullName(firstName, lastName),
+    email,
+    phoneNumber,
+    address: locationMatchingKey(location),
+    location,
+  });
+
+  return {
+    db: {
+      ...db,
+      users: db.users.map((u) => (u.id === userId ? updatedUser : u)),
+      providers: db.providers.map((p) =>
+        p.userId === userId
+          ? {
+              ...p,
+              name: publicDisplayName(updatedUser),
+              email: updatedUser.email,
+            }
+          : p
+      ),
+    },
+  };
 }
 
 export function updateUserRoleRecord(

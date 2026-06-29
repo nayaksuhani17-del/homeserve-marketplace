@@ -1,5 +1,6 @@
 import type { PricingType } from "@/lib/pricing";
 import type { ServicePackage } from "@/lib/quotes";
+import type { CustomerLocation } from "@/lib/location";
 
 export type MockRole = "admin" | "customer" | "provider";
 
@@ -14,10 +15,48 @@ export type PaymentStatus = "none" | "authorized" | "released" | "refunded";
 export type ResponseSpeed = "fast" | "medium" | "slow";
 export type ReportStatus = "open" | "resolved" | "dismissed";
 
+export type DayScheduleEntry = {
+  enabled: boolean;
+  start: string;
+  end: string;
+};
+
+export type AvailabilityTimeSlot = {
+  start: string;
+  end: string;
+};
+
+export type AvailabilityDayLabel =
+  | "Monday"
+  | "Tuesday"
+  | "Wednesday"
+  | "Thursday"
+  | "Friday"
+  | "Saturday"
+  | "Sunday";
+
+export type AvailabilityScheduleMode = "general" | "custom";
+
+export type ProviderAvailabilityConfig = {
+  mode: AvailabilityScheduleMode;
+  general: {
+    days: string[];
+    slots: AvailabilityTimeSlot[];
+  };
+  custom: Record<AvailabilityDayLabel, AvailabilityTimeSlot[]>;
+};
+
 export type MockUser = {
   id: string;
   name: string;
+  firstName: string;
+  lastName: string;
   email: string;
+  phoneNumber: string;
+  /** Legacy matching label — derived from `location` when present. */
+  address: string;
+  /** Full location input + parsed city/state/ZIP. */
+  location?: CustomerLocation;
   password: string;
   role: MockRole;
   /** Can browse, book, and review as a customer. */
@@ -42,6 +81,8 @@ export type MockProvider = {
   hourlyRate: number;
   servicePackages: ServicePackage[];
   location: string;
+  /** Service area — "City, ST" for distance matching. */
+  address?: string;
   description: string;
   availability: string;
   ratingAvg: number;
@@ -61,6 +102,10 @@ export type MockProvider = {
   reviewCount: number;
   /** Mon–Sun availability flags (index 0 = Monday). */
   weekAvailability?: boolean[];
+  /** Weekly hours — index 0 = Monday. Derived from availabilityConfig when set. */
+  weeklySchedule?: DayScheduleEntry[];
+  /** Source of truth for general vs per-day scheduling. */
+  availabilityConfig?: ProviderAvailabilityConfig;
   /** `${date}:${time}` slots the provider has blocked */
   blockedSlots: string[];
   /** When true, send templated auto-replies to customers who message while you're away. */
@@ -168,18 +213,22 @@ export type ProviderFilters = {
   minPrice?: string;
   maxPrice?: string;
   minRating?: string;
+  /** $ = budget, $$ = mid, $$$ = premium (comparable hourly rate). */
+  priceCategory?: string;
   maxDistance?: string;
   availability?: string;
   sort?: string;
   status?: string;
   page?: string;
+  /** Customer home for proximity — set by context, not URL. */
+  customerAddress?: string;
 };
 
 export const MOCK_DB_KEY = "homeserve-mock-db";
 export const MOCK_SESSION_KEY = "homeserve-mock-session";
 /** Cookie flag so middleware allows mock-authenticated demo routes. */
 export const MOCK_SESSION_COOKIE = "homeserve-mock-auth";
-export const MOCK_DB_VERSION = 15;
+export const MOCK_DB_VERSION = 20;
 
 export type SystemEvent = {
   id: string;

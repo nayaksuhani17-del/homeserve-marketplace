@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AuthForm } from "@/components/AuthForm";
+import { BrandLockup } from "@/components/BrandName";
 import { DemoLoginButtons } from "@/components/DemoSwitcher";
 
 type LoginPageProps = {
@@ -12,11 +13,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12">
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-          {isSignup ? "Create your HomeServe account" : "Sign in to HomeServe"}
+      <div className="mb-8 flex flex-col items-center text-center">
+        <BrandLockup size="lg" align="center" />
+        <h1 className="mt-8 text-2xl font-bold tracking-tight text-gray-900">
+          {isSignup ? "Create your account" : "Sign in to your account"}
         </h1>
-        <p className="mt-2 text-gray-600">
+        <p className="mt-2 max-w-md text-gray-600">
           {isSignup
             ? "Real accounts with persistent bookings, reviews, and notifications — saved locally in your browser."
             : "Access your bookings, job requests, and account settings."}

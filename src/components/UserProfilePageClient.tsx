@@ -6,7 +6,13 @@ import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMockApp } from "@/context/MockAppContext";
 import { chatHrefForUser } from "@/lib/notification-links";
-import { resolveProfileBackLink, splitDisplayName } from "@/lib/profile-links";
+import { resolveProfileBackLink } from "@/lib/profile-links";
+import {
+  canRevealContact,
+  getRevealedContact,
+  publicDisplayName,
+  publicInitial,
+} from "@/lib/user-profile";
 
 export function UserProfilePageClient({ userId }: { userId: string }) {
   const router = useRouter();
@@ -48,7 +54,13 @@ export function UserProfilePageClient({ userId }: { userId: string }) {
     );
   }
 
-  const { first, last } = splitDisplayName(profileUser.name);
+  const isOwnProfile = sessionUser?.id === userId;
+  const revealContact =
+    sessionUser && db
+      ? canRevealContact(db, sessionUser.id, userId)
+      : false;
+  const contactInfo = revealContact ? getRevealedContact(profileUser) : null;
+  const displayName = isOwnProfile ? profileUser.name : publicDisplayName(profileUser);
   const bookings = getBookingsForCustomer(userId);
   const completedJobs = bookings.filter((b) => b.status === "completed").length;
   const messageHref = sessionUser
@@ -78,20 +90,12 @@ export function UserProfilePageClient({ userId }: { userId: string }) {
               />
             ) : (
               <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-2 border-white bg-white/20 text-2xl font-bold text-white shadow-md">
-                {profileUser.name.charAt(0)}
+                {publicInitial(profileUser)}
               </div>
             )}
             <div className="min-w-0 pb-1 text-white">
               <p className="text-sm font-medium text-white/80">Customer</p>
-              <h1 className="text-3xl font-bold tracking-tight">
-                {first}
-                {last && (
-                  <>
-                    <br />
-                    <span className="text-white/95">{last}</span>
-                  </>
-                )}
-              </h1>
+              <h1 className="text-3xl font-bold tracking-tight">{displayName}</h1>
             </div>
           </div>
         </div>
@@ -112,10 +116,25 @@ export function UserProfilePageClient({ userId }: { userId: string }) {
             </div>
           </div>
 
-          <div className="mt-6">
-            <h2 className="font-semibold text-gray-900">Contact</h2>
-            <p className="mt-2 text-sm text-gray-600">{profileUser.email}</p>
-          </div>
+          {isOwnProfile && (
+            <div className="mt-6 space-y-4">
+              <div>
+                <h2 className="font-semibold text-gray-900">Contact</h2>
+                <p className="mt-2 text-sm text-gray-600">{profileUser.email}</p>
+                <p className="mt-1 text-sm text-gray-600">{profileUser.phoneNumber}</p>
+                <p className="mt-1 text-sm text-gray-600">{profileUser.address}</p>
+              </div>
+            </div>
+          )}
+
+          {!isOwnProfile && contactInfo && (
+            <div className="mt-6">
+              <h2 className="font-semibold text-gray-900">Contact</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                {contactInfo.phoneNumber} · {contactInfo.city}
+              </p>
+            </div>
+          )}
 
           {sessionUser && sessionUser.id !== userId && (
             <div className="mt-8">

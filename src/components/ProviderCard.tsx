@@ -14,6 +14,7 @@ import { resolveProviderRating } from "@/lib/ratings";
 import { ProviderNameWithVerification } from "./ProviderVerifiedBadge";
 import { FavoriteButton } from "./FavoriteButton";
 import { getProviderUser } from "@/lib/providers";
+import { publicInitial } from "@/lib/user-profile";
 import * as pricing from "@/lib/pricing";
 import { formatResponseTime, type RecommendationLabel } from "@/lib/recommendations";
 import { getViewerCount } from "@/lib/trust";
@@ -64,6 +65,7 @@ export function ProviderCard({
 
   const defaultService = selectedService || provider.services[0] || "General";
   const providerUser = getProviderUser(provider);
+  const liveUser = db?.users.find((u) => u.id === provider.user_id);
   const responseLabel = formatResponseTime(provider.response_time_mins);
   const liveProvider = db?.providers.find((p) => p.id === provider.id);
   const { ratingAvg, reviewCount } = resolveProviderRating(liveProvider, {
@@ -127,7 +129,7 @@ export function ProviderCard({
               />
             ) : (
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border-2 border-white bg-green-100 text-lg font-semibold text-green-700 shadow-sm">
-                {(providerUser?.name ?? "P").charAt(0)}
+                {(liveUser ? publicInitial(liveUser) : (providerUser?.name ?? "P").charAt(0))}
               </div>
             )}
             <div className="min-w-0 flex-1 pb-1">
@@ -139,7 +141,7 @@ export function ProviderCard({
               />
               {provider.distance_miles != null && (
                 <p className="text-xs font-medium text-green-600">
-                  {Number(provider.distance_miles).toFixed(1)} miles away
+                  📍 {Math.round(Number(provider.distance_miles))} miles away
                 </p>
               )}
             </div>
@@ -174,7 +176,9 @@ export function ProviderCard({
 
         <p className="mt-1 text-xs text-gray-400">
           {provider.location || "Local area"}
-          {provider.distance_miles != null && ` · ${Number(provider.distance_miles).toFixed(1)} mi`}
+          {provider.distance_miles != null && (
+            <> · 📍 {Math.round(Number(provider.distance_miles))} mi</>
+          )}
           {" · ~"}
           {viewers} recent views
         </p>

@@ -3,7 +3,8 @@
 import { useMockApp } from "@/context/MockAppContext";
 
 export function HomeStats({ inline = false }: { inline?: boolean }) {
-  const { ready, getStats } = useMockApp();
+  const { ready, dbRevision, getStats } = useMockApp();
+  void dbRevision;
 
   if (!ready) {
     return inline ? (

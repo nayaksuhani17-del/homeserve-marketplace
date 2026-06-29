@@ -2,6 +2,7 @@ import { buildDemoProviders } from "@/lib/demo/providers";
 import { DEMO_PASSWORD } from "@/lib/demo/constants";
 import {
   DEMO_BOOKINGS,
+  DEMO_PROVIDERS,
   DEMO_REVIEWS,
   DEMO_USERS,
   bookingId,
@@ -11,6 +12,10 @@ import {
 } from "@/lib/demo/seed-data";
 import { enrichProviderQuoteFields } from "@/lib/quotes";
 import { estimateBookingCost } from "@/lib/pricing";
+import { ensureUserProfileFields, publicDisplayName } from "@/lib/user-profile";
+import { DEFAULT_WEEKLY_SCHEDULE } from "@/lib/availability";
+import { defaultAvailabilityConfig } from "@/lib/availability-config";
+import { normalizeLocation } from "@/lib/location";
 import {
   buildMarcusWorkspaceBookings,
   buildMarcusWorkspaceNotifications,
@@ -20,16 +25,27 @@ import {
   buildSarahWorkspaceBookings,
   buildSarahWorkspaceNotifications,
 } from "./customer-demo-bookings";
+import {
+  buildCatalogMockUsersAndProviders,
+  buildSyntheticBookings,
+  buildSyntheticCustomers,
+  buildSyntheticReviews,
+  syncProviderMarketplaceStats,
+} from "./marketplace-population";
 import type { MockBooking, MockDatabase, MockProvider, MockReview, MockUser } from "./types";
 
 function toMockUser(u: (typeof DEMO_USERS)[0]): MockUser {
   const isAdmin = u.role === "admin";
   const customerRole = u.role === "customer";
   const providerRole = u.role === "provider";
-  return {
+  return ensureUserProfileFields({
     id: userId(u.key),
     name: u.name,
+    firstName: "",
+    lastName: "",
     email: u.email,
+    phoneNumber: "",
+    address: "",
     password: DEMO_PASSWORD,
     role: isAdmin ? "admin" : providerRole ? "provider" : "customer",
     customerRole,
@@ -37,7 +53,7 @@ function toMockUser(u: (typeof DEMO_USERS)[0]): MockUser {
     banned: false,
     avatarUrl: u.avatarUrl,
     createdAt: new Date(Date.now() - 86400000 * 90).toISOString(),
-  };
+  });
 }
 
 function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvider {
@@ -55,7 +71,7 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     id: p.id,
     userId: p.user_id,
     name: p.users.name,
-    email: p.users.email,
+    email: p.users.email ?? "",
     avatarUrl: p.users.avatar_url ?? undefined,
     services: p.services,
     pricingType: p.pricing_type,
@@ -64,11 +80,12 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     hourlyRate: quote.hourlyRate,
     servicePackages: quote.servicePackages,
     location: p.location,
+    address: normalizeLocation(p.location),
     description: p.description,
     availability: p.availability,
     ratingAvg: Number(p.rating_avg),
-    verified: false,
-    approved: false,
+    verified: Boolean(p.approved),
+    approved: Boolean(p.approved),
     distanceMiles: Number(p.distance_miles ?? 5),
     jobsCompleted: Number(p.jobs_completed ?? 0),
     yearsExperience: Number(p.years_experience ?? 3),
@@ -80,6 +97,8 @@ function toMockProvider(p: ReturnType<typeof buildDemoProviders>[0]): MockProvid
     reviewCount: Number(p.review_count ?? 0),
     rejected: false,
     weekAvailability: [...DEFAULT_WEEK_AVAILABILITY],
+    weeklySchedule: DEFAULT_WEEKLY_SCHEDULE.map((entry) => ({ ...entry })),
+    availabilityConfig: defaultAvailabilityConfig(),
     blockedSlots: [],
   };
 }
@@ -106,11 +125,33 @@ let initialDbCache: MockDatabase | null = null;
 export function buildInitialDatabase(): MockDatabase {
   if (initialDbCache) return initialDbCache;
 
-  const users = DEMO_USERS.map(toMockUser);
-  const providers = buildDemoProviders().map(toMockProvider);
+  const seedUsers = DEMO_USERS.map(toMockUser);
+  const syntheticCustomers = buildSyntheticCustomers();
+  const { users: catalogUsers, providers: catalogProviders } =
+    buildCatalogMockUsersAndProviders();
 
-  const userNameById = new Map(users.map((u) => [u.id, u.name]));
+  const users = [...seedUsers, ...syntheticCustomers, ...catalogUsers];
+  const dedupedUsers = users.filter(
+    (u, i, arr) => arr.findIndex((x) => x.id === u.id) === i
+  );
+  const userIds = new Set(dedupedUsers.map((u) => u.id));
+
+  const seedProviderIds = new Set(DEMO_PROVIDERS.map((p) => providerId(p.userKey)));
+  const seedProviders = buildDemoProviders()
+    .filter((p) => seedProviderIds.has(p.id))
+    .map(toMockProvider)
+    .map((p) => {
+      const user = dedupedUsers.find((u) => u.id === p.userId);
+      return user ? { ...p, name: publicDisplayName(user) } : p;
+    });
+
+  const providers = [...seedProviders, ...catalogProviders].filter((p) =>
+    userIds.has(p.userId)
+  );
+
+  const userNameById = new Map(dedupedUsers.map((u) => [u.id, u.name]));
   const providerNameById = new Map(providers.map((p) => [p.id, p.name]));
+  const bookingCustomers = dedupedUsers.filter((u) => u.customerRole);
 
   const bookings: MockBooking[] = DEMO_BOOKINGS.filter(
     (b) => b.providerKey !== "provider-marcus" && b.customerKey !== "customer-sarah"
@@ -147,12 +188,21 @@ export function buildInitialDatabase(): MockDatabase {
     };
   });
 
-  const marcusWorkspaceBookings = buildMarcusWorkspaceBookings(providers, users);
-  const sarahWorkspaceBookings = buildSarahWorkspaceBookings(providers, users);
-  const allBookings = [...bookings, ...marcusWorkspaceBookings, ...sarahWorkspaceBookings];
+  const marcusWorkspaceBookings = buildMarcusWorkspaceBookings(providers, dedupedUsers);
+  const sarahWorkspaceBookings = buildSarahWorkspaceBookings(providers, dedupedUsers);
+  const syntheticBookings = buildSyntheticBookings(
+    bookingCustomers,
+    providers
+  );
+  const allBookings = [
+    ...bookings,
+    ...marcusWorkspaceBookings,
+    ...sarahWorkspaceBookings,
+    ...syntheticBookings,
+  ];
 
   const linkedBookingIds = new Set<string>();
-  const reviews: MockReview[] = DEMO_REVIEWS.flatMap((r, i) => {
+  const seedReviews: MockReview[] = DEMO_REVIEWS.flatMap((r, i) => {
     const cid = userId(r.customerKey);
     const pid = providerId(r.providerKey);
     const linkedBooking = allBookings.find(
@@ -179,21 +229,23 @@ export function buildInitialDatabase(): MockDatabase {
     ];
   });
 
-  // Sync review counts + ratings for seed providers from review data
-  const syncedProviders = providers.map((p) => {
-    const providerReviews = reviews.filter((rv) => rv.providerId === p.id);
-    if (providerReviews.length === 0) return p;
-    const avg =
-      providerReviews.reduce((s, rv) => s + rv.rating, 0) / providerReviews.length;
-    return {
-      ...p,
-      ratingAvg: Math.round(avg * 10) / 10,
-      reviewCount: providerReviews.length,
-    };
-  });
+  const syntheticReviews = buildSyntheticReviews(
+    allBookings,
+    bookingCustomers,
+    undefined,
+    linkedBookingIds
+  );
 
-  const marcusUser = users.find((u) => u.email === "marcus.reed@demo.com");
-  const sarahUser = users.find((u) => u.email === "sarah.mitchell@demo.com");
+  const reviews = [...seedReviews, ...syntheticReviews];
+
+  const syncedProviders = syncProviderMarketplaceStats(
+    providers,
+    allBookings,
+    reviews
+  );
+
+  const marcusUser = dedupedUsers.find((u) => u.email === "marcus.reed@demo.com");
+  const sarahUser = dedupedUsers.find((u) => u.email === "sarah.mitchell@demo.com");
   const seedNotifications = [
     ...(marcusUser ? buildMarcusWorkspaceNotifications(marcusUser.id) : []),
     ...(sarahUser ? buildSarahWorkspaceNotifications(sarahUser.id) : []),
@@ -203,18 +255,19 @@ export function buildInitialDatabase(): MockDatabase {
     .filter((b) => b.status === "confirmed" && b.date && b.time)
     .map((b) => `${b.date}:${b.time}`);
 
-  const providersWithSchedule = syncedProviders.map((p) =>
-    p.email === "marcus.reed@demo.com"
-      ? {
-          ...p,
-          blockedSlots: [...new Set([...(p.blockedSlots ?? []), ...marcusBlockedSlots])],
-        }
-      : p
-  );
+  const providersWithSchedule = syncedProviders.map((p) => {
+    if (p.email === "marcus.reed@demo.com") {
+      return {
+        ...p,
+        blockedSlots: [...new Set([...(p.blockedSlots ?? []), ...marcusBlockedSlots])],
+      };
+    }
+    return p;
+  });
 
   initialDbCache = {
     version: MOCK_DB_VERSION,
-    users,
+    users: dedupedUsers,
     providers: providersWithSchedule,
     bookings: allBookings,
     reviews,
@@ -226,4 +279,4 @@ export function buildInitialDatabase(): MockDatabase {
   return initialDbCache;
 }
 
-export { newGuestUser, newGuestProvider, newId } from "./guest";
+export { newGuestUser, newGuestProvider, newGuestUserFromName, newId } from "./guest";

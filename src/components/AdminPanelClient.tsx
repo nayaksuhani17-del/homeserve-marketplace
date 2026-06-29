@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AdminSummaryCard } from "@/components/admin/AdminSummaryCard";
 import { AdminBookingsChart } from "@/components/admin/AdminBookingsChart";
 import { AdminActivityFeed } from "@/components/admin/AdminActivityFeed";
+import { BrandLockup } from "@/components/BrandName";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { StarRating } from "@/components/StarRating";
 import { useMockApp } from "@/context/MockAppContext";
@@ -168,10 +169,8 @@ export function AdminPanelClient() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 page-enter">
       <header className="border-b border-gray-100 pb-6">
-        <p className="text-sm font-semibold uppercase tracking-wide text-green-700">
-          Platform control center
-        </p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900">Admin Panel</h1>
+        <BrandLockup size="sm" />
+        <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-900">Admin Panel</h1>
         <p className="mt-1 text-gray-600">
           Full visibility and moderation — {adminCount} admin{adminCount === 1 ? "" : "s"} with
           platform access.

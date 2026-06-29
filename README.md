@@ -1,6 +1,6 @@
-# Local House Services Marketplace (HomeServe)
+# the hausfix
 
-A full-stack MVP connecting customers with local house service providers — plumbers, cleaners, electricians, and more.
+A full-stack MVP connecting customers with local home service providers — plumbers, cleaners, electricians, and more.
 
 **Location:** `C:\Users\nayak\projects\local-house-services` (separate from your other projects)
 

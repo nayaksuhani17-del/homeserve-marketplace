@@ -7,6 +7,7 @@ import { useMockApp } from "@/context/MockAppContext";
 import { estimateBookingCost, formatProviderPrice } from "@/lib/pricing";
 import { getPriceBreakdown, suggestBestTimeToday } from "@/lib/smart";
 import { bookingStatusLabel, paymentStatusLabel } from "@/lib/mock/simulation";
+import { formatDateLabel, formatTimeDisplay } from "@/lib/availability";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 import type { MockBooking } from "@/lib/mock/types";
 import type { PricingType } from "@/lib/pricing";
@@ -69,13 +70,17 @@ function HireModalSession({
   rebookPrefill,
   quickBook = false,
 }: HireModalProps) {
-  const { createBooking, getAvailableSlots, getAvailabilityHint, db } = useMockApp();
+  const { createBooking, getAvailableSlots, getAvailableDates, getAvailabilityHint, db, dbRevision } =
+    useMockApp();
   const initialStep: Step =
     quickBook && rebookPrefill?.date && rebookPrefill?.time ? "slots" : "form";
   const [service, setService] = useState(rebookPrefill?.service ?? defaultService);
-  const [date, setDate] = useState(
-    rebookPrefill?.date ?? new Date().toISOString().split("T")[0]!
-  );
+  const availableDates = getAvailableDates(providerId);
+  const initialDate =
+    rebookPrefill?.date && availableDates.includes(rebookPrefill.date)
+      ? rebookPrefill.date
+      : availableDates[0] ?? "";
+  const [date, setDate] = useState(initialDate);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(rebookPrefill?.time ?? null);
   const [hours, setHours] = useState(rebookPrefill?.hours ?? 2);
   const [error, setError] = useState<string | null>(null);
@@ -96,12 +101,13 @@ function HireModalSession({
     hours
   );
   const bestTime = suggestBestTimeToday(availableToday);
-  const minDate = new Date().toISOString().split("T")[0];
   const slots = date ? getAvailableSlots(providerId, date) : [];
   const availabilityHint = getAvailabilityHint(providerId);
+  const providerUnavailable = availableDates.length === 0;
 
   const liveBooking =
     bookingId && db ? db.bookings.find((b) => b.id === bookingId) : undefined;
+  void dbRevision;
   const resolvedWhileWaiting =
     step === "waiting" && liveBooking && liveBooking.status !== "pending"
       ? liveBooking
@@ -141,11 +147,25 @@ function HireModalSession({
     onClose();
   }
 
+  function handleDateChange(nextDate: string) {
+    setDate(nextDate);
+    setSelectedSlot(null);
+    setError(null);
+  }
+
   function goToSlots(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (providerUnavailable) {
+      setError("This provider is currently unavailable.");
+      return;
+    }
     if (!service.trim() || !date.trim()) {
       setError("Please fill all fields.");
+      return;
+    }
+    if (!availableDates.includes(date)) {
+      setError("Please select an available date.");
       return;
     }
     const available = getAvailableSlots(providerId, date);
@@ -168,7 +188,6 @@ function HireModalSession({
     setStep("processing");
 
     startTransition(async () => {
-      await new Promise((r) => setTimeout(r, 200 + Math.random() * 200));
       const result = await createBooking({
         providerId,
         service,
@@ -300,15 +319,20 @@ function HireModalSession({
       ) : step === "slots" ? (
         <div className="space-y-4">
           <HiringSummary providerName={providerName} service={service} />
-          <p className="text-sm text-gray-600">
-            Available slots for <strong>{date}</strong>
-          </p>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Select time
+            </label>
+            <p className="mb-2 text-xs text-gray-500">
+              {formatDateLabel(date)}
+            </p>
+          </div>
           {slots.length === 0 ? (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
               No time slots left for this date. Go back and pick another day.
             </p>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {slots.map((slot) => (
                 <button
                   key={slot}
@@ -320,7 +344,7 @@ function HireModalSession({
                       : "border-gray-200 hover:border-green-300"
                   }`}
                 >
-                  {slot}
+                  {formatTimeDisplay(slot)}
                 </button>
               ))}
             </div>
@@ -347,10 +371,19 @@ function HireModalSession({
       ) : (
         <form onSubmit={goToSlots} className="space-y-4">
           <HiringSummary providerName={providerName} service={service} />
-          <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
-            ⚡ {bestTime}
-          </div>
-          <p className="text-xs text-gray-500">{availabilityHint}</p>
+          {providerUnavailable ? (
+            <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              This provider is currently unavailable. Try another professional or check back
+              later.
+            </p>
+          ) : (
+            <>
+              <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
+                ⚡ {bestTime}
+              </div>
+              <p className="text-xs text-gray-500">{availabilityHint}</p>
+            </>
+          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Service</label>
@@ -359,19 +392,27 @@ function HireModalSession({
               value={service}
               onChange={(e) => setService(e.target.value)}
               required
+              disabled={providerUnavailable}
               className="input-field"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Date</label>
-            <input
-              type="date"
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Select date
+            </label>
+            <select
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              min={minDate}
+              onChange={(e) => handleDateChange(e.target.value)}
               required
+              disabled={providerUnavailable}
               className="input-field"
-            />
+            >
+              {availableDates.map((d) => (
+                <option key={d} value={d}>
+                  {formatDateLabel(d)}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -383,6 +424,7 @@ function HireModalSession({
               max={8}
               value={hours}
               onChange={(e) => setHours(Number(e.target.value))}
+              disabled={providerUnavailable}
               className="w-full accent-green-600"
             />
           </div>
@@ -409,7 +451,11 @@ function HireModalSession({
             <button type="button" onClick={handleClose} className="btn-secondary flex-1">
               Cancel
             </button>
-            <button type="submit" className="btn-primary flex-1">
+            <button
+              type="submit"
+              disabled={providerUnavailable}
+              className="btn-primary flex-1 disabled:opacity-60"
+            >
               Choose time slot
             </button>
           </div>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { BrandLockup } from "@/components/BrandName";
+import { BRAND_TAGLINE } from "@/lib/brand";
 import { HomeStats } from "@/components/HomeStats";
 import { HomeDemoButtons } from "@/components/DemoSwitcher";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
@@ -18,12 +20,12 @@ export default function HomePage() {
   return (
     <div className="page-shell space-y-12">
       <section className="rounded-2xl border border-gray-200 bg-white px-6 py-8 sm:px-10 sm:py-10">
-        <p className="text-sm font-medium text-green-700">Interactive demo marketplace</p>
-        <h1 className="page-title mt-2 max-w-2xl">
-          Trusted home services, matched to your needs
+        <BrandLockup size="hero" align="start" />
+        <h1 className="page-title mt-5 max-w-2xl font-light tracking-wide text-gray-700">
+          {BRAND_TAGLINE}
         </h1>
         <p className="page-desc mt-3 max-w-xl">
-          Compare verified local professionals, see pricing upfront, and book with confidence.
+          Compare verified pros, see pricing upfront, and book with confidence.
         </p>
         <HomeStats inline />
         <div className="mt-8">

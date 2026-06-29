@@ -58,7 +58,7 @@ export function ReportProviderModal({
     <Modal open={open} onClose={onClose} title={`Report ${providerName}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-sm text-gray-600">
-          Reports help keep HomeServe safe. Our admin team reviews every submission.
+          Reports help keep hausfix safe. Our admin team reviews every submission.
         </p>
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Reason</label>

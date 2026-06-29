@@ -20,7 +20,14 @@ export function loadDb(): MockDatabase | null {
     if (!parsed.users?.length) return null;
 
     const staleVersion = parsed.version !== MOCK_DB_VERSION;
-    if (staleVersion || needsNormalization(parsed)) {
+    /** Legacy DBs had ~12 providers; reseed when under-populated or version changed. */
+    const underPopulated = (parsed.providers?.length ?? 0) < 40;
+
+    if (staleVersion || underPopulated) {
+      return null;
+    }
+
+    if (needsNormalization(parsed)) {
       const normalized = normalizeMockDatabase(parsed);
       writeDb(normalized);
       return normalized;

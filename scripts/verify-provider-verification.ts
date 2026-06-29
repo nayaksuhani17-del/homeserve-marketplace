@@ -7,7 +7,7 @@ import {
   registerUserRecord,
 } from "../src/lib/mock/operations";
 import { normalizeMockDatabase } from "../src/lib/mock/normalize";
-import { newGuestProvider, newGuestUser } from "../src/lib/mock/guest";
+import { newGuestProvider, newGuestUserFromName } from "../src/lib/mock/guest";
 import { isProviderVerified } from "../src/lib/provider-verification";
 
 const failures: string[] = [];
@@ -26,7 +26,7 @@ console.log("\n🛡️ PROVIDER VERIFICATION TESTS\n");
 console.log("1. Provider signup");
 {
   let db = buildInitialDatabase();
-  const user = newGuestUser({
+  const user = newGuestUserFromName({
     name: "Test Provider",
     email: "test.provider.verify@example.com",
     password: "test1234",
@@ -52,7 +52,7 @@ console.log("1. Provider signup");
 console.log("\n2. Persistence before approval");
 {
   let db = buildInitialDatabase();
-  const user = newGuestUser({
+  const user = newGuestUserFromName({
     name: "Persist Test",
     email: "persist.provider@example.com",
     password: "test1234",
@@ -71,7 +71,7 @@ console.log("\n2. Persistence before approval");
 console.log("\n3. Admin approval");
 {
   let db = buildInitialDatabase();
-  const user = newGuestUser({
+  const user = newGuestUserFromName({
     name: "Approve Test",
     email: "approve.provider@example.com",
     password: "test1234",

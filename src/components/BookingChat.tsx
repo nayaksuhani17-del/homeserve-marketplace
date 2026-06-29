@@ -154,7 +154,7 @@ export function BookingChat({ booking }: BookingChatProps) {
             disabled={pending || !text.trim()}
             className="btn-primary shrink-0 px-4 disabled:opacity-60"
           >
-            {pending ? "…" : "Send"}
+            {pending ? "Sending…" : "Send"}
           </button>
         </div>
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}

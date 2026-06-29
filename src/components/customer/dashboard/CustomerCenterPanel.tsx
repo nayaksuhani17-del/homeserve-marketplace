@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HireModal } from "@/components/HireModal";
@@ -13,6 +13,17 @@ import type { MockBooking, MockProvider } from "@/lib/mock/types";
 import { customerMessagesHref } from "@/lib/notification-links";
 import { formatProviderPrice } from "@/lib/pricing";
 import { parseSearchFallback } from "@/lib/ai/parse-search";
+import { SearchLocationControls } from "@/components/search/SearchLocationControls";
+import { SearchRefinementFilters } from "@/components/search/SearchRefinementFilters";
+import {
+  effectiveFilters,
+  formatActiveFilterSummary,
+  hasUserOverrides,
+  refinementToProviderFilters,
+  type RefinementFilters,
+} from "@/lib/search/refinement-filters";
+import { locationMatchingKey, parseLocationInput } from "@/lib/location";
+import type { DistanceRadius } from "@/lib/location";
 
 const EXAMPLE_PROMPTS = [
   "My sink is leaking",
@@ -22,7 +33,13 @@ const EXAMPLE_PROMPTS = [
 
 export type CenterView =
   | { type: "search" }
-  | { type: "results"; query: string; providers: MockProvider[] }
+  | {
+      type: "results";
+      query: string;
+      aiFilters: RefinementFilters;
+      assistantMessage?: string;
+      locationLabel?: string;
+    }
   | { type: "job"; bookingId: string };
 
 type HireTarget = {
@@ -46,6 +63,11 @@ type CustomerCenterPanelProps = {
   canBook: boolean;
   isLoggedIn: boolean;
   hasReview: (bookingId: string) => boolean;
+  location: string;
+  radius: DistanceRadius;
+  onLocationChange: (value: string) => void;
+  onRadiusChange: (value: DistanceRadius) => void;
+  onLocationCommit: (value?: string) => void;
   onSearch: (query: string) => void;
   onReset: () => void;
 };
@@ -60,10 +82,20 @@ function pickService(provider: MockProvider, query: string): string {
 function SearchHome({
   canBook,
   isLoggedIn,
+  location,
+  radius,
+  onLocationChange,
+  onRadiusChange,
+  onLocationCommit,
   onSearch,
 }: {
   canBook: boolean;
   isLoggedIn: boolean;
+  location: string;
+  radius: DistanceRadius;
+  onLocationChange: (value: string) => void;
+  onRadiusChange: (value: DistanceRadius) => void;
+  onLocationCommit: (value?: string) => void;
   onSearch: (query: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -76,13 +108,23 @@ function SearchHome({
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-8">
-      <div className="w-full max-w-2xl text-center">
+    <div className="flex flex-1 flex-col items-center px-4 py-8 sm:px-8 sm:py-10">
+      <div className="w-full max-w-2xl">
+        <SearchLocationControls
+          location={location}
+          radius={radius}
+          onLocationChange={onLocationChange}
+          onRadiusChange={onRadiusChange}
+          onLocationCommit={onLocationCommit}
+          className="mb-8"
+        />
+
+        <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
           What do you need help with?
         </h1>
         <p className="mt-3 text-sm text-gray-500">
-          Describe your issue and we&apos;ll match you with verified local pros.
+          Describe your issue — we&apos;ll match nearby pros automatically.
         </p>
 
         {!isLoggedIn && (
@@ -137,6 +179,7 @@ function SearchHome({
             Switch to <strong>Customer mode</strong> in the header to book services.
           </p>
         )}
+        </div>
       </div>
     </div>
   );
@@ -144,20 +187,61 @@ function SearchHome({
 
 function ProviderResults({
   query,
-  providers,
+  aiFilters,
+  assistantMessage,
+  locationLabel,
+  radius,
+  location,
+  onLocationChange,
+  onRadiusChange,
+  onLocationCommit,
   canBook,
   isLoggedIn,
   onBack,
   onHire,
 }: {
   query: string;
-  providers: MockProvider[];
+  aiFilters: RefinementFilters;
+  assistantMessage?: string;
+  locationLabel?: string;
+  radius: DistanceRadius;
+  location: string;
+  onLocationChange: (value: string) => void;
+  onRadiusChange: (value: DistanceRadius) => void;
+  onLocationCommit: (value?: string) => void;
   canBook: boolean;
   isLoggedIn: boolean;
   onBack: () => void;
   onHire: (provider: MockProvider) => void;
 }) {
   const router = useRouter();
+  const { filterProviders } = useMockApp();
+  const [userFilters, setUserFilters] = useState<Partial<RefinementFilters>>({});
+
+  const customerAddress = useMemo(() => {
+    const trimmed = location.trim();
+    return trimmed
+      ? locationMatchingKey(parseLocationInput(trimmed))
+      : undefined;
+  }, [location]);
+
+  const effective = useMemo(
+    () => effectiveFilters(aiFilters, userFilters),
+    [aiFilters, userFilters]
+  );
+
+  const providers = useMemo(() => {
+    const feed = filterProviders(
+      refinementToProviderFilters(query, effective, {
+        customerAddress,
+        radius,
+      })
+    );
+    return feed.list.slice(0, 12);
+  }, [query, effective, customerAddress, radius, filterProviders]);
+
+  const activeSummary = formatActiveFilterSummary(effective, { radius });
+  const showClear = hasUserOverrides(aiFilters, userFilters);
 
   return (
     <div className="flex flex-1 flex-col px-4 py-8 sm:px-10">
@@ -172,9 +256,46 @@ function ProviderResults({
         <h2 className="text-xl font-semibold text-gray-900">Providers for you</h2>
         <p className="mt-1 text-sm text-gray-500">&ldquo;{query}&rdquo;</p>
 
+        <SearchLocationControls
+          location={location}
+          radius={radius}
+          onLocationChange={onLocationChange}
+          onRadiusChange={onRadiusChange}
+          onLocationCommit={onLocationCommit}
+          compact
+          className="mt-6"
+        />
+
+        {assistantMessage && (
+          <p className="mt-4 rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm leading-relaxed text-green-900">
+            {assistantMessage}
+            {locationLabel && (
+              <span className="mt-1 block text-xs text-green-700">
+                Near {locationLabel}
+                {` · within ${radius} miles`}
+              </span>
+            )}
+          </p>
+        )}
+
+        <SearchRefinementFilters
+          aiDefaults={aiFilters}
+          userOverrides={userFilters}
+          effective={effective}
+          activeSummary={activeSummary}
+          onChange={setUserFilters}
+          onClear={() => setUserFilters({})}
+          showClear={showClear}
+        />
+
         {providers.length === 0 ? (
           <div className="mt-12 rounded-2xl border border-dashed border-gray-200 py-16 text-center">
-            <p className="text-gray-600">No verified providers matched that request.</p>
+            <p className="text-gray-600">
+              No providers match your criteria. Try adjusting filters.
+            </p>
+            <p className="mt-2 text-sm text-gray-500">
+              Widen your search radius or clear filters to use AI defaults.
+            </p>
             <button type="button" onClick={onBack} className="btn-primary mt-6">
               Try another search
             </button>
@@ -207,6 +328,11 @@ function ProviderResults({
                       {p.services.slice(0, 2).join(" · ")}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                      {p.distanceMiles != null && (
+                        <span className="text-gray-600">
+                          📍 {p.distanceMiles >= 10 ? Math.round(p.distanceMiles) : p.distanceMiles.toFixed(1)} miles away
+                        </span>
+                      )}
                       <span className="font-medium text-gray-800">
                         {formatProviderPrice(p.pricingType, p.price)}
                       </span>
@@ -352,6 +478,11 @@ export function CustomerCenterPanel({
   canBook,
   isLoggedIn,
   hasReview,
+  location,
+  radius,
+  onLocationChange,
+  onRadiusChange,
+  onLocationCommit,
   onSearch,
   onReset,
 }: CustomerCenterPanelProps) {
@@ -405,7 +536,14 @@ export function CustomerCenterPanel({
       <main className="flex min-h-[calc(100dvh-9rem)] flex-1 flex-col bg-white">
         <ProviderResults
           query={view.query}
-          providers={view.providers}
+          aiFilters={view.aiFilters}
+          assistantMessage={view.assistantMessage}
+          locationLabel={view.locationLabel}
+          radius={radius}
+          location={location}
+          onLocationChange={onLocationChange}
+          onRadiusChange={onRadiusChange}
+          onLocationCommit={onLocationCommit}
           canBook={canBook}
           isLoggedIn={isLoggedIn}
           onBack={onReset}
@@ -434,6 +572,11 @@ export function CustomerCenterPanel({
       <SearchHome
         canBook={canBook}
         isLoggedIn={isLoggedIn}
+        location={location}
+        radius={radius}
+        onLocationChange={onLocationChange}
+        onRadiusChange={onRadiusChange}
+        onLocationCommit={onLocationCommit}
         onSearch={onSearch}
       />
     </main>

@@ -1,18 +1,28 @@
 import type { MockBooking, MockDatabase, MockProvider, ResponseSpeed } from "./types";
 import { DEMO_MODE } from "@/lib/demo/mode";
+import {
+  getAvailableSlotsForDate,
+  getAvailableDates as getAvailableDatesForProvider,
+  getWeeklySchedule,
+  isSlotBlocked,
+  isSlotTaken,
+  providerHasAnyAvailability,
+  slotKey,
+} from "@/lib/availability";
 
+export { isSlotBlocked, isSlotTaken, slotKey, getWeeklySchedule, providerHasAnyAvailability };
+
+/** @deprecated Use provider weekly schedule via getAvailableSlots */
 export const DEFAULT_SLOTS = [
-  "08:00",
+  "09:00",
   "10:00",
+  "11:00",
   "12:00",
+  "13:00",
   "14:00",
+  "15:00",
   "16:00",
-  "18:00",
 ];
-
-export function slotKey(date: string, time: string) {
-  return `${date}:${time}`;
-}
 
 export function getResponseSpeed(provider: MockProvider): ResponseSpeed {
   if (provider.responseSpeed) return provider.responseSpeed;
@@ -36,50 +46,20 @@ export function getResponseDelayMs(speed: ResponseSpeed): number {
   }
 }
 
-export function isSlotBlocked(
-  provider: MockProvider,
-  date: string,
-  time: string
-): boolean {
-  return (provider.blockedSlots ?? []).includes(slotKey(date, time));
-}
-
-export function isSlotTaken(
-  db: MockDatabase,
-  providerId: string,
-  date: string,
-  time: string,
-  excludeBookingId?: string
-): boolean {
-  return db.bookings.some(
-    (b) =>
-      b.id !== excludeBookingId &&
-      b.providerId === providerId &&
-      b.date === date &&
-      b.time === time &&
-      (b.status === "pending" || b.status === "confirmed")
-  );
-}
-
 export function getAvailableSlots(
   db: MockDatabase,
   providerId: string,
   date: string
 ): string[] {
-  const provider = db.providers.find((p) => p.id === providerId);
-  const today = new Date().toISOString().split("T")[0]!;
-  const now = new Date();
-  const currentHour = now.getHours();
+  return getAvailableSlotsForDate(db, providerId, date);
+}
 
-  return DEFAULT_SLOTS.filter((time) => {
-    if (isSlotTaken(db, providerId, date, time)) return false;
-    if (provider && isSlotBlocked(provider, date, time)) return false;
-    if (date === today) {
-      const hour = Number(time.split(":")[0]);
-      if (hour <= currentHour) return false;
-    }
-    return true;
-  });
+export function getAvailableDates(
+  db: MockDatabase,
+  providerId: string,
+  maxDays = 14
+): string[] {
+  return getAvailableDatesForProvider(db, providerId, maxDays);
 }
 
 export function getNextAvailableSlot(
@@ -105,6 +85,9 @@ export function getAvailabilityHint(
   provider: MockProvider
 ): string {
   if (!provider.approved) return "Not accepting bookings until verified.";
+  if (!providerHasAnyAvailability(db, provider.id)) {
+    return "This provider is currently unavailable.";
+  }
   if (provider.availableToday) {
     const today = new Date().toISOString().split("T")[0]!;
     const todaySlots = getAvailableSlots(db, provider.id, today);
@@ -114,7 +97,7 @@ export function getAvailabilityHint(
   }
   const next = getNextAvailableSlot(db, provider.id);
   if (next) return `Next opening: ${next.date} at ${next.time}`;
-  return "Fully booked for the next week — try another provider.";
+  return "This provider is currently unavailable.";
 }
 
 const CHAT_REPLIES: { pattern: RegExp; reply: string }[] = [

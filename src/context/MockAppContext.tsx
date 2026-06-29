@@ -19,6 +19,8 @@ import {
   addNotificationRecord,
   approveProviderRecord,
   updateUserRoleRecord,
+  updateUserAddressRecord,
+  updateUserProfileRecord,
   banUserRecord,
   cancelBookingRecord,
   completeBookingRecord,
@@ -37,7 +39,7 @@ import {
   addChatMessageRecord,
   removeReviewRecord,
   deleteUserRecord,
-  simulateDelay,
+  actionDelay,
   submitReportRecord,
   toggleProviderBlockedSlotRecord,
   updateProviderRecord,
@@ -54,6 +56,7 @@ import {
   type StoredMessage,
 } from "@/lib/messages/store";
 import { listConversationsForUser, type ConversationPreview } from "@/lib/messages/conversations";
+import { publicDisplayName, validateRegistrationProfile } from "@/lib/user-profile";
 import type {
   MarketplaceAnalytics,
   MockBooking,
@@ -72,6 +75,7 @@ import {
   MOCK_SESSION_KEY,
 } from "@/lib/mock/types";
 import { DEMO_PASSWORD } from "@/lib/demo/constants";
+import { BRAND_WELCOME, BRAND_WELCOME_PRO } from "@/lib/brand";
 import {
   DEMO_MODE,
   DEMO_PROVIDER_PAGE_SIZE,
@@ -88,6 +92,7 @@ import {
   generateProviderChatReply,
   getAvailabilityHint as getAvailabilityHintForProvider,
   getAvailableSlots as getAvailableSlotsForProvider,
+  getAvailableDates as getAvailableDatesForProvider,
   getChatReplyDelayMs,
   getNextAvailableSlot,
   getResponseDelayMs,
@@ -115,6 +120,15 @@ import {
   resolveActiveMode,
   sessionForUser,
 } from "@/lib/user-capabilities";
+import {
+  resolveCustomerAddress,
+  resolveMaxDistance,
+  loadCustomerLocation,
+  enrichCustomerLocation,
+  locationMatchingKey,
+  parseLocationInput,
+  saveCustomerLocation,
+} from "@/lib/location";
 import type { AppMode } from "@/lib/mock/types";
 import {
   capabilitySummary,
@@ -132,6 +146,8 @@ export type SignupRoles = {
   providerRole: boolean;
 };
 
+export type { RegistrationProfileInput } from "@/lib/user-profile";
+
 type MockAppContextValue = {
   ready: boolean;
   db: MockDatabase | null;
@@ -148,9 +164,7 @@ type MockAppContextValue = {
     redirectTo?: string
   ) => Promise<{ error?: string; redirect?: string }>;
   register: (
-    name: string,
-    email: string,
-    password: string,
+    profile: import("@/lib/user-profile").RegistrationProfileInput,
     roles: SignupRoles
   ) => Promise<{ error?: string; redirect?: string }>;
   demoLogin: (
@@ -171,6 +185,7 @@ type MockAppContextValue = {
   }) => Promise<{ error?: string; booking?: MockDatabase["bookings"][0] }>;
   completeBooking: (bookingId: string) => Promise<{ error?: string }>;
   getAvailableSlots: (providerId: string, date: string) => string[];
+  getAvailableDates: (providerId: string, maxDays?: number) => string[];
   sendChatMessage: (bookingId: string, text: string) => Promise<{ error?: string }>;
   getChatMessages: (bookingId: string) => MockDatabase["chatMessages"];
   getDirectMessages: (otherUserId: string) => StoredMessage[];
@@ -219,7 +234,16 @@ type MockAppContextValue = {
     availableToday?: boolean;
     availableTomorrow?: boolean;
     weekAvailability?: boolean[];
+    weeklySchedule?: MockProvider["weeklySchedule"];
+    availabilityConfig?: MockProvider["availabilityConfig"];
     autoReplyEnabled?: boolean;
+  }) => Promise<{ error?: string }>;
+  updateUserProfile: (patch: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phoneNumber?: string;
+    address?: string;
   }) => Promise<{ error?: string }>;
   approveProvider: (providerId: string, approved: boolean) => Promise<void>;
   rejectProvider: (providerId: string) => Promise<void>;
@@ -256,6 +280,7 @@ type MockAppContextValue = {
     providers: ReturnType<typeof toProviderCardData>[];
   };
   parseSearch: (query: string) => ProviderFilters & { redirectParams: URLSearchParams };
+  updateCustomerAddress: (address: string) => Promise<{ error?: string }>;
 };
 
 const MockAppContext = createContext<MockAppContextValue | null>(null);
@@ -599,17 +624,9 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const persist = useCallback(
     (next: MockDatabase) => {
-      const normalized = applyDb(next, false);
-      pendingDbRef.current = normalized;
-      if (saveDbTimerRef.current) clearTimeout(saveDbTimerRef.current);
-      saveDbTimerRef.current = setTimeout(() => {
-        saveDb(normalized);
-        pendingDbRef.current = null;
-        saveDbTimerRef.current = null;
-        setDbRevision((r) => r + 1);
-      }, 400);
+      persistImmediate(next);
     },
-    [applyDb]
+    [persistImmediate]
   );
 
   useEffect(() => {
@@ -669,28 +686,22 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string, redirectTo?: string) => {
       const source = syncDbBeforeSwitch();
       if (!source) return { error: "App not ready" };
-      setLoading(true);
-      await simulateDelay();
       const found = source.users.find(
         (u) => u.email.toLowerCase() === email.toLowerCase()
       );
       if (!found) {
-        setLoading(false);
         return { error: "No account found with that email." };
       }
       if (found.banned) {
-        setLoading(false);
         return { error: "Your account has been banned." };
       }
       if (found.password !== password) {
-        setLoading(false);
         return { error: "Incorrect password." };
       }
       applyDb(source);
       const sess = sessionForUser(found, loadSession());
       setSession(sess);
       saveSession(sess);
-      setLoading(false);
       if (redirectTo) return { redirect: redirectTo };
       if (isAdmin(found)) return { redirect: "/admin" };
       return { redirect: dashboardPathForMode(sess.activeMode ?? defaultModeForUser(found)) };
@@ -700,32 +711,31 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (
-      name: string,
-      email: string,
-      password: string,
+      profile: import("@/lib/user-profile").RegistrationProfileInput,
       roles: SignupRoles
     ) => {
       if (!db) return { error: "App not ready" };
       if (!roles.customerRole && !roles.providerRole) {
         return { error: "Choose at least one role: customer, provider, or both." };
       }
-      if (!name.trim() || !email.trim() || !password.trim()) {
-        return { error: "Please fill all fields." };
-      }
-      if (password.length < 6) {
-        return { error: "Password must be at least 6 characters." };
-      }
-      setLoading(true);
-      await simulateDelay();
+      const validationError = validateRegistrationProfile(profile);
+      if (validationError) return { error: validationError };
+      const { firstName, lastName, email, phoneNumber, address, password } = profile;
       if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
-        setLoading(false);
         return { error: "An account with this email already exists." };
       }
-      const guest = newGuestUser({ name, email, password, ...roles });
+      const guest = newGuestUser({
+        firstName,
+        lastName,
+        email,
+        phoneNumber,
+        address,
+        password,
+        ...roles,
+      });
       const provider = roles.providerRole ? newGuestProvider(guest) : undefined;
       const registered = registerUserRecord(db, guest, provider);
       if (registered.error) {
-        setLoading(false);
         return { error: registered.error };
       }
       let next = registered.db;
@@ -733,10 +743,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       next = appendNotification(next, guest.id, {
         type: "system",
         title: both
-          ? "Welcome to HomeServe"
+          ? BRAND_WELCOME
           : roles.providerRole
-            ? "Welcome to HomeServe Pro"
-            : "Welcome to HomeServe",
+            ? BRAND_WELCOME_PRO
+            : BRAND_WELCOME,
         message: both
           ? "Your account can book services and receive job requests. Switch modes anytime from the header."
           : roles.providerRole
@@ -750,7 +760,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       const sess = sessionForUser(guest);
       setSession(sess);
       saveSession(sess);
-      setLoading(false);
       return { redirect: dashboardPathForMode(sess.activeMode ?? defaultModeForUser(guest)) };
     },
     [db, persistImmediate, appendNotification]
@@ -783,13 +792,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!source) return { error: "App not ready" };
       const found = source.users.find((u) => u.id === userId);
       if (!found || found.banned) return { error: "Account not found." };
-      setLoading(true);
-      await simulateDelay(DEMO_MODE ? 80 : 200);
       applyDb(source);
       const sess = sessionForUser(found);
       setSession(sess);
       saveSession(sess);
-      setLoading(false);
       if (isAdmin(found)) return { redirect: "/admin" };
       return { redirect: dashboardPathForMode(sess.activeMode ?? defaultModeForUser(found)) };
     },
@@ -808,13 +814,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (mode === "provider" && !db?.providers.some((p) => p.userId === user.id)) {
         return { error: "Complete provider profile setup first." };
       }
-      setLoading(true);
-      await simulateDelay(DEMO_MODE ? 80 : 150);
       reloadFromStorage();
       const sess: MockSession = { ...session, activeMode: mode };
       setSession(sess);
       saveSession(sess);
-      setLoading(false);
       return { redirect: dashboardPathForMode(mode) };
     },
     [user, session, db, reloadFromStorage]
@@ -835,8 +838,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       saveSession(sess);
       return { redirect: "/provider/dashboard" };
     }
-    setLoading(true);
-    await simulateDelay(400);
     const updatedUser: MockUser = {
       ...user,
       providerRole: true,
@@ -850,7 +851,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     };
     next = appendNotification(next, user.id, {
       type: "system",
-      title: "Welcome to HomeServe Pro",
+      title: BRAND_WELCOME_PRO,
       message:
         "Your provider profile is ready. Switch to Provider mode and complete your services and availability.",
       href: "/provider/dashboard",
@@ -859,7 +860,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     const sess: MockSession = { userId: user.id, activeMode: "provider" };
     setSession(sess);
     saveSession(sess);
-    setLoading(false);
     return { redirect: "/provider/dashboard" };
   }, [db, user, session, persistImmediate, appendNotification]);
 
@@ -870,13 +870,10 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       const email = DEMO_ROLE_EMAIL[role];
       const found = source.users.find((u) => u.email === email);
       if (!found) return { error: "Demo user not found." };
-      setLoading(true);
-      await simulateDelay(DEMO_MODE ? 200 : 400);
       applyDb(source);
       const sess = sessionForUser(found);
       setSession(sess);
       saveSession(sess);
-      setLoading(false);
       return { redirect: redirectTo ?? DEMO_ROLE_REDIRECT[role] };
     },
     [syncDbBeforeSwitch, applyDb]
@@ -915,7 +912,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!input.time) {
         return { error: "Please select an available time slot." };
       }
-      await simulateDelay(DEMO_MODE ? 300 : 1000);
+      await actionDelay(350);
       const provider = db.providers.find((p) => p.id === input.providerId);
       if (!provider) {
         return { error: "Provider not found." };
@@ -979,8 +976,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!provider || provider.userId !== user.id) {
         return { error: "Only the assigned provider can complete this job." };
       }
-      setLoading(true);
-      await simulateDelay(500);
       let next = completeBookingRecord(db, bookingId);
       next = appendNotification(next, booking.customerId, {
         type: "payment",
@@ -997,7 +992,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "payment",
         message: `Payment released for ${booking.customerName}`,
       });
-      setLoading(false);
       return {};
     },
     [db, user, persistImmediate, emitSystemEvent, appendNotification]
@@ -1011,6 +1005,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     [db]
   );
 
+  const getAvailableDates = useCallback(
+    (providerId: string, maxDays = 14) => {
+      if (!db) return [];
+      return getAvailableDatesForProvider(db, providerId, maxDays);
+    },
+    [db]
+  );
+
   const getChatMessages = useCallback(
     (bookingId: string) =>
       (db?.chatMessages ?? [])
@@ -1019,7 +1021,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           (a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         ),
-    [db]
+    [db, dbRevision]
   );
 
   const sendChatMessage = useCallback(
@@ -1044,6 +1046,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
             : null;
       if (!senderRole) return { error: "You cannot message on this booking." };
 
+      await actionDelay(300);
+
       const next = addChatMessageRecord(db, {
         id: newId("chat"),
         bookingId,
@@ -1051,31 +1055,29 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         senderName: user.name,
         text,
       });
-      persist(next);
+      persistImmediate(next);
 
       const provider = db.providers.find((p) => p.id === booking.providerId);
       if (senderRole === "customer" && providerHasAutoReply(provider)) {
         const replyDelay = getChatReplyDelayMs();
         setTimeout(() => {
-          setDb((prev) => {
-            if (!prev) return prev;
-            const reply = generateProviderChatReply(text);
-            const withReply = addChatMessageRecord(prev, {
-              id: newId("chat"),
-              bookingId,
-              senderRole: "provider",
-              senderName: booking.providerName,
-              text: reply,
-            });
-            saveDb(withReply);
-            return withReply;
+          const source = getSharedDb();
+          if (!source) return;
+          const reply = generateProviderChatReply(text);
+          const withReply = addChatMessageRecord(source, {
+            id: newId("chat"),
+            bookingId,
+            senderRole: "provider",
+            senderName: booking.providerName,
+            text: reply,
           });
+          persistImmediate(withReply);
         }, replyDelay);
       }
 
       return {};
     },
-    [db, user, persist]
+    [db, user, persistImmediate, getSharedDb]
   );
 
   const getDirectMessages = useCallback(
@@ -1090,7 +1092,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
 
   const listConversations = useCallback((): ConversationPreview[] => {
     if (!user || !db) return [];
-    return listConversationsForUser(user.id, db.users);
+    return listConversationsForUser(
+      user.id,
+      db.users.map((u) => ({
+        id: u.id,
+        name: publicDisplayName(u),
+        banned: u.banned,
+      }))
+    );
   }, [user, db, messagesRevision]);
 
   const sendDirectMessage = useCallback(
@@ -1100,6 +1109,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       const receiver = db.users.find((u) => u.id === receiverId);
       if (!receiver) return { error: "This user is no longer available." };
       if (receiver.banned) return { error: "This user is not available." };
+
+      await actionDelay(300);
 
       appendMessage({
         sender_id: user.id,
@@ -1199,18 +1210,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         return { error: "You cannot delete your own account while logged in. Use Delete My Account or switch accounts first." };
       }
 
-      setLoading(true);
-      await simulateDelay(400);
       const result = deleteUserRecord(db, userId, { forbidSelf: true, actorId: user.id });
       if (result.error) {
-        setLoading(false);
         return { error: result.error };
       }
       removeMessagesForUser(userId);
       bumpMessagesRevision();
       finalizeAccountDeletion(result);
       emitSystemEvent({ type: "report", message: "Account deleted permanently" });
-      setLoading(false);
       return {};
     },
     [db, user, finalizeAccountDeletion, emitSystemEvent, bumpMessagesRevision]
@@ -1222,11 +1229,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       return { error: "You are the last admin — promote another admin before deleting your account." };
     }
 
-    setLoading(true);
-    await simulateDelay(400);
     const result = deleteUserRecord(db, user.id);
     if (result.error) {
-      setLoading(false);
       return { error: result.error };
     }
     removeMessagesForUser(user.id);
@@ -1234,21 +1238,17 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     finalizeAccountDeletion(result);
     saveSession(null);
     setSession(null);
-    setLoading(false);
     return {};
   }, [db, user, finalizeAccountDeletion, bumpMessagesRevision]);
 
   const removeReview = useCallback(
     async (reviewId: string) => {
       if (!db) return;
-      setLoading(true);
-      await simulateDelay(400);
       persistImmediate(removeReviewRecord(db, reviewId));
       emitSystemEvent({
         type: "report",
         message: "Review removed — provider rating updated",
       });
-      setLoading(false);
     },
     [db, persistImmediate, emitSystemEvent]
   );
@@ -1267,14 +1267,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         return { error: "You cannot cancel this booking." };
       }
 
-      setLoading(true);
-      await simulateDelay(500);
       clearScheduledResponse(bookingId);
 
       const cancelledBy = isAdmin ? "admin" : isProvider ? "provider" : "customer";
       const result = cancelBookingRecord(db, bookingId, cancelledBy);
       if (result.error) {
-        setLoading(false);
         return { error: result.error };
       }
 
@@ -1301,7 +1298,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "booking_cancelled",
         message: `${booking.service} booking cancelled`,
       });
-      setLoading(false);
       return {};
     },
     [db, user, persistImmediate, clearScheduledResponse, appendNotification, emitSystemEvent]
@@ -1311,29 +1307,23 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     async (bookingId: string, accepted: boolean) => {
       if (!user) return { error: "You must be logged in." };
 
-      setLoading(true);
-      await simulateDelay(400);
       clearScheduledResponse(bookingId);
 
       const source = getSharedDb();
       if (!source) {
-        setLoading(false);
         return { error: "App not ready." };
       }
 
       const booking = source.bookings.find((b) => b.id === bookingId);
       if (!booking) {
-        setLoading(false);
         return { error: "Booking not found." };
       }
       if (booking.status !== "pending") {
-        setLoading(false);
         return { error: "This request was already handled." };
       }
 
       const provider = source.providers.find((p) => p.id === booking.providerId);
       if (!provider || provider.userId !== user.id) {
-        setLoading(false);
         return { error: "Only the assigned provider can respond." };
       }
 
@@ -1373,7 +1363,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           ? `${provider.name} accepted a booking`
           : `${provider.name} declined a request`,
       });
-      setLoading(false);
       return {};
     },
     [
@@ -1397,8 +1386,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!db || !user) return { error: "You must be logged in." };
       if (!input.reason.trim()) return { error: "Please select a reason." };
 
-      setLoading(true);
-      await simulateDelay(500);
       const reportId = newId("report");
       const result = submitReportRecord(
         db,
@@ -1406,7 +1393,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         reportId
       );
       if (result.error) {
-        setLoading(false);
         return { error: result.error };
       }
 
@@ -1420,37 +1406,30 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           href: "/admin",
         });
       }
-      persist(next);
+      persistImmediate(next);
       emitSystemEvent({
         type: "report",
         message: "New provider report submitted",
       });
-      setLoading(false);
       return {};
     },
-    [db, user, persist, appendNotification, emitSystemEvent]
+    [db, user, persistImmediate, appendNotification, emitSystemEvent]
   );
 
   const resolveReport = useCallback(
     async (reportId: string) => {
       if (!db) return;
-      setLoading(true);
-      await simulateDelay(300);
-      persist(resolveReportRecord(db, reportId));
-      setLoading(false);
+      persistImmediate(resolveReportRecord(db, reportId));
     },
-    [db, persist]
+    [db, persistImmediate]
   );
 
   const dismissReport = useCallback(
     async (reportId: string) => {
       if (!db) return;
-      setLoading(true);
-      await simulateDelay(300);
-      persist(dismissReportRecord(db, reportId));
-      setLoading(false);
+      persistImmediate(dismissReportRecord(db, reportId));
     },
-    [db, persist]
+    [db, persistImmediate]
   );
 
   const banProviderFromReport = useCallback(
@@ -1460,21 +1439,17 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!report) return;
       const provider = db.providers.find((p) => p.id === report.providerId);
       if (!provider) return;
-      setLoading(true);
-      await simulateDelay(400);
       const banResult = banUserRecord(db, provider.userId, true);
       if (banResult.error) {
-        setLoading(false);
         return;
       }
-      persist(resolveReportRecord(banResult.db, reportId));
+      persistImmediate(resolveReportRecord(banResult.db, reportId));
       emitSystemEvent({
         type: "report",
         message: `${provider.name} banned after report review`,
       });
-      setLoading(false);
     },
-    [db, persist, emitSystemEvent]
+    [db, persistImmediate, emitSystemEvent]
   );
 
   const getNotifications = useCallback(() => {
@@ -1529,15 +1504,11 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
   const toggleBlockedSlot = useCallback(
     async (date: string, time: string) => {
       if (!db || !user) return { error: "You must be logged in." };
-      setLoading(true);
-      await simulateDelay(300);
       const result = toggleProviderBlockedSlotRecord(db, user.id, date, time);
       if (result.error) {
-        setLoading(false);
         return { error: result.error };
       }
       persistImmediate(result.db);
-      setLoading(false);
       return {};
     },
     [db, user, persistImmediate]
@@ -1597,7 +1568,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (validationError) {
         return { error: validationError };
       }
-      await simulateDelay(DEMO_MODE ? 250 : 600);
       const id = newId("review");
       const result = addReviewRecord(
         db,
@@ -1643,6 +1613,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       availableToday?: boolean;
       availableTomorrow?: boolean;
       weekAvailability?: boolean[];
+      weeklySchedule?: MockProvider["weeklySchedule"];
+      availabilityConfig?: MockProvider["availabilityConfig"];
       autoReplyEnabled?: boolean;
     }) => {
       if (!db || !user) return { error: "You must be logged in." };
@@ -1653,11 +1625,25 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       if (!existing) {
         return { error: "Provider profile not found for this account." };
       }
-      setLoading(true);
-      await simulateDelay();
       const next = updateProviderRecord(db, user.id, patch);
       persistImmediate(next);
-      setLoading(false);
+      return {};
+    },
+    [db, user, persistImmediate]
+  );
+
+  const updateUserProfile = useCallback(
+    async (patch: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phoneNumber?: string;
+      address?: string;
+    }) => {
+      if (!db || !user) return { error: "You must be logged in." };
+      const result = updateUserProfileRecord(db, user.id, patch);
+      if (result.error) return { error: result.error };
+      persistImmediate(result.db);
       return {};
     },
     [db, user, persistImmediate]
@@ -1667,8 +1653,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     async (providerId: string, approved: boolean) => {
       if (!db) return;
       const provider = db.providers.find((p) => p.id === providerId);
-      setLoading(true);
-      await simulateDelay(400);
       let next = approveProviderRecord(db, providerId, approved);
       if (provider && approved) {
         const providerUser = next.users.find((u) => u.id === provider.userId);
@@ -1686,7 +1670,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         });
       }
       persistImmediate(next);
-      setLoading(false);
     },
     [db, persistImmediate, appendNotification, emitSystemEvent]
   );
@@ -1695,18 +1678,15 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     async (providerId: string) => {
       if (!db) return;
       const provider = db.providers.find((p) => p.id === providerId);
-      setLoading(true);
-      await simulateDelay(400);
-      persist(rejectProviderRecord(db, providerId));
+      persistImmediate(rejectProviderRecord(db, providerId));
       if (provider) {
         emitSystemEvent({
           type: "booking_declined",
           message: `Provider rejected: ${provider.name}`,
         });
       }
-      setLoading(false);
     },
-    [db, persist, emitSystemEvent]
+    [db, persistImmediate, emitSystemEvent]
   );
 
   const banUser = useCallback(
@@ -1715,11 +1695,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         return { error: "Only admins can ban users." };
       }
       const account = db.users.find((u) => u.id === userId);
-      setLoading(true);
-      await simulateDelay(400);
       const result = banUserRecord(db, userId, banned);
       if (result.error) {
-        setLoading(false);
         return { error: result.error };
       }
       persistImmediate(result.db);
@@ -1733,7 +1710,6 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           message: `User banned: ${account.name}`,
         });
       }
-      setLoading(false);
       return {};
     },
     [db, user, persistImmediate, emitSystemEvent, session]
@@ -1747,11 +1723,8 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       const target = db.users.find((u) => u.id === userId);
       if (!target) return { error: "User not found." };
 
-      setLoading(true);
-      await simulateDelay(DEMO_MODE ? 200 : 400);
       const result = updateUserRoleRecord(db, userId, role);
       if (result.error) {
-        setLoading(false);
         return { error: result.error };
       }
 
@@ -1777,10 +1750,29 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
         type: "report",
         message: `${target.name} is now ${roleLabel(role)}`,
       });
-      setLoading(false);
       return {};
     },
     [db, user, persistImmediate, appendNotification, emitSystemEvent]
+  );
+
+  const updateCustomerAddress = useCallback(
+    async (addressInput: string) => {
+      const trimmed = addressInput.trim();
+      if (!trimmed) {
+        return { error: "Please enter your location to see nearby providers." };
+      }
+
+      const location = enrichCustomerLocation(trimmed);
+      saveCustomerLocation(location);
+
+      if (!db || !user) return {};
+
+      const result = updateUserAddressRecord(db, user.id, trimmed);
+      if (result.error) return { error: result.error };
+      persistImmediate(result.db);
+      return {};
+    },
+    [db, user, persistImmediate]
   );
 
   const filterProviders = useCallback(
@@ -1799,7 +1791,18 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
           urgent: false,
         };
       }
-      const cacheKey = JSON.stringify(filters);
+      const customerAddress =
+        filters.customerAddress?.trim() ||
+        (user && hasCustomerRole(user)
+          ? resolveCustomerAddress({
+              address: user.address,
+              location: user.location,
+              email: user.email,
+            })
+          : loadCustomerLocation()
+            ? locationMatchingKey(loadCustomerLocation()!)
+            : undefined);
+      const cacheKey = JSON.stringify({ ...filters, customerAddress });
       const cached = filterCacheRef.current;
       if (cached?.db === db && cached.key === cacheKey) {
         return cached.result;
@@ -1810,10 +1813,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       const result = filterMockProviders(db, {
         ...filters,
         status: effectiveStatus,
+        maxDistance: resolveMaxDistance(filters.maxDistance),
+        customerAddress,
       });
       const topRanked = getTopRankedProviders(db, {
         ...filters,
         status: "verified",
+        maxDistance: resolveMaxDistance(filters.maxDistance),
+        customerAddress,
       });
       const urgent = detectUrgency(filters.q ?? "");
       const pageLegacy = result.list.map(mockProviderToLegacy);
@@ -1837,7 +1844,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
       filterCacheRef.current = { db, key: cacheKey, result: value };
       return value;
     },
-    [db]
+    [db, user]
   );
 
   const trackProviderViewFn = useCallback(
@@ -2023,6 +2030,7 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     createBooking,
     completeBooking,
     getAvailableSlots,
+    getAvailableDates,
     sendChatMessage,
     getChatMessages,
     getDirectMessages,
@@ -2046,12 +2054,14 @@ export function MockAppProvider({ children }: { children: ReactNode }) {
     systemEvents,
     addReview,
     updateProvider,
+    updateUserProfile,
     approveProvider,
     rejectProvider,
     banUser,
     deleteUser,
     deleteMyAccount,
     setUserRole,
+    updateCustomerAddress,
     filterProviders,
     getProvider,
     trackProviderView: trackProviderViewFn,

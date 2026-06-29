@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BrandLogo } from "@/components/BrandName";
 import { useMockApp } from "@/context/MockAppContext";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -19,7 +20,8 @@ export function ClientNavbar() {
   }
 
   const showBrowse =
-    !user || isAdmin(user) || activeMode === "customer" || activeMode === null;
+    (!user || !isAdmin(user)) &&
+    (!user || activeMode === "customer" || activeMode === null);
   const showSaved = user && hasCustomerRole(user) && activeMode === "customer";
   const showProviderDash =
     user && hasProviderRole(user) && activeMode === "provider";
@@ -28,8 +30,8 @@ export function ClientNavbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
-          <Link href="/" className="shrink-0 text-lg font-bold text-green-600">
-            HomeServe
+          <Link href="/" className="shrink-0">
+            <BrandLogo />
           </Link>
           <nav className="flex min-w-0 items-center gap-1 text-sm font-medium text-gray-600 sm:gap-2">
             {showBrowse && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { AiMatchCard } from "@/components/ai/AiMatchCard";
@@ -13,6 +13,18 @@ import {
   parseSearchDetailed,
 } from "@/lib/ai/parse-search";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
+import { locationMatchingKey, parseLocationInput } from "@/lib/location";
+import { useSearchLocation } from "@/hooks/useSearchLocation";
+import { SearchLocationControls } from "@/components/search/SearchLocationControls";
+import { SearchRefinementFilters } from "@/components/search/SearchRefinementFilters";
+import {
+  aiDefaultsFromParsed,
+  effectiveFilters,
+  formatActiveFilterSummary,
+  hasUserOverrides,
+  refinementToProviderFilters,
+  type RefinementFilters,
+} from "@/lib/search/refinement-filters";
 import { assignRecommendationLabels } from "@/lib/recommendations";
 import type { MockProvider } from "@/lib/mock/types";
 
@@ -25,7 +37,7 @@ const EXAMPLES = [
   "My sink is leaking and I need help",
   "Looking for someone to clean my house today",
   "Need an affordable electrician nearby",
-  "My yard is overgrown, need help",
+  "Cheap plumber near me today",
 ] as const;
 
 const LOADING_STEPS = [
@@ -34,7 +46,7 @@ const LOADING_STEPS = [
   "Ranking top recommendations",
 ] as const;
 
-const ANALYSIS_MS = 520;
+const ANALYSIS_MS = 400;
 
 function AssistantIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
@@ -85,18 +97,29 @@ function avgRating(providers: MockProvider[]): string {
 
 export function AiHelpSearch() {
   const { filterProviders, ready } = useMockApp();
+  const {
+    location,
+    setLocation,
+    radius,
+    setRadius,
+    commitLocation,
+    hasLocation,
+    ready: locationReady,
+  } = useSearchLocation();
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [searched, setSearched] = useState(false);
-  const [matches, setMatches] = useState<MockProvider[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
   const [intentChips, setIntentChips] = useState<string[]>([]);
   const [dashboardHref, setDashboardHref] = useState("/customer/dashboard");
   const [detectedService, setDetectedService] = useState<string | undefined>();
   const [isFallback, setIsFallback] = useState(false);
   const [hireTarget, setHireTarget] = useState<MockProvider | null>(null);
+  const [aiFilters, setAiFilters] = useState<RefinementFilters>({});
+  const [userFilters, setUserFilters] = useState<Partial<RefinementFilters>>({});
+  const [lastQuery, setLastQuery] = useState("");
 
   useEffect(() => {
     if (!loading) {
@@ -116,54 +139,76 @@ export function AiHelpSearch() {
     setQuery(q);
     setLoading(true);
     setSearched(false);
-    setMatches([]);
     setSummary(null);
     setIntentChips([]);
     setIsFallback(false);
+    setUserFilters({});
 
     await new Promise((r) => setTimeout(r, ANALYSIS_MS));
 
+    if (location.trim()) {
+      await commitLocation(location);
+    }
+
     const parsed = parseSearchDetailed(q);
     const unclear = parsed.serviceConfidence === "unclear" || !parsed.service;
+    const defaults = aiDefaultsFromParsed(parsed);
+    if (unclear) {
+      defaults.sort = parsed.intent.priceSensitive
+        ? "price"
+        : parsed.intent.qualityFocus
+          ? "rating"
+          : undefined;
+      if (parsed.intent.urgency) defaults.availability = "today";
+    }
 
-    const result = filterProviders(
-      unclear
-        ? {
-            status: "all",
-            sort: parsed.intent.priceSensitive
-              ? "price"
-              : parsed.intent.qualityFocus
-                ? "rating"
-                : undefined,
-            maxPrice: parsed.maxPrice ? String(parsed.maxPrice) : undefined,
-            minRating: parsed.minRating ? String(parsed.minRating) : undefined,
-            maxDistance: parsed.maxDistance ? String(parsed.maxDistance) : undefined,
-            availability: parsed.intent.urgency ? "today" : parsed.availability,
-          }
-        : {
-            service: parsed.service,
-            sort: parsed.sort,
-            maxPrice: parsed.maxPrice ? String(parsed.maxPrice) : undefined,
-            minRating: parsed.minRating ? String(parsed.minRating) : undefined,
-            maxDistance: parsed.maxDistance ? String(parsed.maxDistance) : undefined,
-            availability: parsed.intent.urgency ? "today" : parsed.availability,
-            q: q,
-            status: "all",
-          }
-    );
-
-    const found = collectMatches(result.topRanked, result.list);
-    setMatches(found);
+    setLastQuery(q);
+    setAiFilters(defaults);
     setDetectedService(parsed.service);
     setIsFallback(unclear);
     setIntentChips(buildIntentChips(parsed));
     setDashboardHref(
       `/customer/dashboard?${buildRedirectParams(q, parsed).toString()}`
     );
-    setSummary(buildAssistantMessage(parsed));
+    setSummary(
+      buildAssistantMessage(parsed, {
+        hasLocation,
+        radius,
+      })
+    );
     setSearched(true);
     setLoading(false);
   }
+
+  const customerAddress = location.trim()
+    ? locationMatchingKey(parseLocationInput(location))
+    : undefined;
+
+  const effective = useMemo(
+    () => effectiveFilters(aiFilters, userFilters),
+    [aiFilters, userFilters]
+  );
+
+  const matches = useMemo(() => {
+    if (!searched || !lastQuery) return [];
+    const result = filterProviders(
+      refinementToProviderFilters(lastQuery, effective, {
+        customerAddress,
+        radius,
+      })
+    );
+    return collectMatches(result.topRanked, result.list);
+  }, [
+    searched,
+    lastQuery,
+    effective,
+    customerAddress,
+    radius,
+    filterProviders,
+  ]);
+
+  const activeSummary = formatActiveFilterSummary(effective, { radius });
+  const showClear = hasUserOverrides(aiFilters, userFilters);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -223,6 +268,17 @@ export function AiHelpSearch() {
           </div>
 
           <div className="bg-gray-50 px-5 py-5 sm:px-6 sm:py-6">
+            {locationReady && (
+              <SearchLocationControls
+                location={location}
+                radius={radius}
+                onLocationChange={setLocation}
+                onRadiusChange={setRadius}
+                onLocationCommit={commitLocation}
+                className="mb-6"
+              />
+            )}
+
             <form onSubmit={handleSubmit}>
               <label htmlFor="ai-help-input" className="sr-only">
                 Describe your issue
@@ -292,11 +348,25 @@ export function AiHelpSearch() {
               </div>
             )}
 
+            {!loading && searched && (
+              <SearchRefinementFilters
+                aiDefaults={aiFilters}
+                userOverrides={userFilters}
+                effective={effective}
+                activeSummary={activeSummary}
+                onChange={setUserFilters}
+                onClear={() => setUserFilters({})}
+                showClear={showClear}
+              />
+            )}
+
             {!loading && searched && matches.length === 0 && (
               <div className="mx-auto mt-8 max-w-lg animate-fade-in rounded-2xl border border-amber-200/80 bg-white px-6 py-5 text-center shadow-sm">
-                <p className="font-semibold text-gray-900">No exact matches found</p>
+                <p className="font-semibold text-gray-900">
+                  No providers match your criteria
+                </p>
                 <p className="mt-1 text-sm text-gray-600">
-                  Try rephrasing your request or browse services by category below.
+                  Try adjusting filters or increasing your search radius.
                 </p>
               </div>
             )}

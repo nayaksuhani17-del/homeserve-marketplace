@@ -9,7 +9,10 @@
     "lint": "eslint",
     "verify:reviews": "tsx scripts/verify-review-system.ts",
     "verify:demo": "tsx scripts/verify-demo-flows.ts",
-    "verify:providers": "tsx scripts/verify-provider-verification.ts"
+    "verify:providers": "tsx scripts/verify-provider-verification.ts",
+    "verify:privacy": "tsx scripts/verify-user-privacy.ts",
+    "verify:availability": "tsx scripts/verify-availability.ts",
+    "verify:location": "tsx scripts/verify-location.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

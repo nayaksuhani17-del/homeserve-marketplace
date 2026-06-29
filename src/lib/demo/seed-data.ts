@@ -193,7 +193,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Licensed master plumber with 12 years of experience in residential repairs and installations. I specialize in leak detection, pipe replacement, and emergency call-outs. Clean work and honest quotes every time.",
     availability: "Mon-Fri: 8am-6pm, Sat: 9am-1pm",
-    approved: false,
+    approved: true,
     distanceMiles: 1.8,
     jobsCompleted: 127,
     yearsExperience: 12,
@@ -217,7 +217,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Detail-oriented cleaning professional serving Austin homes for over 8 years. Eco-friendly products available on request. Deep cleans, move-in/move-out, and recurring weekly service.",
     availability: "Mon-Sat: 9am-5pm",
-    approved: false,
+    approved: true,
     distanceMiles: 2.3,
     jobsCompleted: 89,
     yearsExperience: 8,
@@ -230,11 +230,11 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     services: ["Painting"],
     pricingType: "estimate",
     price: 350,
-    location: "Capitol Hill, Denver CO",
+    location: "Park Slope, Brooklyn NY",
     description:
       "Interior and exterior painting specialist with an eye for color and finish. I handle prep, patching, and full room makeovers. Fully insured and references available upon request.",
     availability: "Tue-Sat: 7am-4pm",
-    approved: false,
+    approved: true,
     distanceMiles: 3.1,
     jobsCompleted: 64,
     yearsExperience: 9,
@@ -251,7 +251,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Personal chef offering meal prep, dinner parties, and special occasion catering. Trained in Mediterranean and Latin cuisine. I bring fresh ingredients and leave your kitchen spotless.",
     availability: "Wed-Sun: 10am-8pm",
-    approved: false,
+    approved: true,
     distanceMiles: 4.2,
     jobsCompleted: 52,
     yearsExperience: 7,
@@ -268,7 +268,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "IT technician and licensed electrician for home office setups and smart home wiring. Virus removal, data recovery, network troubleshooting, and outlet upgrades. Same-day appointments often available.",
     availability: "Mon-Fri: 9am-6pm",
-    approved: false,
+    approved: true,
     distanceMiles: 1.2,
     jobsCompleted: 98,
     yearsExperience: 10,
@@ -285,7 +285,7 @@ export const DEMO_PROVIDERS: DemoProviderSeed[] = [
     description:
       "Reliable lawn care for Portland neighborhoods including mowing, edging, and seasonal cleanup. I treat every yard like my own and offer flexible weekly or bi-weekly schedules.",
     availability: "Mon-Sat: 7am-3pm",
-    approved: false,
+    approved: true,
     distanceMiles: 5.6,
     jobsCompleted: 156,
     yearsExperience: 6,

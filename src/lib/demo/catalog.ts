@@ -207,7 +207,7 @@ function buildCatalogProvider(index: number): ProviderWithUser {
   const jobsCompleted = Math.floor(15 + seeded(index, 10) * 280);
   const yearsExperience = Math.floor(2 + seeded(index, 11) * 18);
 
-  const approved = false;
+  const approved = seeded(index, 21) > 0.5;
 
   const distanceMiles = Math.round((0.4 + seeded(index, 13) * 12.5) * 10) / 10;
   const availableToday = seeded(index, 14) > 0.45;

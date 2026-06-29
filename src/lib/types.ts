@@ -36,7 +36,7 @@ export type Provider = {
   response_time_mins?: number | null;
   review_count?: number | null;
   created_at?: string;
-  users?: Pick<User, "name" | "email" | "avatar_url">;
+  users?: Pick<User, "name" | "avatar_url"> & { email?: string };
 };
 
 export type Booking = {
@@ -62,7 +62,7 @@ export type Review = {
 };
 
 export type ProviderWithUser = Provider & {
-  users: Pick<User, "name" | "email" | "avatar_url">;
+  users: Pick<User, "name" | "avatar_url"> & { email?: string };
 };
 
 export type SearchParams = {

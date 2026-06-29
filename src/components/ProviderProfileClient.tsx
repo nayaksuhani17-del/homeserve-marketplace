@@ -29,6 +29,7 @@ import type { PricingType } from "@/lib/pricing";
 import type { ServicePackage } from "@/lib/quotes";
 import { toQuoteProfile } from "@/lib/quotes";
 import { formatResponseTime } from "@/lib/recommendations";
+import { publicDisplayName } from "@/lib/user-profile";
 
 type ProviderProfileClientProps = {
   provider: {
@@ -103,7 +104,8 @@ export function ProviderProfileClient({
 
   const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
   const liveProvider = db?.providers.find((p) => p.id === provider.id);
-  const liveReviews = db?.reviews.filter((r) => r.providerId === provider.id) ?? reviews;
+  const dbReviews = db?.reviews.filter((r) => r.providerId === provider.id) ?? [];
+  const reviewListCount = dbReviews.length > 0 ? dbReviews.length : reviews.length;
 
   const canBookAsCustomer =
     !!sessionUser &&
@@ -129,11 +131,11 @@ export function ProviderProfileClient({
   const rebookPrefill = getRebookPrefill(provider.id);
   const availabilityHint = getAvailabilityHint(provider.id);
   const tags = computeProviderTags(provider as Parameters<typeof computeProviderTags>[0]);
-  const reviewCount = liveProvider?.reviewCount ?? liveReviews.length;
+  const reviewCount = liveProvider?.reviewCount ?? reviewListCount;
   const displayRating = liveProvider?.ratingAvg ?? provider.rating_avg ?? 0;
   const { ratingAvg, reviewCount: resolvedCount } = resolveProviderRating(
     liveProvider ? { ratingAvg: displayRating, reviewCount } : null,
-    { ratingAvg: Number(provider.rating_avg), reviewCount: liveReviews.length }
+    { ratingAvg: Number(provider.rating_avg), reviewCount: reviewListCount }
   );
   const verified = liveProvider?.verified === true;
   const responseLabel = formatResponseTime(provider.response_time_mins);
@@ -188,7 +190,7 @@ export function ProviderProfileClient({
             <p className="mt-1 text-lg text-gray-500">{provider.location}</p>
             {provider.distance_miles != null && (
               <p className="mt-1 text-sm font-medium text-green-600">
-                {Number(provider.distance_miles).toFixed(1)} miles away
+                📍 {Math.round(Number(provider.distance_miles))} miles away
               </p>
             )}
           </div>
@@ -292,7 +294,7 @@ export function ProviderProfileClient({
           <div className="mt-8">
             {!verified && (
               <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                This provider has not been verified by HomeServe admin yet.
+                This provider has not been verified by hausfix admin yet.
               </p>
             )}
             <div className="flex flex-wrap gap-3">
@@ -354,30 +356,55 @@ export function ProviderProfileClient({
         </div>
       </article>
 
-      {reviews.length > 0 && (
+      {reviewListCount > 0 && (
         <>
           <div className="mt-8">
             <ReviewInsightsPanel
-              reviews={reviews.map((r) => ({ rating: r.rating, comment: r.comment }))}
+              reviews={(dbReviews.length > 0 ? dbReviews : reviews).map((r) => ({
+                rating: r.rating,
+                comment: r.comment,
+              }))}
             />
           </div>
           <section className="mt-8">
-            <h2 className="text-xl font-bold text-gray-900">Reviews ({reviews.length})</h2>
+            <h2 className="text-xl font-bold text-gray-900">Reviews ({reviewListCount})</h2>
             <div className="mt-4 space-y-3">
-              {reviews.map((review, i) => {
-                const reviewUser = Array.isArray(review.users) ? review.users[0] : review.users;
-                return (
-                  <div key={i} className="card bg-white p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-gray-900">{reviewUser?.name ?? "Customer"}</p>
-                      <StarRating rating={review.rating} size="sm" />
-                    </div>
-                    {review.comment && (
-                      <p className="mt-2 text-sm text-gray-600">{review.comment}</p>
-                    )}
-                  </div>
-                );
-              })}
+              {dbReviews.length > 0
+                ? dbReviews.map((review) => {
+                    const customer = db?.users.find((u) => u.id === review.customerId);
+                    const customerLabel = customer
+                      ? publicDisplayName(customer)
+                      : review.customerName;
+                    return (
+                      <div key={review.id} className="card bg-white p-4">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-900">{customerLabel}</p>
+                          <StarRating rating={review.rating} size="sm" />
+                        </div>
+                        {review.comment && (
+                          <p className="mt-2 text-sm text-gray-600">{review.comment}</p>
+                        )}
+                      </div>
+                    );
+                  })
+                : reviews.map((review, i) => {
+                    const reviewUser = Array.isArray(review.users)
+                      ? review.users[0]
+                      : review.users;
+                    return (
+                      <div key={i} className="card bg-white p-4">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-900">
+                            {reviewUser?.name ?? "Customer"}
+                          </p>
+                          <StarRating rating={review.rating} size="sm" />
+                        </div>
+                        {review.comment && (
+                          <p className="mt-2 text-sm text-gray-600">{review.comment}</p>
+                        )}
+                      </div>
+                    );
+                  })}
             </div>
           </section>
         </>

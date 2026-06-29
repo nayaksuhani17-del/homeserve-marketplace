@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderCard } from "./ProviderCard";
@@ -14,11 +14,22 @@ import { useMockApp } from "@/context/MockAppContext";
 import { hasCustomerRole } from "@/lib/user-capabilities";
 import { mockProviderToLegacy } from "@/lib/mock/operations";
 import { getServiceMeta, similarServices } from "@/lib/services";
+import {
+  DEFAULT_DISTANCE_RADIUS,
+  DISTANCE_RANGE_OPTIONS,
+  loadDistanceRadius,
+  resolveCustomerAddress,
+  saveDistanceRadius,
+  type DistanceRadius,
+} from "@/lib/location";
 import type { ProviderFilters } from "@/lib/mock/types";
 import type { RecommendationLabel } from "@/lib/recommendations";
 import type { MockProvider } from "@/lib/mock/types";
 
-function filtersFromSearchParams(searchParams: URLSearchParams): ProviderFilters {
+function filtersFromSearchParams(
+  searchParams: URLSearchParams,
+  defaultRadius: string
+): ProviderFilters {
   return {
     service: searchParams.get("service") ?? undefined,
     sort: searchParams.get("sort") ?? undefined,
@@ -26,7 +37,7 @@ function filtersFromSearchParams(searchParams: URLSearchParams): ProviderFilters
     minPrice: searchParams.get("minPrice") ?? undefined,
     maxPrice: searchParams.get("maxPrice") ?? undefined,
     minRating: searchParams.get("minRating") ?? undefined,
-    maxDistance: searchParams.get("maxDistance") ?? undefined,
+    maxDistance: searchParams.get("maxDistance") ?? defaultRadius,
     availability: searchParams.get("availability") ?? undefined,
     status: searchParams.get("status") ?? undefined,
     page: searchParams.get("page") ?? undefined,
@@ -39,13 +50,21 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
   const { filterProviders, ready, user, activeMode } = useMockApp();
   const [pending, startTransition] = useTransition();
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [distanceRadius, setDistanceRadius] = useState(String(DEFAULT_DISTANCE_RADIUS));
+
+  useEffect(() => {
+    setDistanceRadius(String(loadDistanceRadius()));
+  }, []);
 
   const filters = useMemo(
-    () => filtersFromSearchParams(searchParams),
-    [searchParams]
+    () => filtersFromSearchParams(searchParams, distanceRadius),
+    [searchParams, distanceRadius]
   );
 
   const query = filters.q ?? "";
+  const customerCity = user
+    ? resolveCustomerAddress({ address: user.address, email: user.email })
+    : null;
 
   const emptyResult = {
     list: [] as MockProvider[],
@@ -69,7 +88,7 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
       const params = new URLSearchParams();
       const merged = { ...next, q: q || undefined };
       Object.entries(merged).forEach(([key, val]) => {
-        if (val) params.set(key, val);
+        if (val && key !== "customerAddress") params.set(key, val);
       });
       router.replace(`/customer/dashboard?${params.toString()}`, { scroll: false });
     },
@@ -86,6 +105,7 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
     filters.maxPrice && Number(filters.maxPrice) < 120 && `Under $${filters.maxPrice}`,
     filters.availability && `Available ${filters.availability}`,
     filters.maxDistance && `Within ${filters.maxDistance} mi`,
+    customerCity && `Near ${customerCity}`,
     query && `Search: "${query}"`,
   ].filter((f): f is string => Boolean(f));
 
@@ -99,10 +119,23 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
     availability?: string;
     status?: string;
   }) {
+    if (patch.maxDistance) {
+      const miles = Number(patch.maxDistance) as DistanceRadius;
+      if (DISTANCE_RANGE_OPTIONS.includes(miles)) {
+        saveDistanceRadius(miles);
+        setDistanceRadius(String(miles));
+      }
+    }
     startTransition(() => {
       syncUrl({ ...filters, ...patch, page: "1" }, query);
     });
   }
+
+  const distanceFilteredEmpty =
+    result.list.length === 0 &&
+    !query.trim() &&
+    !filters.service &&
+    Boolean(filters.maxDistance);
 
   if (!ready) {
     return (
@@ -125,6 +158,9 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
             {pending
               ? "Updating results…"
               : `${result.total} result${result.total === 1 ? "" : "s"} · search, filter, and book`}
+            {customerCity && (
+              <span className="text-gray-500"> · showing pros near {customerCity}</span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -180,7 +216,7 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
             minPrice={filters.minPrice}
             maxPrice={filters.maxPrice}
             minRating={filters.minRating}
-            maxDistance={filters.maxDistance}
+            maxDistance={filters.maxDistance ?? String(DEFAULT_DISTANCE_RADIUS)}
             availability={filters.availability}
             status={filters.status ?? "all"}
             onApply={applyFiltersFromPanel}
@@ -192,7 +228,7 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
             <>
               {(result.bestMatchId || Object.keys(result.topRankMap).length > 0) &&
                 !filters.sort && (
-                  <p className="text-xs text-gray-500">Best match highlighted for this search</p>
+                  <p className="text-xs text-gray-500">Closest matches shown first</p>
                 )}
               <div
                 className={`mt-4 grid gap-5 sm:grid-cols-2 transition-opacity duration-200 ${
@@ -242,11 +278,19 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
           ) : (
             <div className="mt-8">
               <EmptyState
-                title={query.trim() ? "No users found" : "No providers found — try another search"}
+                title={
+                  distanceFilteredEmpty
+                    ? "No providers found within selected range"
+                    : query.trim()
+                      ? "No users found"
+                      : "No providers found — try another search"
+                }
                 description={
-                  query.trim()
-                    ? `No providers or people matched "${query}". Try a partial name or service keyword.`
-                    : "We couldn't find a match. Broaden your filters or browse a popular category."
+                  distanceFilteredEmpty
+                    ? "No providers found within selected range. Try increasing your distance."
+                    : query.trim()
+                      ? `No providers or people matched "${query}". Try a partial name or service keyword.`
+                      : "We couldn't find a match. Broaden your filters or browse a popular category."
                 }
                 icon="🔍"
                 suggestions={similarServices(filters.service).map(
@@ -254,9 +298,21 @@ export function ProviderMarketplace({ showAssistant = false }: { showAssistant?:
                 )}
                 action={
                   <div className="flex flex-wrap justify-center gap-3">
-                    <Link href="/customer/dashboard" className="btn-primary inline-block">
-                      View all providers
-                    </Link>
+                    {distanceFilteredEmpty ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          applyFiltersFromPanel({ maxDistance: "100" })
+                        }
+                        className="btn-primary inline-block"
+                      >
+                        Expand to 100 miles
+                      </button>
+                    ) : (
+                      <Link href="/customer/dashboard" className="btn-primary inline-block">
+                        View all providers
+                      </Link>
+                    )}
                     {similarServices(filters.service).slice(0, 2).map((s) => (
                       <Link
                         key={s}

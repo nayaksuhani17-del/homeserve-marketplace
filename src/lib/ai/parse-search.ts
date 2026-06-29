@@ -2,7 +2,7 @@ import { SERVICE_CATEGORIES } from "@/lib/constants";
 
 export type SearchFilters = {
   service?: string;
-  sort?: "rating" | "price";
+  sort?: "rating" | "price" | "distance";
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
@@ -375,7 +375,7 @@ export function parseSearchDetailed(query: string): ParsedSearchResult {
   }
 
   if (/\bnear me\b|\bnearby\b|\bclose by\b|\bclose to me\b|\blocal\b|\baround here\b/.test(lower)) {
-    filters.maxDistance = 5;
+    if (!filters.sort) filters.sort = "distance";
   }
 
   if (intent.urgency) {
@@ -414,24 +414,46 @@ export function buildIntentChips(result: ParsedSearchResult): string[] {
 }
 
 /** Natural-language assistant reply for the AI Help Search UI. */
-export function buildAssistantMessage(result: ParsedSearchResult): string {
+export function buildAssistantMessage(
+  result: ParsedSearchResult,
+  options?: { hasLocation?: boolean; radius?: number }
+): string {
+  const radius = options?.radius ?? 50;
+  const located = options?.hasLocation !== false;
+
   if (result.serviceConfidence === "unclear" || !result.service) {
-    return "We've surfaced highly rated professionals across our most requested categories. Review the matches below or refine your description for a tighter fit.";
+    if (located) {
+      return `Showing top nearby providers based on your location and request. Results are within ${radius} miles, sorted by distance and rating.`;
+    }
+    return "Set your location to see nearby providers. We've surfaced highly rated professionals you can browse below.";
   }
 
   const issue =
     SERVICE_RESPONSE_LABEL[result.service] ??
     `${result.service.toLowerCase()} request`;
 
-  let message = `Based on your description, we've identified a ${issue} and matched you with verified professionals in your area.`;
+  const who =
+    result.service === "Plumber"
+      ? "plumbers"
+      : result.service === "Electrician"
+        ? "electricians"
+        : result.service
+          ? `${result.service.toLowerCase()} pros`
+          : "providers";
+
+  let message = located
+    ? `Showing nearby ${who} based on your request. You can refine results using filters.`
+    : `We matched your ${issue}. Set your location to prioritize nearby providers.`;
 
   if (result.intent.urgency) {
-    message += " Same-day availability has been prioritized.";
+    message += " Same-day availability prioritized.";
   }
   if (result.intent.priceSensitive) {
-    message += " Results emphasize competitive, transparent pricing.";
+    message += " Budget-friendly options ranked first.";
   } else if (result.intent.qualityFocus) {
-    message += " Results are ranked by rating and homeowner feedback.";
+    message += " Top-rated pros ranked first.";
+  } else if (located) {
+    message += " Sorted closest first, then by rating.";
   }
 
   return message;
@@ -442,6 +464,51 @@ export function parseSearchFallback(query: string): SearchFilters {
   void serviceConfidence;
   void intent;
   return filters;
+}
+
+/**
+ * When a service filter is already applied, return leftover text that should still
+ * narrow results — or null if the query only names the service (e.g. "painter").
+ */
+export function effectiveSearchQuery(
+  query: string,
+  service?: string
+): string | null {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  if (!service) return trimmed;
+
+  const { service: detected, confidence } = guessService(trimmed);
+  if (confidence !== "matched" || detected !== service) {
+    return trimmed;
+  }
+
+  let remainder = normalizeText(trimmed);
+  const phrases = [...(SERVICE_PHRASES[service] ?? [])].sort(
+    (a, b) => b.length - a.length
+  );
+
+  for (const phrase of phrases) {
+    const needle = normalizeText(phrase);
+    if (needle && remainder.includes(needle)) {
+      remainder = remainder.replace(needle, " ").replace(/\s+/g, " ").trim();
+    }
+  }
+
+  const categoryNeedle = normalizeText(service);
+  if (remainder === categoryNeedle) remainder = "";
+
+  const serviceWords = new Set(
+    phrases.flatMap((p) => normalizeText(p).split(/\s+/).filter(Boolean))
+  );
+  serviceWords.add(categoryNeedle);
+
+  const tokens = remainder
+    .split(/\s+/)
+    .filter((t) => t.length >= 2 && !serviceWords.has(t));
+
+  const result = tokens.join(" ").trim();
+  return result.length >= 2 ? result : null;
 }
 
 export async function parseSearchQuery(query: string): Promise<SearchFilters> {

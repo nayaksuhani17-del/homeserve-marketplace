@@ -7,14 +7,20 @@ import {
   CustomerCenterPanel,
   type CenterView,
 } from "@/components/customer/dashboard/CustomerCenterPanel";
+import { useSearchLocation } from "@/hooks/useSearchLocation";
 import { useMockApp } from "@/context/MockAppContext";
-import { parseSearchFallback } from "@/lib/ai/parse-search";
+import {
+  buildAssistantMessage,
+  parseSearchDetailed,
+} from "@/lib/ai/parse-search";
+import { aiDefaultsFromParsed } from "@/lib/search/refinement-filters";
 import { customerMessagesHref } from "@/lib/notification-links";
 import {
   hasCustomerRole,
   hasProviderRole,
   isAdmin,
 } from "@/lib/user-capabilities";
+import { locationDisplayLabel, locationMatchingKey, parseLocationInput } from "@/lib/location";
 
 export function CustomerDashboardClient() {
   const searchParams = useSearchParams();
@@ -29,8 +35,15 @@ export function CustomerDashboardClient() {
     dbRevision,
     activeMode,
     enableProviderRole,
-    filterProviders,
   } = useMockApp();
+
+  const {
+    location,
+    setLocation,
+    radius,
+    setRadius,
+    commitLocation,
+  } = useSearchLocation();
 
   const [centerView, setCenterView] = useState<CenterView>({ type: "search" });
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -111,22 +124,32 @@ export function CustomerDashboardClient() {
     setCenterView({ type: "job", bookingId });
   }
 
-  function handleSearch(query: string) {
-    const parsed = parseSearchFallback(query);
-    const feed = filterProviders({
-      q: query,
-      service: parsed.service,
-      status: "all",
-      sort: parsed.sort ?? "rating",
-      availability: parsed.availability,
-      maxPrice: parsed.maxPrice ? String(parsed.maxPrice) : undefined,
-      minRating: parsed.minRating ? String(parsed.minRating) : undefined,
+  async function handleSearch(query: string) {
+    const trimmedLocation = location.trim();
+    if (trimmedLocation) {
+      await commitLocation(trimmedLocation);
+    }
+
+    const parsed = parseSearchDetailed(query);
+    const aiFilters = aiDefaultsFromParsed(parsed);
+    const customerAddress = trimmedLocation
+      ? locationMatchingKey(parseLocationInput(trimmedLocation))
+      : undefined;
+
+    const assistantMessage = buildAssistantMessage(parsed, {
+      hasLocation: Boolean(customerAddress),
+      radius,
     });
+
     setSelectedJobId(null);
     setCenterView({
       type: "results",
       query,
-      providers: feed.list.slice(0, 8),
+      aiFilters,
+      assistantMessage,
+      locationLabel: customerAddress
+        ? locationDisplayLabel(trimmedLocation)
+        : undefined,
     });
   }
 
@@ -170,6 +193,11 @@ export function CustomerDashboardClient() {
         canBook={canBook}
         isLoggedIn={Boolean(user)}
         hasReview={hasReview}
+        location={location}
+        radius={radius}
+        onLocationChange={setLocation}
+        onRadiusChange={setRadius}
+        onLocationCommit={commitLocation}
         onSearch={handleSearch}
         onReset={handleNewRequest}
       />

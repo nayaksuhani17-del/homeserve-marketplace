@@ -1,22 +1,40 @@
 import { demoId } from "@/lib/demo/ids";
-import { DEFAULT_WEEK_AVAILABILITY } from "./normalize";
+import {
+  buildFullName,
+  publicDisplayName,
+  splitFullName,
+} from "@/lib/user-profile";
+import { DEFAULT_WEEKLY_SCHEDULE, formatAvailabilitySummary } from "@/lib/availability";
+import { defaultAvailabilityConfig } from "@/lib/availability-config";
+import { normalizeLocation } from "@/lib/location";
 import type { MockProvider, MockUser } from "./types";
 
-export function newGuestUser(input: {
-  name: string;
+export type GuestUserInput = {
+  firstName: string;
+  lastName: string;
   email: string;
+  phoneNumber: string;
+  address: string;
   password: string;
   customerRole: boolean;
   providerRole: boolean;
-}): MockUser {
+};
+
+export function newGuestUser(input: GuestUserInput): MockUser {
   const customerRole = input.customerRole;
   const providerRole = input.providerRole;
   const role =
     providerRole && !customerRole ? "provider" : customerRole ? "customer" : "provider";
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
   return {
     id: demoId(`guest-user:${input.email.toLowerCase()}`),
-    name: input.name,
+    name: buildFullName(firstName, lastName),
+    firstName,
+    lastName,
     email: input.email.toLowerCase(),
+    phoneNumber: input.phoneNumber.trim(),
+    address: input.address.trim(),
     password: input.password,
     role,
     customerRole,
@@ -27,11 +45,32 @@ export function newGuestUser(input: {
   };
 }
 
+/** Test/helper — builds a guest from a display name with default contact fields. */
+export function newGuestUserFromName(input: {
+  name: string;
+  email: string;
+  password: string;
+  customerRole: boolean;
+  providerRole: boolean;
+}): MockUser {
+  const { firstName, lastName } = splitFullName(input.name);
+  return newGuestUser({
+    firstName,
+    lastName: lastName || "User",
+    email: input.email,
+    phoneNumber: "(555) 010-0000",
+    address: "123 Test Street, Springfield, IL 62701",
+    password: input.password,
+    customerRole: input.customerRole,
+    providerRole: input.providerRole,
+  });
+}
+
 export function newGuestProvider(user: MockUser): MockProvider {
   return {
     id: demoId(`guest-provider:${user.id}`),
     userId: user.id,
-    name: user.name,
+    name: publicDisplayName(user),
     email: user.email,
     avatarUrl: user.avatarUrl,
     services: ["House Cleaning"],
@@ -43,9 +82,10 @@ export function newGuestProvider(user: MockUser): MockProvider {
       { label: "Standard home clean", price: 95 },
       { label: "Deep house cleaning", price: 150 },
     ],
-    location: "Your City",
+    location: normalizeLocation(user.address),
+    address: normalizeLocation(user.address),
     description: "Tell customers about your experience and services.",
-    availability: "Mon-Fri: 9am-5pm",
+    availability: formatAvailabilitySummary(DEFAULT_WEEKLY_SCHEDULE),
     ratingAvg: 0,
     verified: false,
     approved: false,
@@ -55,7 +95,9 @@ export function newGuestProvider(user: MockUser): MockProvider {
     tags: [],
     availableToday: true,
     availableTomorrow: true,
-    weekAvailability: [...DEFAULT_WEEK_AVAILABILITY],
+    weekAvailability: DEFAULT_WEEKLY_SCHEDULE.map((entry) => entry.enabled),
+    weeklySchedule: DEFAULT_WEEKLY_SCHEDULE.map((entry) => ({ ...entry })),
+    availabilityConfig: defaultAvailabilityConfig(),
     responseTimeMins: 30,
     responseSpeed: "fast",
     reviewCount: 0,

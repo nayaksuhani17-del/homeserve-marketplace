@@ -3,8 +3,10 @@ import { Geist } from "next/font/google";
 import { ClientNavbar } from "@/components/ClientNavbar";
 import { ClientLayoutExtras } from "@/components/ClientLayoutExtras";
 import { AppLoadingGate } from "@/components/AppLoadingGate";
+import { BrandName } from "@/components/BrandName";
 import { ToastProvider } from "@/components/Toast";
 import { MockAppProvider } from "@/context/MockAppContext";
+import { BRAND_DESCRIPTION, BRAND_PAGE_TITLE } from "@/lib/brand";
 import "./globals.css";
 
 const geist = Geist({
@@ -13,8 +15,8 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "HomeServe — Find Trusted Home Services Instantly",
-  description: "Book verified local pros for plumbing, cleaning, electrical, and more.",
+  title: BRAND_PAGE_TITLE,
+  description: BRAND_DESCRIPTION,
 };
 
 export default function RootLayout({
@@ -32,7 +34,10 @@ export default function RootLayout({
               <ClientNavbar />
               <main className="page-enter flex-1">{children}</main>
               <footer className="border-t border-gray-100 bg-white py-6 text-center text-xs text-gray-500">
-                <p>HomeServe interactive demo</p>
+                <div className="flex flex-col items-center gap-1">
+                  <BrandName size="sm" />
+                  <p className="text-gray-400">interactive demo</p>
+                </div>
               </footer>
             </ToastProvider>
           </AppLoadingGate>

@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useMockApp } from "@/context/MockAppContext";
 import { ProfileNameLink } from "@/components/ProfileNameLink";
 import { CHAT_QUICK_PROMPTS, providerHasAutoReply } from "@/lib/mock/simulation";
+import {
+  canRevealContact,
+  getRevealedContact,
+  publicDisplayName,
+} from "@/lib/user-profile";
 import type { StoredMessage } from "@/lib/messages/store";
 
 type ChatViewProps = {
@@ -35,14 +40,24 @@ export function ChatView({
   const otherUser = db?.users.find((u) => u.id === otherUserId);
   const otherProvider = db?.providers.find((p) => p.userId === otherUserId);
   const autoReplyOn = providerHasAutoReply(otherProvider);
+  const displayName = otherUser ? publicDisplayName(otherUser) : otherUserName;
+  const revealContact =
+    user && db && otherUser
+      ? canRevealContact(db, user.id, otherUserId, { inActiveChat: true })
+      : false;
+  const contactInfo =
+    revealContact && otherUser ? getRevealedContact(otherUser) : null;
 
   const senderNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const u of db?.users ?? []) {
-      map.set(u.id, u.name);
+      map.set(
+        u.id,
+        u.id === user?.id ? u.name : publicDisplayName(u)
+      );
     }
     return map;
-  }, [db?.users]);
+  }, [db?.users, user?.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -116,12 +131,17 @@ export function ChatView({
         <div className="min-w-0">
           <ProfileNameLink
             userId={otherUserId}
-            name={otherUserName}
+            name={displayName}
             returnTo={profileReturnTo}
             className="truncate text-sm font-semibold"
           />
           {!isPanel && (
             <p className="text-xs text-gray-500">Direct messages</p>
+          )}
+          {contactInfo && (
+            <p className="mt-1 text-xs text-gray-600">
+              {contactInfo.phoneNumber} · {contactInfo.city}
+            </p>
           )}
         </div>
         {onClose && !isPanel && (
@@ -144,7 +164,7 @@ export function ChatView({
         )}
         {messages.map((msg: StoredMessage) => {
           const isMine = msg.sender_id === user.id;
-          const senderLabel = senderNames.get(msg.sender_id) ?? otherUserName;
+          const senderLabel = senderNames.get(msg.sender_id) ?? displayName;
           return (
             <div
               key={msg.id}
@@ -180,7 +200,7 @@ export function ChatView({
           <p className="animate-pulse text-xs text-gray-400">
             <ProfileNameLink
               userId={otherUserId}
-              name={otherUserName}
+              name={displayName}
               returnTo={profileReturnTo}
               className="text-xs font-normal"
             />{" "}
@@ -220,7 +240,7 @@ export function ChatView({
             disabled={pending || !text.trim()}
             className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
           >
-            Send
+            {pending ? "Sending…" : "Send"}
           </button>
         </div>
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}

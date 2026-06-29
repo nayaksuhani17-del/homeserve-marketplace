@@ -3,15 +3,16 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { BrandLockup } from "@/components/BrandName";
 import { ProviderProfileForm } from "@/components/ProviderProfileForm";
-import { ProviderWeekAvailability } from "@/components/provider/ProviderWeekAvailability";
+import { ProviderAvailabilityEditor } from "@/components/provider/ProviderAvailabilityEditor";
+import { ProviderStatusControls } from "@/components/provider/ProviderStatusControls";
 import { BookingStatusBadge } from "@/components/BookingStatusBadge";
 import { ProviderScheduleManager } from "@/components/ProviderScheduleManager";
 import { ProviderRatingDisplay } from "@/components/ProviderRatingDisplay";
 import { StarRating } from "@/components/StarRating";
-import { formatRatingSummary, NO_REVIEWS_LABEL } from "@/lib/ratings";
 import { ReviewInsightsPanel } from "@/components/ProviderAIInsights";
-import { ProviderSummaryCard } from "@/components/provider/ProviderSummaryCard";
+import { ProviderStatsBar } from "@/components/provider/ProviderStatsBar";
 import { ProviderEarningsChart } from "@/components/provider/ProviderEarningsChart";
 import { useMockApp } from "@/context/MockAppContext";
 import { hasProviderRole, isAdmin } from "@/lib/user-capabilities";
@@ -22,7 +23,6 @@ import {
   getProviderDisplayEarnings,
   getProviderEarnings,
   getProviderInsights,
-  getResponseSpeedLabel,
   getReviewForBooking,
   sortBookingsBySchedule,
 } from "@/lib/provider/dashboard-stats";
@@ -295,7 +295,7 @@ export function ProviderDashboardClient() {
           provider account from Switch Account, or contact support.
         </p>
         <Link href="/" className="btn-primary mt-6 inline-block">
-          Back to home
+          Back to hausfix
         </Link>
       </div>
     );
@@ -350,7 +350,8 @@ export function ProviderDashboardClient() {
       {/* Header */}
       <header className="flex flex-col gap-4 border-b border-gray-100 pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-green-700">
+          <BrandLockup size="sm" />
+          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-400">
             Provider workspace
           </p>
           <h1 className="mt-1 text-3xl font-bold text-gray-900">
@@ -403,7 +404,7 @@ export function ProviderDashboardClient() {
             <div>
               <h2 className="text-lg font-bold text-gray-900">Profile management</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Update services, pricing, description, and availability.
+                Update your personal details, services, pricing, and public description.
               </p>
             </div>
             <button
@@ -417,6 +418,11 @@ export function ProviderDashboardClient() {
           <div className="mt-6">
             <ProviderProfileForm
               defaultValues={{
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                address: user.location?.raw ?? user.address,
                 services: provider.services,
                 pricing_type: provider.pricingType,
                 price: provider.price,
@@ -424,93 +430,35 @@ export function ProviderDashboardClient() {
                 hourly_rate: provider.hourlyRate,
                 location: provider.location,
                 description: provider.description,
-                availability: provider.availability,
-                availableToday: provider.availableToday,
-                availableTomorrow: provider.availableTomorrow,
-                autoReplyEnabled: provider.autoReplyEnabled,
               }}
             />
           </div>
         </section>
       )}
 
-      {/* 1. Summary cards */}
+      {/* Compact summary stats */}
       {provider && (
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <ProviderSummaryCard
-            icon="💰"
-            label="Total earnings"
-            value={`$${earnings.total.toLocaleString()}`}
-            sub="All time"
-            pulse={earningsPulse}
-          />
-          <ProviderSummaryCard
-            icon="✅"
-            label="Jobs completed"
-            value={`${provider.jobsCompleted} jobs`}
-            sub="Lifetime"
-          />
-          <ProviderSummaryCard
-            icon="⭐"
-            label="Average rating"
-            value={
-              provider.reviewCount > 0
-                ? provider.ratingAvg.toFixed(1)
-                : NO_REVIEWS_LABEL
-            }
-            detail={
-              provider.reviewCount > 0 ? (
-                <StarRating rating={provider.ratingAvg} size="sm" showNumeric={false} />
-              ) : undefined
-            }
-            sub={
-              provider.reviewCount > 0
-                ? formatRatingSummary(provider.ratingAvg, provider.reviewCount)
-                : "Complete jobs to earn reviews"
-            }
-          />
-          <ProviderSummaryCard
-            icon="📅"
-            label="Upcoming jobs"
-            value={grouped.upcoming.length}
-            sub={
-              grouped.pending.length
-                ? `${grouped.pending.length} new request${grouped.pending.length === 1 ? "" : "s"}`
-                : "On your schedule"
-            }
-          />
-          <ProviderSummaryCard
-            icon="⚡"
-            label="Response speed"
-            value={getResponseSpeedLabel(provider.responseSpeed, provider.responseTimeMins)}
-            sub={`~${provider.responseTimeMins ?? 30} min avg`}
-          />
-        </section>
+        <ProviderStatsBar
+          earningsTotal={earnings.total}
+          earningsPulse={earningsPulse}
+          jobsCompleted={provider.jobsCompleted}
+          ratingAvg={provider.ratingAvg}
+          reviewCount={provider.reviewCount}
+          upcomingCount={grouped.upcoming.length}
+          pendingCount={grouped.pending.length}
+          responseSpeed={provider.responseSpeed}
+          responseTimeMins={provider.responseTimeMins}
+        />
       )}
 
-      {/* Smart insights */}
-      {insights.length > 0 && (
-        <section className="mt-6 grid gap-3 md:grid-cols-3">
-          {insights.map((item) => (
-            <div
-              key={item.text}
-              className="flex items-start gap-3 rounded-xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-4 text-sm text-gray-700"
-            >
-              <span className="text-xl">{item.icon}</span>
-              <p>{item.text}</p>
-            </div>
-          ))}
-        </section>
-      )}
-
-      <div className="mt-8 grid gap-8 xl:grid-cols-3">
+      <div className="mt-6 grid gap-8 xl:grid-cols-3">
         {/* Main column */}
         <div className="space-y-8 xl:col-span-2">
-          {/* 2. Booking management */}
-          <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-100 bg-gray-50/80 px-5 py-4 sm:px-6">
-              <h2 className="text-lg font-bold text-gray-900">Booking management</h2>
-              <p className="text-sm text-gray-500">
+          {/* Booking management — primary focus */}
+          <section className="overflow-hidden rounded-2xl border-2 border-green-100 bg-white shadow-md ring-1 ring-green-50/80">
+            <div className="border-b border-green-100 bg-gradient-to-r from-green-50/90 to-white px-5 py-5 sm:px-6">
+              <h2 className="text-xl font-bold text-gray-900">Booking management</h2>
+              <p className="mt-0.5 text-sm text-gray-500">
                 Accept requests, manage upcoming work, and review completed jobs.
               </p>
               <div className="mt-4 flex gap-1 overflow-x-auto">
@@ -615,7 +563,22 @@ export function ProviderDashboardClient() {
             </div>
           </section>
 
-          {/* 3. Earnings */}
+          {/* Smart insights — below booking management */}
+          {insights.length > 0 && (
+            <section className="flex flex-wrap gap-2">
+              {insights.map((item) => (
+                <div
+                  key={item.text}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600"
+                >
+                  <span aria-hidden>{item.icon}</span>
+                  <p>{item.text}</p>
+                </div>
+              ))}
+            </section>
+          )}
+
+          {/* Earnings */}
           {provider && (
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-bold text-gray-900">💰 Earnings overview</h2>
@@ -787,8 +750,15 @@ export function ProviderDashboardClient() {
           {/* 5. Availability / schedule */}
           {provider && (
             <>
-              <ProviderWeekAvailability provider={provider} />
+              <ProviderAvailabilityEditor
+                key={`${provider.id}-${provider.availability}`}
+                provider={provider}
+              />
               <ProviderScheduleManager />
+              <ProviderStatusControls
+                key={`${provider.id}-${provider.availableToday}-${provider.availableTomorrow}-${provider.autoReplyEnabled}`}
+                provider={provider}
+              />
               <p className="text-xs text-gray-500">
                 Accepted bookings automatically block the matching time slot for customers.
               </p>

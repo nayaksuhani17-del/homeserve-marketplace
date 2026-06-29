@@ -1,4 +1,18 @@
-import { resetAllProviderVerification } from "@/lib/provider-verification";
+import {
+  formatAvailabilitySummary,
+  weekAvailabilityFromSchedule,
+} from "@/lib/availability";
+import {
+  configFromWeeklySchedule,
+  formatAvailabilityConfigSummary,
+  normalizeConfig,
+  resolveWeeklySchedule,
+} from "@/lib/availability-config";
+import {
+  ensureUserProfileFields,
+  publicDisplayName,
+} from "@/lib/user-profile";
+import { normalizeLocation } from "@/lib/location";
 import { buildAdminDemoReports } from "./admin-demo-reports";
 import type { MockBooking, MockDatabase, MockProvider, MockUser } from "./types";
 import { MOCK_DB_VERSION } from "./types";
@@ -39,10 +53,32 @@ function normalizeWeekAvailability(
   });
 }
 
-function normalizeProvider(provider: MockProvider, _users: MockUser[]): MockProvider {
+function normalizeProvider(provider: MockProvider, users: MockUser[]): MockProvider {
+  const user = users.find((u) => u.id === provider.userId);
   const verified = provider.verified === true;
+  const publicName = user ? publicDisplayName(user) : provider.name;
+  const weekAvailability = normalizeWeekAvailability(provider, provider.weekAvailability);
+  const weeklySchedule =
+    provider.weeklySchedule?.length === 7
+      ? provider.weeklySchedule.map((entry, i) => ({
+          enabled: entry.enabled ?? weekAvailability[i] ?? false,
+          start: entry.start || "09:00",
+          end: entry.end || "17:00",
+        }))
+      : weekAvailability.map((enabled) => ({
+          enabled,
+          start: "09:00",
+          end: "17:00",
+        }));
+  const availabilityConfig = normalizeConfig(
+    provider.availabilityConfig ?? configFromWeeklySchedule(weeklySchedule)
+  );
+  const effectiveSchedule = resolveWeeklySchedule(availabilityConfig);
+  const syncedWeek = weekAvailabilityFromSchedule(effectiveSchedule);
   const base = {
     ...provider,
+    name: publicName,
+    address: normalizeLocation(provider.address ?? provider.location),
     verified,
     approved: verified,
     services: provider.services ?? [],
@@ -50,7 +86,12 @@ function normalizeProvider(provider: MockProvider, _users: MockUser[]): MockProv
     responseSpeed:
       provider.responseSpeed ??
       deriveResponseSpeed(provider.responseTimeMins ?? 60),
-    weekAvailability: normalizeWeekAvailability(provider, provider.weekAvailability),
+    weekAvailability: syncedWeek,
+    weeklySchedule: effectiveSchedule,
+    availabilityConfig,
+    availability:
+      provider.availability?.trim() ||
+      formatAvailabilityConfigSummary(availabilityConfig),
     blockedSlots: provider.blockedSlots ?? [],
     rejected: provider.rejected ?? false,
     autoReplyEnabled: provider.autoReplyEnabled === true,
@@ -84,10 +125,27 @@ function hasDuplicateUserEmails(users: MockUser[]): boolean {
   return false;
 }
 
+function hasMissingProfileFields(users: MockUser[]): boolean {
+  return users.some(
+    (u) =>
+      !u.firstName?.trim() ||
+      !u.lastName?.trim() ||
+      !u.phoneNumber?.trim() ||
+      !u.address?.trim()
+  );
+}
+
+function hasMissingWeeklySchedule(providers: MockProvider[]): boolean {
+  return providers.some((p) => !p.weeklySchedule || p.weeklySchedule.length !== 7);
+}
+
 /** Skip full re-normalize on refresh when localStorage already matches schema. */
 export function needsNormalization(raw: MockDatabase): boolean {
   if (raw.version !== MOCK_DB_VERSION) return true;
   const providers = raw.providers ?? [];
+  const users = raw.users ?? [];
+  if (hasMissingProfileFields(users)) return true;
+  if (hasMissingWeeklySchedule(providers)) return true;
   if (providers.length === 0) return false;
   return (
     providers.some(
@@ -123,22 +181,26 @@ function dedupeUsers(users: MockUser[]): MockUser[] {
 }
 
 function normalizeUser(user: MockUser): MockUser {
-  if (user.role === "admin") {
-    return { ...user, customerRole: false, providerRole: false };
+  const withProfile = ensureUserProfileFields(user);
+  if (withProfile.role === "admin") {
+    return { ...withProfile, customerRole: false, providerRole: false };
   }
-  if (typeof user.customerRole === "boolean" && typeof user.providerRole === "boolean") {
+  if (
+    typeof withProfile.customerRole === "boolean" &&
+    typeof withProfile.providerRole === "boolean"
+  ) {
     const role =
-      user.providerRole && !user.customerRole
+      withProfile.providerRole && !withProfile.customerRole
         ? "provider"
-        : user.customerRole
+        : withProfile.customerRole
           ? "customer"
-          : user.role;
-    return { ...user, role };
+          : withProfile.role;
+    return { ...withProfile, role };
   }
-  const customerRole = user.role === "customer";
-  const providerRole = user.role === "provider";
+  const customerRole = withProfile.role === "customer";
+  const providerRole = withProfile.role === "provider";
   return {
-    ...user,
+    ...withProfile,
     customerRole,
     providerRole,
     role: providerRole ? "provider" : "customer",
@@ -147,14 +209,9 @@ function normalizeUser(user: MockUser): MockUser {
 
 export function normalizeMockDatabase(raw: MockDatabase): MockDatabase {
   const users = dedupeUsers(raw.users ?? []).map(normalizeUser);
-  const fromVersion = raw.version ?? 0;
-  let providers = (raw.providers ?? [])
+  const providers = (raw.providers ?? [])
     .filter((p) => users.some((u) => u.id === p.userId))
     .map((p) => normalizeProvider(p, users));
-
-  if (fromVersion < MOCK_DB_VERSION) {
-    providers = resetAllProviderVerification(providers);
-  }
 
   const normalized: MockDatabase = {
     version: MOCK_DB_VERSION,

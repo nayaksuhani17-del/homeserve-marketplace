@@ -24,8 +24,11 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
   const initialMode = searchParams.get("mode") === "signup" ? "signup" : defaultMode;
   const { login, register, loading, ready } = useMockApp();
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [signupChoice, setSignupChoice] = useState<SignupChoice>("customer");
   const [message, setMessage] = useState<string | null>(null);
@@ -35,7 +38,10 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
     setMessage(null);
 
     if (mode === "signup") {
-      const result = await register(name, email, password, rolesFromChoice(signupChoice));
+      const result = await register(
+        { firstName, lastName, email, phoneNumber, address, password },
+        rolesFromChoice(signupChoice)
+      );
       if (result.error) {
         setMessage(result.error);
         return;
@@ -93,17 +99,62 @@ export function AuthForm({ redirectTo = "/", defaultMode = "login" }: AuthFormPr
       <form onSubmit={handleSubmit} className="space-y-4">
         {mode === "signup" && (
           <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  First name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="input-field"
+                  placeholder="Jane"
+                  autoComplete="given-name"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Last name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="input-field"
+                  placeholder="Smith"
+                  autoComplete="family-name"
+                />
+              </div>
+            </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
-                Full name
+                Phone number
+              </label>
+              <input
+                type="tel"
+                required
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="input-field"
+                placeholder="(555) 123-4567"
+                autoComplete="tel"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Address
               </label>
               <input
                 type="text"
                 required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
                 className="input-field"
-                placeholder="Jane Smith"
+                placeholder="123 Oak Street, Springfield, IL 62701"
+                autoComplete="street-address"
               />
             </div>
             <div>

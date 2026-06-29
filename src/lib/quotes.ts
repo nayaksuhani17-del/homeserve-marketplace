@@ -3,6 +3,8 @@ import { SERVICE_CATEGORIES } from "./constants";
 
 export type JobSize = "small" | "medium" | "large";
 export type Urgency = "normal" | "urgent";
+export type ComplexityLevel = "low" | "medium" | "high";
+export type QuoteConfidence = "high" | "medium" | "low";
 
 export type ServicePackage = {
   label: string;
@@ -25,28 +27,73 @@ export type QuoteInput = {
   urgency: Urgency;
 };
 
+export type JobAnalysis = {
+  detectedService?: string;
+  serviceScore: number;
+  complexity: ComplexityLevel;
+  complexityModifier: number;
+  confidence: QuoteConfidence;
+  vague: boolean;
+  matchedKeywords: string[];
+};
+
 export type QuoteResult = {
   detectedService?: string;
   matchedPackage?: ServicePackage;
   suggestedPackages: ServicePackage[];
   estimatedHours: { min: number; max: number };
+  estimatedHoursCenter: number;
+  complexity: ComplexityLevel;
+  complexityModifier: number;
+  confidence: QuoteConfidence;
   priceMin: number;
   priceMax: number;
   analysisNote: string;
+  timeExplanation: string;
+  confidenceMessage?: string;
   disclaimer: string;
 };
 
 const SERVICE_KEYWORDS: Record<string, string[]> = {
   Plumber: ["leak", "sink", "pipe", "toilet", "drain", "faucet", "plumb", "water heater", "burst"],
   Electrician: ["electric", "outlet", "wiring", "breaker", "light", "switch", "panel"],
-  "House Cleaning": ["clean", "mop", "dust", "vacuum", "sanitize", "deep clean", "maid"],
+  "House Cleaning": ["clean", "dirty", "mop", "dust", "vacuum", "sanitize", "deep clean", "maid"],
   "Carpet Cleaning": ["carpet", "rug", "stain", "steam", "upholstery"],
-  Painting: ["paint", "wall", "ceiling", "brush", "color", "repaint"],
+  Painting: ["paint", "wall", "ceiling", "brush", "color", "repaint", "crack"],
   Cooking: ["cook", "chef", "meal", "dinner", "catering", "prep"],
   "Car Mechanic": ["car", "brake", "oil", "engine", "tire", "mechanic", "vehicle"],
   "Computer Repair": ["computer", "laptop", "virus", "wifi", "network", "pc", "it"],
   "Lawn Mowing": ["lawn", "mow", "grass", "yard", "hedge", "landscape"],
   "House Shifting": ["move", "moving", "shift", "relocate", "furniture", "packing"],
+};
+
+const COMPLEXITY_KEYWORDS: Record<ComplexityLevel, string[]> = {
+  low: ["small", "quick fix", "minor", "simple", "touch up", "quick", "easy"],
+  medium: ["repair", "room", "apartment", "fix", "replace", "crack", "patch", "medium"],
+  high: [
+    "whole house",
+    "multiple",
+    "deep cleaning",
+    "deep clean",
+    "urgent repair",
+    "entire",
+    "full house",
+    "renovation",
+    "extensive",
+    "several rooms",
+  ],
+};
+
+const COMPLEXITY_MODIFIER: Record<ComplexityLevel, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};
+
+const JOB_SIZE_BASE_HOURS: Record<JobSize, number> = {
+  small: 1,
+  medium: 2.5,
+  large: 4.5,
 };
 
 const PACKAGE_TEMPLATES: Record<string, { label: string; ratio: number }[]> = {
@@ -107,24 +154,183 @@ function seededFloat(seed: number, salt: number): number {
   return x - Math.floor(x);
 }
 
+export function formatHours(h: number): string {
+  const rounded = Math.round(h * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 export function detectServiceFromText(
   description: string,
   fallbackService?: string
 ): string | undefined {
+  const analysis = analyzeJobDescription(description, fallbackService);
+  return analysis.detectedService;
+}
+
+export function detectComplexity(description: string): {
+  level: ComplexityLevel;
+  modifier: number;
+  matchedKeywords: string[];
+} {
   const lower = description.toLowerCase();
-  let best: { service: string; score: number } | undefined;
+  let level: ComplexityLevel = "low";
+  const matched: string[] = [];
+
+  for (const tier of ["high", "medium", "low"] as ComplexityLevel[]) {
+    for (const kw of COMPLEXITY_KEYWORDS[tier]) {
+      if (lower.includes(kw)) {
+        matched.push(kw);
+        if (COMPLEXITY_MODIFIER[tier] >= COMPLEXITY_MODIFIER[level]) {
+          level = tier;
+        }
+      }
+    }
+  }
+
+  return { level, modifier: COMPLEXITY_MODIFIER[level], matchedKeywords: matched };
+}
+
+export function assessConfidence(
+  description: string,
+  detectedService?: string,
+  complexityKeywords: string[] = []
+): QuoteConfidence {
+  const trimmed = description.trim();
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+
+  if (wordCount < 4 && !detectedService && complexityKeywords.length === 0) {
+    return "low";
+  }
+  if (detectedService && (wordCount >= 6 || complexityKeywords.length > 0)) {
+    return "high";
+  }
+  if (detectedService || wordCount >= 8) {
+    return "medium";
+  }
+  return "low";
+}
+
+export function analyzeJobDescription(
+  description: string,
+  fallbackService?: string
+): JobAnalysis {
+  const lower = description.toLowerCase();
+  const serviceScores: Record<string, number> = {};
+  const matchedKeywords: string[] = [];
 
   for (const [service, keywords] of Object.entries(SERVICE_KEYWORDS)) {
-    let score = 0;
     for (const kw of keywords) {
-      if (lower.includes(kw)) score += kw.includes(" ") ? 2 : 1;
+      if (lower.includes(kw)) {
+        matchedKeywords.push(kw);
+        const score = kw.includes(" ") ? 2 : 1;
+        serviceScores[service] = (serviceScores[service] ?? 0) + score;
+      }
     }
-    if (score > 0 && (!best || score > best.score)) {
+  }
+
+  let best: { service: string; score: number } | undefined;
+  for (const [service, score] of Object.entries(serviceScores)) {
+    if (!best || score > best.score) {
       best = { service, score };
     }
   }
 
-  return best?.service ?? fallbackService;
+  const complexity = detectComplexity(description);
+  const detectedService = best?.service ?? fallbackService;
+  const confidence = assessConfidence(
+    description,
+    detectedService,
+    [...matchedKeywords, ...complexity.matchedKeywords]
+  );
+  const vague =
+    confidence === "low" ||
+    (matchedKeywords.length === 0 && complexity.matchedKeywords.length === 0 && description.trim().length < 25);
+
+  return {
+    detectedService,
+    serviceScore: best?.score ?? 0,
+    complexity: complexity.level,
+    complexityModifier: complexity.modifier,
+    confidence,
+    vague,
+    matchedKeywords: [...new Set([...matchedKeywords, ...complexity.matchedKeywords])],
+  };
+}
+
+function baseHoursFromSize(jobSize: JobSize): number {
+  return JOB_SIZE_BASE_HOURS[jobSize];
+}
+
+export function estimateDynamicHours(
+  jobSize: JobSize,
+  complexityModifier: number,
+  seed: number
+): { center: number; min: number; max: number } {
+  const base = baseHoursFromSize(jobSize);
+  const center = base + complexityModifier;
+  const jitter = 0.02 + seededFloat(seed, 11) * 0.04;
+  const minFactor = 0.9 - jitter;
+  const maxFactor = 1.2 + jitter;
+  return {
+    center,
+    min: Math.round(center * minFactor * 10) / 10,
+    max: Math.round(center * maxFactor * 10) / 10,
+  };
+}
+
+function complexityLabel(level: ComplexityLevel): string {
+  switch (level) {
+    case "low":
+      return "straightforward";
+    case "medium":
+      return "medium-complexity";
+    case "high":
+      return "high-complexity";
+  }
+}
+
+function buildTimeExplanation(hoursMin: number, hoursMax: number): string {
+  if (hoursMin === hoursMax) {
+    return `Estimated time: ~${formatHours(hoursMin)} hours`;
+  }
+  return `Estimated time: ~${formatHours(hoursMin)}–${formatHours(hoursMax)} hours`;
+}
+
+function buildAnalysisNote(params: {
+  analysis: JobAnalysis;
+  service: string;
+  hoursMin: number;
+  hoursMax: number;
+  matchedPackage?: ServicePackage;
+}): { analysisNote: string; confidenceMessage?: string } {
+  const { analysis, service, hoursMin, hoursMax, matchedPackage } = params;
+  const serviceLabel = (analysis.detectedService ?? service).toLowerCase();
+
+  if (matchedPackage) {
+    return {
+      analysisNote: `We matched your description to "${matchedPackage.label}" — a popular package from this pro.`,
+    };
+  }
+
+  if (analysis.vague) {
+    return {
+      analysisNote:
+        "Based on your description, here is a general estimate. Final price may vary.",
+      confidenceMessage: "Low confidence — add more detail for a sharper estimate.",
+    };
+  }
+
+  const complexity = complexityLabel(analysis.complexity);
+  const note = `Based on your description, this looks like a ${complexity} ${serviceLabel} job.`;
+
+  let confidenceMessage: string | undefined;
+  if (analysis.confidence === "high") {
+    confidenceMessage = "High confidence — keywords matched your job details.";
+  } else if (analysis.confidence === "medium") {
+    confidenceMessage = "Moderate confidence — estimate may refine after inspection.";
+  }
+
+  return { analysisNote: note, confidenceMessage };
 }
 
 export function buildServicePackages(
@@ -190,17 +396,6 @@ export function enrichProviderQuoteFields(input: {
   return { basePrice, hourlyRate, servicePackages };
 }
 
-function estimateHours(jobSize: JobSize): { min: number; max: number } {
-  switch (jobSize) {
-    case "small":
-      return { min: 1, max: 1 };
-    case "medium":
-      return { min: 2, max: 3 };
-    case "large":
-      return { min: 4, max: 6 };
-  }
-}
-
 function matchPackage(
   description: string,
   packages: ServicePackage[]
@@ -227,17 +422,13 @@ function matchPackage(
   return best?.pkg;
 }
 
-function applyPriceVariation(
-  min: number,
-  max: number,
-  seed: number
-): { min: number; max: number } {
-  const jitter = 0.08 + seededFloat(seed, 7) * 0.1;
-  const low = Math.round(min * (1 - jitter));
-  const high = Math.round(max * (1 + jitter));
+function applyPriceRange(total: number, seed: number): { min: number; max: number } {
+  const jitter = seededFloat(seed, 7) * 0.04;
+  const minFactor = 0.9 - jitter * 0.5;
+  const maxFactor = 1.2 + jitter * 0.5;
   return {
-    min: Math.min(low, high - 10),
-    max: Math.max(high, low + 15),
+    min: Math.round(total * minFactor),
+    max: Math.round(total * maxFactor),
   };
 }
 
@@ -251,45 +442,55 @@ export function calculateInstantQuote(
   seedKey?: string
 ): QuoteResult {
   const seed = hashSeed(seedKey ?? `${provider.basePrice}:${input.description}:${input.jobSize}`);
-  const detected = detectServiceFromText(input.description, input.service);
+  const analysis = analyzeJobDescription(input.description, input.service);
   const packages = provider.servicePackages ?? [];
   const matchedPackage = matchPackage(input.description, packages);
   const suggestedPackages = packages.filter((p) => p.label !== matchedPackage?.label).slice(0, 2);
-  const hours = estimateHours(input.jobSize);
+  const hours = estimateDynamicHours(input.jobSize, analysis.complexityModifier, seed);
   const urgent = urgencyMultiplier(input.urgency);
+  const timeExplanation = buildTimeExplanation(hours.min, hours.max);
 
-  let rawMin: number;
-  let rawMax: number;
-  let analysisNote: string;
+  let rawTotal: number;
+  const { analysisNote, confidenceMessage } = buildAnalysisNote({
+    analysis,
+    service: input.service,
+    hoursMin: hours.min,
+    hoursMax: hours.max,
+    matchedPackage,
+  });
 
   if (matchedPackage) {
-    rawMin = matchedPackage.price * urgent;
-    rawMax = matchedPackage.price * urgent * (1.08 + seededFloat(seed, 4) * 0.12);
-    analysisNote = `We matched your description to "${matchedPackage.label}" — a popular package from this pro.`;
+    rawTotal = matchedPackage.price * urgent;
   } else if (provider.pricingType === "fixed") {
-    rawMin = provider.price * urgent;
-    rawMax = provider.price * urgent * (1.05 + seededFloat(seed, 5) * 0.1);
-    analysisNote = "This provider uses fixed job pricing — your quote reflects their standard rate.";
+    const fixedHours = hours.center || baseHoursFromSize(input.jobSize);
+    rawTotal = provider.price * urgent * (0.85 + (fixedHours / 6) * 0.3);
   } else {
-    rawMin = (provider.basePrice + hours.min * provider.hourlyRate) * urgent;
-    rawMax = (provider.basePrice + hours.max * provider.hourlyRate) * urgent;
-    const serviceLabel = detected ?? input.service;
-    analysisNote = detected
-      ? `Based on "${input.description.slice(0, 60)}${input.description.length > 60 ? "…" : ""}", this looks like a ${serviceLabel.toLowerCase()} job (~${hours.min}${hours.max > hours.min ? `–${hours.max}` : ""} hrs).`
-      : `Estimated for a ${input.jobSize} ${input.service.toLowerCase()} job (~${hours.min}${hours.max > hours.min ? `–${hours.max}` : ""} hrs).`;
+    const rate = provider.hourlyRate || provider.price;
+    rawTotal = hours.center * rate * urgent;
   }
 
-  const { min: priceMin, max: priceMax } = applyPriceVariation(rawMin, rawMax, seed);
+  const { min: priceMin, max: priceMax } = applyPriceRange(rawTotal, seed);
+
+  let disclaimer = "Final price may vary after inspection";
+  if (input.urgency === "urgent") {
+    disclaimer += " · Urgent priority fee (+22%) included";
+  }
 
   return {
-    detectedService: detected,
+    detectedService: analysis.detectedService,
     matchedPackage,
     suggestedPackages,
-    estimatedHours: hours,
+    estimatedHours: { min: hours.min, max: hours.max },
+    estimatedHoursCenter: hours.center,
+    complexity: analysis.complexity,
+    complexityModifier: analysis.complexityModifier,
+    confidence: analysis.confidence,
     priceMin,
     priceMax,
     analysisNote,
-    disclaimer: "Final price may vary after inspection",
+    timeExplanation,
+    confidenceMessage,
+    disclaimer,
   };
 }
 
@@ -300,8 +501,8 @@ export function formatQuoteRange(min: number, max: number): string {
 
 export const JOB_SIZE_OPTIONS: { value: JobSize; label: string; hint: string }[] = [
   { value: "small", label: "Small", hint: "~1 hour" },
-  { value: "medium", label: "Medium", hint: "2–3 hours" },
-  { value: "large", label: "Large", hint: "4+ hours" },
+  { value: "medium", label: "Medium", hint: "~2.5 hours" },
+  { value: "large", label: "Large", hint: "~4.5 hours" },
 ];
 
 export const URGENCY_OPTIONS: { value: Urgency; label: string; hint: string }[] = [

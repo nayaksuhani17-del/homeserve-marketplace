@@ -5,6 +5,7 @@ import { Modal } from "./Modal";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
 import {
   calculateInstantQuote,
+  formatHours,
   formatQuoteRange,
   JOB_SIZE_OPTIONS,
   URGENCY_OPTIONS,
@@ -32,6 +33,17 @@ export function QuoteModal(props: QuoteModalProps) {
       {...props}
     />
   );
+}
+
+function confidenceBadge(confidence: QuoteResult["confidence"]) {
+  switch (confidence) {
+    case "high":
+      return { label: "High confidence", className: "bg-green-100 text-green-800" };
+    case "medium":
+      return { label: "Moderate confidence", className: "bg-amber-100 text-amber-800" };
+    case "low":
+      return { label: "General estimate", className: "bg-gray-100 text-gray-600" };
+  }
 }
 
 function QuoteModalInner({
@@ -79,8 +91,10 @@ function QuoteModalInner({
             ...quote,
             matchedPackage: selectedPackage,
             analysisNote: `You selected "${selectedPackage.label}" — here's your instant estimate.`,
-            priceMin: Math.round(base * 0.92),
-            priceMax: Math.round(base * 1.12),
+            priceMin: Math.round(base * 0.9),
+            priceMax: Math.round(base * 1.2),
+            confidence: "high",
+            confidenceMessage: "Package price selected — high confidence match.",
           };
         }
         setResult(quote);
@@ -143,11 +157,11 @@ function QuoteModalInner({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder='e.g. "Leaking sink under the kitchen cabinet, needs repair soon"'
+              placeholder='e.g. "Paint my living room wall and fix cracks"'
               className="input-field resize-none"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Tip: mention keywords like leak, paint, or clean for smarter detection
+              Mention details like paint, leak, or deep cleaning — the estimator reads your description
             </p>
           </div>
 
@@ -204,14 +218,53 @@ function QuoteModalInner({
       ) : (
         <div className="animate-fade-in">
           <div className="rounded-2xl bg-gradient-to-br from-green-50 to-emerald-50 p-5 ring-1 ring-green-100">
-            <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
-              <span aria-hidden>✨</span> Smart estimate ready
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+                <span aria-hidden>✨</span> Smart estimate ready
+              </div>
+              {(() => {
+                const badge = confidenceBadge(result.confidence);
+                return (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.className}`}
+                  >
+                    {badge.label}
+                  </span>
+                );
+              })()}
             </div>
-            <p className="mt-1 text-sm text-gray-500">Estimated cost</p>
-            <p className="mt-1 text-3xl font-bold text-gray-900">
-              {formatQuoteRange(result.priceMin, result.priceMax)}
-            </p>
-            <p className="mt-3 text-sm text-gray-600">{result.analysisNote}</p>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Estimated time
+                </p>
+                <p className="mt-1 text-xl font-bold text-gray-900">
+                  {result.estimatedHours.min === result.estimatedHours.max
+                    ? `~${formatHours(result.estimatedHours.min)} hrs`
+                    : `~${formatHours(result.estimatedHours.min)}–${formatHours(result.estimatedHours.max)} hrs`}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-500">{result.timeExplanation}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Estimated cost
+                </p>
+                <p className="mt-1 text-xl font-bold text-gray-900">
+                  {formatQuoteRange(result.priceMin, result.priceMax)}
+                </p>
+                {profile.hourlyRate > 0 && !result.matchedPackage && (
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Based on ${profile.hourlyRate}/hr rate
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <p className="mt-4 text-sm text-gray-600">{result.analysisNote}</p>
+            {result.confidenceMessage && (
+              <p className="mt-2 text-xs text-gray-500">{result.confidenceMessage}</p>
+            )}
             {result.detectedService && result.detectedService !== service && (
               <p className="mt-2 text-xs font-medium text-green-700">
                 Detected category: {result.detectedService}
